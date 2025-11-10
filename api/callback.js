@@ -175,3 +175,10 @@ try {
 } catch (e) {
   console.error('Setup failed to trigger', e);
 }
+export default async function callback(req, res) {
+  // ... ton code OAuth + installation du thème + set cookies
+
+  // Redirection server-side : lance le seed puis renvoie son résultat
+  res.redirect(302, '/api/setup');
+}
+
