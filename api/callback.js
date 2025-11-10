@@ -21,23 +21,19 @@ export default async function handler(req, res) {
 
     const { access_token } = await tokenResponse.json();
 
-    const isProd = (process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production");
-    const embedded = process.env.SHOPIFY_EMBEDDED === "true";
-    const sameSite = embedded ? "None" : "Lax";
-    const secureFlag = isProd ? " Secure;" : ""; // en local Vercel Dev, pas de Secure
+    const isProd = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
+    const sameSite = process.env.SHOPIFY_EMBEDDED === "true" ? "None" : "Lax";
 
     res.setHeader("Set-Cookie", [
-      `shop=${encodeURIComponent(shop)}; HttpOnly;${secureFlag} SameSite=${sameSite}; Path=/`,
-      `accessToken=${encodeURIComponent(access_token)}; HttpOnly;${secureFlag} SameSite=${sameSite}; Path=/`
+      `shop=${encodeURIComponent(shop)}; HttpOnly; ${isProd ? "Secure;" : ""} SameSite=${sameSite}; Path=/`,
+      `accessToken=${encodeURIComponent(access_token)}; HttpOnly; ${isProd ? "Secure;" : ""} SameSite=${sameSite}; Path=/`
     ]);
 
-    // Redirige vers l’étape d’auto-setup (fonction serverless)
-    const base = process.env.NEXT_PUBLIC_APP_URL || ""; // ex: https://<app>.vercel.app
-    const location = `${base}/api/setup`;
-    res.writeHead(302, { Location: location });
+    const base = process.env.NEXT_PUBLIC_APP_URL || "";
+    res.writeHead(302, { Location: `${base}/api/setup` });
     res.end();
   } catch (err) {
     console.error("OAuth callback error:", err);
-    res.status(500).json({ error: "OAuth callback error", details: err?.message || String(err) });
+    res.status(500).json({ error: "OAuth callback error", details: err.message });
   }
 }
