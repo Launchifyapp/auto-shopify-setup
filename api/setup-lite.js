@@ -1,25 +1,21 @@
+// api/setup-lite.js
 import path from "node:path";
-import { uploadAllImages } from "../lib/shopify.js"; // ajuste le chemin selon ton projet
+import { importProductsFromCsv } from "../lib/shopify.js";
 
 export default async function handler(req, res) {
   try {
     const shop = req.cookies?.shop;
     const accessToken = req.cookies?.accessToken;
+    if (!shop || !accessToken) {
+      return res.status(401).json({ ok: false, error: "Missing shop/accessToken cookie" });
+    }
 
-    const seedDir = path.join(process.cwd(), "public", "seed");
-    const filesJsonPath = path.join(seedDir, "files.json");
+    const csvPath = path.join(process.cwd(), "public", "seed", "products.csv");
 
-    const imagesMap = await uploadAllImages({
-      shop,
-      accessToken,
-      filesJsonPath,
-      imagesDir: seedDir,
-    });
-
-    // Par exemple, log ou renvoie la map :
-    return res.status(200).json({ ok: true, images: imagesMap });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ ok: false, error: String(e.message || e) });
+    const result = await importProductsFromCsv({ shop, accessToken, csvPath });
+    return res.status(200).json({ ok: true, ...result });
+  } catch (err) {
+    console.error("SETUP-LITE ERROR", err);
+    return res.status(500).json({ ok: false, error: String(err?.message ?? err) });
   }
 }
