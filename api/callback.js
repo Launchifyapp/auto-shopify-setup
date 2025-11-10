@@ -26,7 +26,7 @@ export default async function handler(req, res) {
       `accessToken=${encodeURIComponent(access_token)}; HttpOnly; ${isProd ? "Secure;" : ""} SameSite=${sameSite}; Path=/`
     ]);
 
-    const base = process.env.NEXT_PUBLIC_APP_URL || "";
+    const base = process.env.NEXT_PUBLIC_APP_URL || ""; // ex: https://<app>.vercel.app
     const location = `${base}/api/setup`;
     res.writeHead(302, { Location: location });
     res.end();
