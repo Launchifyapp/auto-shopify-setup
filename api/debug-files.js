@@ -1,12 +1,17 @@
+// api/debug-files.js
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export default async function handler(req, res) {
   try {
-    const dir = path.join(process.cwd(), "public", "seed");
-    const files = await fs.readdir(dir);
-    return res.status(200).json({ ok: true, dir, files });
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const seedDir = path.resolve(__dirname, "../public/seed");
+
+    const entries = await fs.readdir(seedDir);
+    return res.status(200).json({ ok: true, seedDir, entries });
   } catch (err) {
-    return res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({ ok: false, error: String(err.message) });
   }
 }
