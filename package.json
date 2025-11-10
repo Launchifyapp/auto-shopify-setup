@@ -3,13 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "vercel dev",
-    "start": "node -e \"console.log('Use `vercel dev` locally or deploy to Vercel')\"",
-    "test": "echo \"No tests yet\" && exit 0"
+    "start": "vercel dev"
   },
-  "dependencies": {
-    "node-fetch": "3.3.2"
-  }
+  "dependencies": {}
 }
