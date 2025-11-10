@@ -6,11 +6,6 @@
   "engines": { "node": ">=18" },
   "dependencies": {
     "node-fetch": "3.3.2",
-    "csv-parse": "^5.5.6"
-  },
-  "scripts": {
-    "dev": "vercel dev",
-    "build": "echo \"nothing to build\"",
-    "start": "vercel dev"
+    "csv-parse": "5.5.6"
   }
 }
