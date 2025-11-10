@@ -1,212 +1,171 @@
 // api/setup.js
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+
+// IMPORTANT : chemin relatif vers ton helper déjà existant
+// Vu ta structure (/api et /lib sont au même niveau)
 import {
   importProductsFromCsv,
   uploadAllImages,
   upsertPage,
   upsertMainMenuFR,
-  createCollections // si tu as déjà quelque chose, on peut le laisser
+  createCollections
 } from "../lib/shopify.js";
 
-// --------- util cookies ----------
-function getCookieFromHeader(header, name) {
-  if (!header) return null;
-  const cookies = header.split(";").map(c => c.trim());
-  for (const c of cookies) {
-    const [k, ...rest] = c.split("=");
-    if (k === name) return decodeURIComponent(rest.join("="));
-  }
-  return null;
-}
+const API_VERSION = process.env.SHOPIFY_API_VERSION || "2024-10";
 
-// --------- GraphQL helpers ----------
-function adminGraphQLEndpoint(shop) {
-  return `https://${shop}/admin/api/2024-10/graphql.json`;
-}
+// ---------------- Metafield Definitions (GraphQL) ----------------
+async function upsertProductMetafieldDefinitions({ shop, accessToken, definitions }) {
+  const endpoint = `https://${shop}/admin/api/${API_VERSION}/graphql.json`;
 
-async function gql(shop, accessToken, query, variables) {
-  const r = await fetch(adminGraphQLEndpoint(shop), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": accessToken
-    },
-    body: JSON.stringify({ query, variables })
-  });
-  const json = await r.json();
-  if (!r.ok || json.errors) {
-    throw new Error(`GraphQL error: ${JSON.stringify(json.errors || json)}`);
-  }
-  return json.data;
-}
-
-// Vérifie si une metafield definition existe déjà
-async function findDefinition(shop, accessToken, { namespace, key }) {
-  const q = `
-    query ($owner: MetafieldOwnerType!, $namespace: String!, $key: String!) {
-      metafieldDefinitions(first: 1, ownerType: $owner, namespace: $namespace, key: $key) {
-        edges { node { id namespace key name type } }
+  const mutation = `
+    mutation metafieldDefinitionUpsert($definition: MetafieldDefinitionInput!) {
+      metafieldDefinitionUpsert(definition: $definition) {
+        createdDefinition { id name namespace key type ownerType }
+        updatedDefinition { id name namespace key type ownerType }
+        userErrors { field message code }
       }
     }
   `;
-  const data = await gql(shop, accessToken, q, {
-    owner: "PRODUCT",
-    namespace,
-    key
+
+  for (const def of definitions) {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "X-Shopify-Access-Token": accessToken,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        query: mutation,
+        variables: {
+          definition: {
+            name: def.name,
+            namespace: def.namespace,
+            key: def.key,
+            type: def.type,
+            ownerType: "PRODUCT",
+            description: def.description || undefined
+            // NOTE: ne pas mettre visibleToStorefront ici (cause d'erreur sur ta boutique/version)
+          }
+        }
+      })
+    });
+
+    const json = await res.json();
+    if (json.errors?.length) {
+      throw new Error(`GraphQL error: ${JSON.stringify(json.errors)}`);
+    }
+    const errs = json.data?.metafieldDefinitionUpsert?.userErrors;
+    if (errs?.length) {
+      throw new Error(`GraphQL error: ${JSON.stringify(errs)}`);
+    }
+  }
+}
+
+// ---------------- Smart Collections par TAG (REST) ----------------
+async function ensureSmartCollectionByTag({ shop, accessToken, title, tag }) {
+  const base = `https://${shop}/admin/api/${API_VERSION}`;
+  // 1) Cherche si elle existe déjà
+  const listRes = await fetch(`${base}/smart_collections.json?title=${encodeURIComponent(title)}`, {
+    headers: { "X-Shopify-Access-Token": accessToken }
   });
-  const edge = data.metafieldDefinitions.edges[0];
-  return edge?.node || null;
-}
-
-// Crée ou met à jour une metafield definition (PRODUCT)
-async function upsertProductDefinition(shop, accessToken, def) {
-  const current = await findDefinition(shop, accessToken, def);
-
-  if (!current) {
-    const mutationCreate = `
-      mutation ($def: MetafieldDefinitionCreateInput!) {
-        metafieldDefinitionCreate(definition: $def) {
-          createdDefinition { id namespace key type name }
-          userErrors { field message }
-        }
-      }
-    `;
-    const res = await gql(shop, accessToken, mutationCreate, {
-      def: {
-        name: def.name,
-        namespace: def.namespace,
-        key: def.key,
-        type: def.type,              // ex: "single_line_text_field"
-        description: def.description || null,
-        ownerType: "PRODUCT",
-        validations: def.validations || []
-      }
-    });
-    const errs = res.metafieldDefinitionCreate.userErrors;
-    if (errs?.length) throw new Error(`Create metafield definition failed: ${JSON.stringify(errs)}`);
-    return res.metafieldDefinitionCreate.createdDefinition;
-  } else {
-    const mutationUpdate = `
-      mutation ($id: ID!, $upd: MetafieldDefinitionUpdateInput!) {
-        metafieldDefinitionUpdate(id: $id, definition: $upd) {
-          updatedDefinition { id namespace key type name }
-          userErrors { field message }
-        }
-      }
-    `;
-    const res = await gql(shop, accessToken, mutationUpdate, {
-      id: current.id,
-      upd: {
-        name: def.name,
-        description: def.description || null,
-        validations: def.validations || []
-      }
-    });
-    const errs = res.metafieldDefinitionUpdate.userErrors;
-    if (errs?.length) throw new Error(`Update metafield definition failed: ${JSON.stringify(errs)}`);
-    return res.metafieldDefinitionUpdate.updatedDefinition;
+  if (!listRes.ok) {
+    const txt = await listRes.text();
+    throw new Error(`List smart_collections failed: ${listRes.status} ${txt}`);
   }
-}
+  const { smart_collections } = await listRes.json();
+  if (smart_collections?.length) return; // déjà là
 
-// Idempotent: crée 3 metafields "Checkbox 1/2/3" texte simple
-async function ensureProductMetafields(shop, accessToken) {
-  const defs = [
-    { name: "Checkbox 1", namespace: "custom", key: "checkbox_1", type: "single_line_text_field" },
-    { name: "Checkbox 2", namespace: "custom", key: "checkbox_2", type: "single_line_text_field" },
-    { name: "Checkbox 3", namespace: "custom", key: "checkbox_3", type: "single_line_text_field" }
-  ];
-  for (const d of defs) {
-    await upsertProductDefinition(shop, accessToken, d);
-  }
-}
-
-// --------- Smart collections par tags ----------
-async function ensureSmartCollection(shop, accessToken, { title, tagEquals, handle }) {
-  // Vérifie si la collection existe déjà par handle
-  const getQ = `
-    query($handle: String!) {
-      collection(handle: $handle) { id handle title }
-    }
-  `;
-  const exists = await gql(shop, accessToken, getQ, { handle }).catch(() => null);
-  if (exists?.collection) return exists.collection;
-
-  // Création via REST Admin (smart_collections)
-  const endpoint = `https://${shop}/admin/api/2024-10/smart_collections.json`;
-  const payload = {
-    smart_collection: {
-      title,
-      handle,
-      rules: [
-        { column: "tag", relation: "equals", condition: tagEquals }
-      ],
-      published: true
-    }
-  };
-  const r = await fetch(endpoint, {
+  // 2) Crée avec une règle "tag equals <tag>"
+  const createRes = await fetch(`${base}/smart_collections.json`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": accessToken
+      "X-Shopify-Access-Token": accessToken,
+      "Content-Type": "application/json"
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({
+      smart_collection: {
+        title,
+        rules: [
+          { column: "tag", relation: "equals", condition: tag }
+        ],
+        disjunctive: false // ET sur plusieurs règles (ici on n'en met qu'une)
+      }
+    })
   });
-  if (!r.ok) throw new Error(`Create smart collection failed: ${r.status}`);
-  return (await r.json()).smart_collection;
+
+  if (!createRes.ok) {
+    const txt = await createRes.text();
+    throw new Error(`Create smart_collection failed: ${createRes.status} ${txt}`);
+  }
 }
 
+// ---------------- Handler ----------------
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
   try {
-    const cookieHeader = req.headers.cookie || "";
-    const shop = getCookieFromHeader(cookieHeader, "shop");
-    const accessToken = getCookieFromHeader(cookieHeader, "accessToken");
-    if (!shop || !accessToken) return res.status(401).json({ ok: false, error: "Missing shop/accessToken cookie" });
+    const shop = req.cookies?.shop;
+    const accessToken = req.cookies?.accessToken;
+    if (!shop || !accessToken) {
+      return res.status(401).json({ ok: false, error: "Missing shop/accessToken cookie" });
+    }
 
     const seedDir = path.join(process.cwd(), "public", "seed");
     const csvPath = path.join(seedDir, "products.csv");
     const filesJsonPath = path.join(seedDir, "files.json");
     const imagesDir = seedDir;
 
-    // 1) Metafields produit
-    await ensureProductMetafields(shop, accessToken);
+    // 1) Metafield product definitions (tes 3 checkboxes)
+    const PRODUCT_METAFIELDS = [
+      { name: "Checkbox 1", namespace: "custom", key: "checkbox1", type: "single_line_text_field" },
+      { name: "Checkbox 2", namespace: "custom", key: "checkbox2", type: "single_line_text_field" },
+      { name: "Checkbox 3", namespace: "custom", key: "checkbox3", type: "single_line_text_field" }
+    ];
+    await upsertProductMetafieldDefinitions({ shop, accessToken, definitions: PRODUCT_METAFIELDS });
 
-    // 2) Produits depuis CSV
+    // 2) Import produits
     await importProductsFromCsv({ shop, accessToken, csvPath });
 
-    // 3) Upload images (lit files.json + images dans /public/seed)
+    // 3) Upload images
     await uploadAllImages({ shop, accessToken, filesJsonPath, imagesDir });
 
-    // 4) Pages Livraison & FAQ
-    await upsertPage({ shop, accessToken, handle: "livraison", title: "Livraison", html: "<h1>Livraison</h1><p>Délais, transporteurs, coûts…</p>" });
-    await upsertPage({ shop, accessToken, handle: "faq",       title: "FAQ",       html: "<h1>FAQ</h1><p>Questions fréquentes…</p>" });
+    // 4) Pages
+    await upsertPage({
+      shop, accessToken,
+      handle: "livraison",
+      title: "Livraison",
+      html: "<h1>Livraison</h1><p>Délais, transporteurs, coûts…</p>"
+    });
+    await upsertPage({
+      shop, accessToken,
+      handle: "faq",
+      title: "FAQ",
+      html: "<h1>FAQ</h1><p>Questions fréquentes…</p>"
+    });
 
     // 5) Menu principal FR
     await upsertMainMenuFR({ shop, accessToken });
 
-    // 6) Collections intelligentes par tags (simplifié – 2 collections)
-    await ensureSmartCollection(shop, accessToken, {
+    // 6) Collections intelligentes par tags (simplifié)
+    await ensureSmartCollectionByTag({
+      shop, accessToken,
       title: "Beauté & soins",
-      tagEquals: "Beauté & soins",
-      handle: "beaute-et-soins"
+      tag: "Beauté & soins"
     });
-    await ensureSmartCollection(shop, accessToken, {
+    await ensureSmartCollectionByTag({
+      shop, accessToken,
       title: "Maison & confort",
-      tagEquals: "Maison & confort",
-      handle: "maison-et-confort"
+      tag: "Maison & confort"
     });
 
-    // (Optionnel) si tu gardes ton helper:
-    if (typeof createCollections === "function") {
-      try { await createCollections({ shop, accessToken }); } catch { /* ignore si déjà géré */ }
-    }
+    // (Optionnel) Si tu as déjà un helper createCollections, tu peux l'appeler ici aussi
+    // await createCollections({ shop, accessToken });
 
-    // Redirige vers une page "done" si tu veux, sinon répond ok
-    res.status(200).json({ ok: true });
+    const redirectUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/setup/done`;
+    res.writeHead(302, { Location: redirectUrl });
+    res.end();
   } catch (err) {
     console.error("SETUP ERROR", err);
-    res.status(500).json({ ok: false, error: String(err?.message || err) });
+    res.status(500).json({ ok: false, error: String(err?.message ?? err) });
   }
 }
