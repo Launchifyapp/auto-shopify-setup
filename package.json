@@ -5,9 +5,12 @@
   "type": "module",
   "engines": { "node": ">=18" },
   "scripts": {
-    "start": "node api/ping.js"
+    "dev": "vercel dev",
+    "start": "node api/ping.js",
+    "lint": "echo \"(no lint)\""
   },
   "dependencies": {
-    "node-fetch": "3.3.2"
+    "node-fetch": "3.3.2",
+    "csv-parse": "5.5.6"
   }
 }
