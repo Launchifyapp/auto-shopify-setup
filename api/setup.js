@@ -1,264 +1,201 @@
-// /api/setup.js
+// api/setup.js
 import path from "node:path";
-import fs from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
-// ⚠️ adapte ce chemin si besoin : ton lib est à /lib/shopify.js
+// NOTE: chemins relatifs depuis /api vers /lib
 import {
   importProductsFromCsv,
   uploadAllImages,
   upsertPage,
   upsertMainMenuFR,
-  createCollections,
+  createCollections, // si jamais ce helper pose souci, on créera les 2 collections ci-dessous à la main (déjà codé)
 } from "../lib/shopify.js";
 
-/**
- * --- HELPERS METAFIELDS (REST) ---
- * Shopify REST: POST /admin/api/2024-10/metafield_definitions.json
- * Docs: https://shopify.dev/docs/api/admin-rest/2024-10/resources/metafielddefinition
- */
-
-async function findDefinition({ shop, accessToken, namespace, key }) {
-  // Filtre par namespace & key & owner_resource=product
-  const url = new URL(`https://${shop}/admin/api/2024-10/metafield_definitions.json`);
-  url.searchParams.set("namespace", namespace);
-  url.searchParams.set("key", key);
-  url.searchParams.set("owner_resource", "product");
-
-  const r = await fetch(url, {
-    headers: {
-      "X-Shopify-Access-Token": accessToken,
-      "Content-Type": "application/json",
-    },
+// -----------------------------
+// Utils
+// -----------------------------
+function getCookies(req) {
+  const out = {};
+  const raw = req.headers.cookie || "";
+  raw.split(";").forEach(p => {
+    const i = p.indexOf("=");
+    if (i > -1) out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim());
   });
-
-  if (!r.ok) {
-    const body = await r.text();
-    throw new Error(`List metafield_definitions failed: ${r.status} ${body}`);
-  }
-
-  const json = await r.json();
-  return (json.metafield_definitions || [])[0] || null;
+  return out;
 }
 
-async function createDefinition({ shop, accessToken, name, namespace, key, type, description }) {
-  const url = `https://${shop}/admin/api/2024-10/metafield_definitions.json`;
-  const payload = {
-    metafield_definition: {
-      name,
-      namespace,
-      key,
-      type, // e.g. "single_line_text_field"
-      owner_resource: "product",
-      description: description || undefined,
-    },
-  };
+function shopifyGraphQLEndpoint(shop) {
+  // Version admin stable ; si un jour tu changes, garde un numéro récent
+  return `https://${shop}/admin/api/2024-10/graphql.json`;
+}
 
-  const r = await fetch(url, {
+async function gql(shop, accessToken, query, variables) {
+  const r = await fetch(shopifyGraphQLEndpoint(shop), {
     method: "POST",
     headers: {
       "X-Shopify-Access-Token": accessToken,
-      "Content-Type": "application/json",
+      "Content-Type": "application/json"
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ query, variables })
   });
-
-  if (!r.ok) {
-    const body = await r.text();
-    throw new Error(`Create metafield_definition failed: ${r.status} ${body}`);
+  const j = await r.json();
+  if (j.errors) {
+    throw new Error(`GraphQL error: ${JSON.stringify(j.errors)}`);
   }
-
-  const json = await r.json();
-  return json.metafield_definition;
+  return j.data;
 }
 
-async function ensureProductMetafieldDefinitions({ shop, accessToken, definitions, dryRun = false }) {
-  const results = [];
-  for (const def of definitions) {
-    const existing = await findDefinition({
-      shop,
-      accessToken,
-      namespace: def.namespace,
-      key: def.key,
-    });
+// 1) Metafield definitions (PRODUCT): Checkbox 1/2/3
+async function ensureProductMetafieldDefinitions(shop, accessToken) {
+  const defs = [
+    { name: "Checkbox 1", key: "checkbox_1" },
+    { name: "Checkbox 2", key: "checkbox_2" },
+    { name: "Checkbox 3", key: "checkbox_3" }
+  ];
 
-    if (existing) {
-      results.push({ action: "skip", key: `${def.namespace}.${def.key}`, id: existing.id });
-      continue;
+  const upsertMutation = `
+    mutation metafieldDefinitionUpsert($definition: MetafieldDefinitionInput!) {
+      metafieldDefinitionUpsert(definition: $definition) {
+        createdDefinition { id }
+        updatedDefinition { id }
+        userErrors { field message }
+      }
     }
+  `;
 
-    if (dryRun) {
-      results.push({ action: "would_create", key: `${def.namespace}.${def.key}` });
-      continue;
-    }
-
-    const created = await createDefinition({
-      shop,
-      accessToken,
-      name: def.name,
-      namespace: def.namespace,
-      key: def.key,
-      type: def.type,
-      description: def.description,
-    });
-
-    results.push({ action: "created", key: `${def.namespace}.${def.key}`, id: created.id });
-  }
-  return results;
-}
-
-// --- tes définitions
-const PRODUCT_METAFIELDS = [
-  { name: "Checkbox 1", namespace: "custom", key: "checkbox_1", type: "single_line_text_field" },
-  { name: "Checkbox 2", namespace: "custom", key: "checkbox_2", type: "single_line_text_field" },
-  { name: "Checkbox 3", namespace: "custom", key: "checkbox_3", type: "single_line_text_field" },
-];
-
-// --- collections par tags (simple & explicite)
-async function ensureSmartCollectionsByTags({ shop, accessToken, tags = [], dryRun = false }) {
-  const results = [];
-
-  // Helper REST
-  const listCollections = async () => {
-    const url = `https://${shop}/admin/api/2024-10/smart_collections.json?limit=250`;
-    const r = await fetch(url, { headers: { "X-Shopify-Access-Token": accessToken } });
-    if (!r.ok) throw new Error(`List smart_collections failed: ${r.status}`);
-    const json = await r.json();
-    return json.smart_collections || [];
-  };
-
-  const createCollection = async (title, tag) => {
-    const url = `https://${shop}/admin/api/2024-10/smart_collections.json`;
-    const payload = {
-      smart_collection: {
-        title,
-        rules: [
-          {
-            column: "tag",
-            relation: "equals",
-            condition: tag,
-          },
-        ],
-        rule_set: {
-          applied_disjunctively: false, // AND
-        },
-        disjunctive: false, // legacy flag pour compat
-        published: true,
-      },
+  for (const def of defs) {
+    const variables = {
+      definition: {
+        name: def.name,
+        namespace: "custom",
+        key: def.key,
+        type: "single_line_text_field",
+        ownerType: "PRODUCT",
+        description: def.name
+        // NOTE: ne pas mettre visibleToStorefront ici (certains schémas l’ignorent/erreur)
+      }
     };
-    const r = await fetch(url, {
+
+    const data = await gql(shop, accessToken, upsertMutation, variables);
+    const out = data.metafieldDefinitionUpsert;
+    if (out.userErrors && out.userErrors.length) {
+      const msg = out.userErrors.map(e => e.message).join("; ");
+      throw new Error(`metafieldDefinitionUpsert ${def.key}: ${msg}`);
+    }
+  }
+}
+
+// 6) Smart collections basées sur des tags (idempotent, REST)
+// - "Beauté & soins"
+// - "Maison & confort"
+async function ensureSmartCollections(shop, accessToken) {
+  const api = `https://${shop}/admin/api/2024-10`;
+  // Vérifie si déjà présentes (par titre)
+  const existingResp = await fetch(`${api}/smart_collections.json?limit=250`, {
+    headers: { "X-Shopify-Access-Token": accessToken }
+  });
+  if (!existingResp.ok) throw new Error(`List smart_collections failed: ${existingResp.status}`);
+  const existing = (await existingResp.json()).smart_collections || [];
+
+  const wanted = [
+    { title: "Beauté & soins", tag: "Beauté & soins" },
+    { title: "Maison & confort", tag: "Maison & confort" }
+  ];
+
+  for (const w of wanted) {
+    const already = existing.find(c => c.title === w.title);
+    if (already) continue;
+
+    const body = {
+      smart_collection: {
+        title: w.title,
+        rules: [
+          { column: "tag", relation: "equals", condition: w.tag }
+        ],
+        disjunctive: false,
+        published: true
+      }
+    };
+
+    const create = await fetch(`${api}/smart_collections.json`, {
       method: "POST",
       headers: {
         "X-Shopify-Access-Token": accessToken,
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body)
     });
-    if (!r.ok) {
-      const body = await r.text();
-      throw new Error(`Create smart_collection failed: ${r.status} ${body}`);
-    }
-    return (await r.json()).smart_collection;
-  };
 
-  const existing = await listCollections();
-
-  for (const tag of tags) {
-    const title = tag; // simple: même libellé
-    const already = existing.find((c) => (c.title || "").trim().toLowerCase() === title.trim().toLowerCase());
-    if (already) {
-      results.push({ action: "skip", title, id: already.id });
-      continue;
+    if (!create.ok) {
+      const t = await create.text();
+      throw new Error(`Create smart_collection "${w.title}" failed: ${create.status} ${t}`);
     }
-    if (dryRun) {
-      results.push({ action: "would_create", title });
-      continue;
-    }
-    const created = await createCollection(title, tag);
-    results.push({ action: "created", title, id: created.id });
   }
-
-  return results;
 }
 
+// -----------------------------
+// Endpoint
+// -----------------------------
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
   try {
-    const shop = req.cookies?.shop;
-    const accessToken = req.cookies?.accessToken;
+    const cookies = getCookies(req);
+    const shop = cookies.shop;
+    const accessToken = cookies.accessToken;
+
     if (!shop || !accessToken) {
       return res.status(401).json({ ok: false, error: "Missing shop/accessToken cookie" });
     }
 
-    const dryRun = String(req.query?.dry ?? "") === "1";
-    const only = String(req.query?.only ?? ""); // pour exécuter une seule étape
+    // Résoudre chemins seed
     const seedDir = path.join(process.cwd(), "public", "seed");
     const csvPath = path.join(seedDir, "products.csv");
     const filesJsonPath = path.join(seedDir, "files.json");
     const imagesDir = seedDir;
 
-    // Liste d'étapes (ré-entrantes)
-    const steps = {
-      metafields: async () =>
-        await ensureProductMetafieldDefinitions({ shop, accessToken, definitions: PRODUCT_METAFIELDS, dryRun }),
-      products: async () => await importProductsFromCsv({ shop, accessToken, csvPath, dryRun }),
-      images: async () => await uploadAllImages({ shop, accessToken, filesJsonPath, imagesDir, dryRun }),
-      pages: async () => {
-        if (dryRun) return [{ action: "would_upsert_pages", handles: ["livraison", "faq"] }];
-        await upsertPage({
-          shop,
-          accessToken,
-          handle: "livraison",
-          title: "Livraison",
-          html: "<h1>Livraison</h1><p>Délais, transporteurs, coûts…</p>",
-        });
-        await upsertPage({
-          shop,
-          accessToken,
-          handle: "faq",
-          title: "FAQ",
-          html: "<h1>FAQ</h1><p>Questions fréquentes…</p>",
-        });
-        return [{ action: "upserted_pages", handles: ["livraison", "faq"] }];
-      },
-      menu: async () => (dryRun ? [{ action: "would_update_menu_main_fr" }] : await upsertMainMenuFR({ shop, accessToken })),
-      collections: async () =>
-        await ensureSmartCollectionsByTags({
-          shop,
-          accessToken,
-          tags: ["Beauté & soins", "Maison & confort"],
-          dryRun,
-        }),
-    };
+    // 1) Metafields (Checkbox 1/2/3)
+    await ensureProductMetafieldDefinitions(shop, accessToken);
 
-    // Mode "pas à pas"
-    if (only) {
-      if (!steps[only]) return res.status(400).json({ ok: false, error: `Unknown step '${only}'` });
-      const data = await steps[only]();
-      return res.status(200).json({ ok: true, step: only, dryRun, data });
-    }
+    // 2) Produits CSV
+    await importProductsFromCsv({ shop, accessToken, csvPath });
 
-    // Mode “tout” (séquentiel)
-    const out = {};
-    out.metafields = await steps.metafields();
-    out.products = await steps.products();
-    out.images = await steps.images();
-    out.pages = await steps.pages();
-    out.menu = await steps.menu();
-    out.collections = await steps.collections();
+    // 3) Fichiers/Images
+    await uploadAllImages({ shop, accessToken, filesJsonPath, imagesDir });
 
-    // Si c'est appelé depuis callback: redirige vers une page de fin
-    const shouldRedirect = String(req.query?.redirect ?? "1") === "1" && !dryRun;
-    if (shouldRedirect) {
-      const base = process.env.NEXT_PUBLIC_APP_URL || "";
-      const doneUrl = `${base}/setup/done`;
-      res.writeHead(302, { Location: doneUrl });
-      return res.end();
-    }
+    // 4) Pages
+    await upsertPage({
+      shop, accessToken, handle: "livraison", title: "Livraison",
+      html: `<h1>Livraison GRATUITE</h1>
+<p>Le traitement des commandes prend de 1 à 3 jours ouvrables avant l'expédition. Une fois l'article expédié, le délai de livraison estimé est le suivant:</p>
+<ul>
+  <li>France : 4-10 jours ouvrables</li>
+  <li>Belgique: 4-10 jours ouvrables</li>
+  <li>Suisse : 7-12 jours ouvrables</li>
+  <li>Canada : 7-12 jours ouvrables</li>
+  <li>Reste du monde : 7-14 jours</li>
+</ul>`
+    });
 
-    return res.status(200).json({ ok: true, dryRun, result: out });
+    await upsertPage({
+      shop, accessToken, handle: "faq", title: "FAQ",
+      html: `<h1>FAQ</h1><p>Crée ta FAQ ici</p>`
+    });
+
+    // 5) Menu principal FR
+    await upsertMainMenuFR({ shop, accessToken });
+
+    // 6) Collections intelligentes (tags)
+    // -> si ton helper createCollections est sûr, tu peux le garder et commenter la ligne suivante.
+    // await createCollections({ shop, accessToken });
+    await ensureSmartCollections(shop, accessToken);
+
+    // OK
+    const base = process.env.NEXT_PUBLIC_APP_URL || "";
+    res.writeHead(302, { Location: `${base}/setup/done` });
+    res.end();
   } catch (err) {
     console.error("SETUP ERROR", err);
-    return res.status(500).json({ ok: false, error: String(err?.message ?? err) });
+    res.status(500).json({ ok: false, error: String(err?.message ?? err) });
   }
 }
