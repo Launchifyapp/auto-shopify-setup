@@ -14,26 +14,30 @@ export default async function handler(req, res) {
       })
     });
 
-    if (!tokenResponse.ok) return res.status(401).json({ error: "Token exchange failed" });
+    if (!tokenResponse.ok) {
+      const txt = await tokenResponse.text();
+      return res.status(401).json({ error: "Token exchange failed", details: txt });
+    }
 
     const { access_token } = await tokenResponse.json();
 
-    const isProd = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
-    const sameSite = process.env.SHOPIFY_EMBEDDED === "true" ? "None" : "Lax";
+    const isProd = (process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production");
+    const embedded = process.env.SHOPIFY_EMBEDDED === "true";
+    const sameSite = embedded ? "None" : "Lax";
+    const secureFlag = isProd ? " Secure;" : ""; // en local Vercel Dev, pas de Secure
 
     res.setHeader("Set-Cookie", [
-      `shop=${encodeURIComponent(shop)}; HttpOnly; ${isProd ? "Secure;" : ""} SameSite=${sameSite}; Path=/`,
-      `accessToken=${encodeURIComponent(access_token)}; HttpOnly; ${isProd ? "Secure;" : ""} SameSite=${sameSite}; Path=/`
+      `shop=${encodeURIComponent(shop)}; HttpOnly;${secureFlag} SameSite=${sameSite}; Path=/`,
+      `accessToken=${encodeURIComponent(access_token)}; HttpOnly;${secureFlag} SameSite=${sameSite}; Path=/`
     ]);
 
-    // Redirige directement vers le setup (on gardera la redirection, mais pendant le débug
-    // on peut aussi retourner du JSON depuis /api/setup pour voir étape par étape)
-    const base = process.env.NEXT_PUBLIC_APP_URL || "";
+    // Redirige vers l’étape d’auto-setup (fonction serverless)
+    const base = process.env.NEXT_PUBLIC_APP_URL || ""; // ex: https://<app>.vercel.app
     const location = `${base}/api/setup`;
     res.writeHead(302, { Location: location });
     res.end();
   } catch (err) {
     console.error("OAuth callback error:", err);
-    res.status(500).json({ error: "OAuth callback error", details: err.message });
+    res.status(500).json({ error: "OAuth callback error", details: err?.message || String(err) });
   }
 }
