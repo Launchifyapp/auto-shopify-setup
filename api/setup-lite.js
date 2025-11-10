@@ -1,93 +1,92 @@
+// api/setup-lite.js
+import { parse } from "csv-parse/sync";
 import path from "node:path";
-import {
-  importProductsFromCsv,
-  uploadAllImages,
-  upsertPage,
-  upsertMainMenuFR,
-  // ⚠️ on NE touche pas aux metafields ici
-  // createCollections  => on l'ajoutera plus tard
-} from "../lib/shopify.js";
+import { readFile } from "node:fs/promises";
+import fetch from "node-fetch";
 
-// petit parseur de cookies robuste
-function parseCookies(header = "") {
-  return Object.fromEntries(
-    header.split(";").filter(Boolean).map(p => {
-      const i = p.indexOf("=");
-      const k = decodeURIComponent(p.slice(0, i).trim());
-      const v = decodeURIComponent(p.slice(i + 1).trim());
-      return [k, v];
-    })
-  );
-}
+// Petite pause pour éviter les 429
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export default async function handler(req, res) {
+  if (req.method !== "GET") {
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+
   try {
-    // 1) cookies shop + accessToken
-    const cookies = parseCookies(req.headers.cookie || "");
-    const shop = cookies.shop;
-    const accessToken = cookies.accessToken;
+    // 1) Récup cookies posés par /api/callback
+    const shop = req.cookies?.shop;
+    const accessToken = req.cookies?.accessToken;
+
     if (!shop || !accessToken) {
-      return res.status(401).json({ ok: false, error: "Missing shop/accessToken cookie" });
+      return res.status(401).json({
+        ok: false,
+        error: "Missing `shop` or `accessToken` cookie. Repasser par /api/install."
+      });
     }
 
-    // 2) chemins des seeds
-    const seedDir = path.join(process.cwd(), "public", "seed");
-    const csvPath = path.join(seedDir, "products.csv");
-    const filesJsonPath = path.join(seedDir, "files.json");
-    const imagesDir = seedDir;
-
-    // 3) Import produits CSV
-    await importProductsFromCsv({ shop, accessToken, csvPath });
-
-    // 4) Upload images
-    await uploadAllImages({ shop, accessToken, filesJsonPath, imagesDir });
-
-    // 5) Pages
-    await upsertPage({
-      shop,
-      accessToken,
-      handle: "livraison",
-      title: "Livraison",
-      html: `
-        <h1>Livraison GRATUITE</h1>
-        <p>Le traitement des commandes prend de 1 à 3 jours ouvrables avant l'expédition.
-        Une fois l'article expédié, le délai de livraison estimé est le suivant:</p>
-        <ul>
-          <li>France : 4-10 jours ouvrables</li>
-          <li>Belgique : 4-10 jours ouvrables</li>
-          <li>Suisse : 7-12 jours ouvrables</li>
-          <li>Canada : 7-12 jours ouvrables</li>
-          <li>Reste du monde : 7-14 jours</li>
-        </ul>
-      `.trim()
+    // 2) Lire le fichier CSV inclus dans le build Vercel : /public/seed/products.csv
+    const csvPath = path.join(process.cwd(), "public", "seed", "products.csv");
+    const csvBuffer = await readFile(csvPath);
+    const records = parse(csvBuffer, {
+      columns: true,          // première ligne = headers
+      skip_empty_lines: true,
+      trim: true
     });
 
-    await upsertPage({
-      shop,
-      accessToken,
-      handle: "faq",
-      title: "FAQ",
-      html: `<h1>FAQ</h1><p>« Crée ta FAQ ici »</p>`
+    if (!Array.isArray(records) || records.length === 0) {
+      return res.status(400).json({ ok: false, error: "CSV is empty or invalid" });
+    }
+
+    // 3) Import REST vers Shopify
+    const apiBase = `https://${shop}/admin/api/2024-10`;
+
+    let created = 0;
+    const errors = [];
+
+    for (const row of records) {
+      // Adapte ici le mapping -> colonnes attendues dans ton CSV
+      // Exemples de colonnes courantes : Title, Body (HTML), Vendor, Product Type, Tags, Status, Price, Image Src, etc.
+      const productPayload = {
+        product: {
+          title: row.Title || row.title || "Sans titre",
+          body_html: row["Body (HTML)"] || row.Body || row.Description || "",
+          vendor: row.Vendor || row.brand || "",
+          product_type: row["Product Type"] || row.type || "",
+          tags: row.Tags || row.tags || "",
+          status: (row.Status || "active").toLowerCase(), // "active" | "draft" | "archived"
+        }
+      };
+
+      try {
+        const r = await fetch(`${apiBase}/products.json`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": accessToken
+          },
+          body: JSON.stringify(productPayload)
+        });
+
+        if (!r.ok) {
+          const txt = await r.text();
+          errors.push({ row: row.Title || row.title, status: r.status, body: txt });
+        } else {
+          created += 1;
+        }
+      } catch (e) {
+        errors.push({ row: row.Title || row.title, error: String(e) });
+      }
+
+      // évite de cogner les limites
+      await sleep(200);
+    }
+
+    return res.status(200).json({
+      ok: true,
+      imported: created,
+      failed: errors.length,
+      errors
     });
-
-    // 6) Menu principal FR
-    // Si ton helper accepte des entrées, on passe la structure souhaitée ;
-    // sinon il peut gérer en interne (idempotent) :
-    await upsertMainMenuFR({
-      shop,
-      accessToken,
-      menu: [
-        { title: "Accueil",     type: "HOME" },                     // Page d’accueil
-        { title: "Nos produits",type: "ALL_PRODUCTS" },             // Tous les produits
-        { title: "Livraison",   type: "PAGE", handle: "livraison" },
-        { title: "FAQ",         type: "PAGE", handle: "faq" },
-        { title: "Contact",     type: "CONTACT" }
-      ]
-    });
-
-    // 🔜 Les collections par tags viendront plus tard (prochaine étape).
-
-    return res.status(200).json({ ok: true, steps: ["products", "files", "pages", "menu"] });
   } catch (err) {
     console.error("SETUP-LITE ERROR", err);
     return res.status(500).json({ ok: false, error: String(err?.message ?? err) });
