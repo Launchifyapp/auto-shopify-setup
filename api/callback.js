@@ -1,8 +1,9 @@
-// api/callback.js
 export default async function handler(req, res) {
   try {
     const { shop, code } = req.query;
-    if (!shop || !code) return res.status(400).json({ error: "Missing shop or code parameter" });
+    if (!shop || !code) {
+      return res.status(400).json({ error: "Missing shop or code parameter" });
+    }
 
     const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: "POST",
@@ -15,7 +16,7 @@ export default async function handler(req, res) {
     });
 
     if (!tokenResponse.ok) {
-      const txt = await tokenResponse.text();
+      const txt = await tokenResponse.text().catch(() => "");
       return res.status(401).json({ error: "Token exchange failed", details: txt });
     }
 
@@ -29,8 +30,9 @@ export default async function handler(req, res) {
       `accessToken=${encodeURIComponent(access_token)}; HttpOnly; ${isProd ? "Secure;" : ""} SameSite=${sameSite}; Path=/`
     ]);
 
+    // 👉 redirection vers la version "lite"
     const base = process.env.NEXT_PUBLIC_APP_URL || "";
-    res.writeHead(302, { Location: `${base}/api/setup` });
+    res.writeHead(302, { Location: `${base}/api/setup-lite` });
     res.end();
   } catch (err) {
     console.error("OAuth callback error:", err);
