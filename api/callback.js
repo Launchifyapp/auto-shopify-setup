@@ -14,10 +14,7 @@ export default async function handler(req, res) {
       })
     });
 
-    if (!tokenResponse.ok) {
-      const txt = await tokenResponse.text();
-      return res.status(401).json({ error: "Token exchange failed", details: txt });
-    }
+    if (!tokenResponse.ok) return res.status(401).json({ error: "Token exchange failed" });
 
     const { access_token } = await tokenResponse.json();
 
@@ -29,9 +26,9 @@ export default async function handler(req, res) {
       `accessToken=${encodeURIComponent(access_token)}; HttpOnly; ${isProd ? "Secure;" : ""} SameSite=${sameSite}; Path=/`
     ]);
 
-    // Redirige immédiatement sur /api/setup pour lancer la config
-    const base = process.env.NEXT_PUBLIC_APP_URL || ""; // ex: https://<app>.vercel.app
-    res.writeHead(302, { Location: `${base}/api/setup` });
+    const base = process.env.NEXT_PUBLIC_APP_URL || "";
+    const location = `${base}/api/setup`;
+    res.writeHead(302, { Location: location });
     res.end();
   } catch (err) {
     console.error("OAuth callback error:", err);
