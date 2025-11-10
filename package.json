@@ -8,7 +8,9 @@
   },
   "scripts": {
     "dev": "vercel dev",
-    "start": "vercel dev"
+    "start": "node api/ping.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "node-fetch": "3.3.2"
+  }
 }
