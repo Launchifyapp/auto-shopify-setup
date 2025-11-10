@@ -1,26 +1,20 @@
 // api/setup-lite.js
+import fs from "node:fs/promises";
 import path from "node:path";
-import { importProductsFromCsv } from "../lib/shopify.js";
+import { fileURLToPath } from "node:url";
 
 export default async function handler(req, res) {
   try {
-    if (req.method !== "GET") {
-      return res.status(405).json({ ok: false, error: "Method not allowed" });
-    }
+    // Chemin absolu vers /public/seed/products.csv dans le bundle
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const csvPath = path.resolve(__dirname, "../public/seed/products.csv");
 
-    const shop = req.cookies?.shop;
-    const accessToken = req.cookies?.accessToken;
-    if (!shop || !accessToken) {
-      return res.status(401).json({ ok: false, error: "Missing shop/accessToken cookies" });
-    }
-
-    // IMPORTANT : chemin vers ton CSV dans /public/seed
-    const csvPath = path.join("public", "seed", "products.csv");
-
-    const result = await importProductsFromCsv({ shop, accessToken, csvPath });
-    return res.status(200).json(result);
+    const csv = await fs.readFile(csvPath, "utf8");
+    // ... ton import CSV ici ...
+    return res.status(200).json({ ok: true, bytes: csv.length });
   } catch (err) {
-    console.error("SETUP-LITE ERROR", err);
-    return res.status(500).json({ ok: false, error: String(err?.message ?? err) });
+    console.error(err);
+    return res.status(500).json({ ok: false, error: String(err.message) });
   }
 }
