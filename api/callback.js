@@ -166,3 +166,12 @@ export default async function handler(req, res) {
     return res.status(500).send(`Erreur pendant le callback: ${e.message}`);
   }
 }
+// ... après publication du thème
+try {
+  await fetch(`${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}/api/setup`, {
+    method: 'POST',
+    headers: { cookie: req.headers.cookie || '' }
+  });
+} catch (e) {
+  console.error('Setup failed to trigger', e);
+}
