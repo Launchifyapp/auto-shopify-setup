@@ -5,18 +5,9 @@
   "type": "module",
   "engines": { "node": ">=18" },
   "scripts": {
-    "dev": "vercel dev",
     "start": "node server.js"
   },
   "dependencies": {
     "node-fetch": "3.3.2"
-  },
-  "vercel": {
-    "functions": {
-      "api/**/*.js": {
-        "runtime": "nodejs18.x",
-        "maxDuration": 60
-      }
-    }
   }
 }
