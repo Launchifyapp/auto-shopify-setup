@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "api/setup.js": {
+      "includeFiles": "public/seed/**"
+    },
+    "api/setup-lite.js": {
+      "includeFiles": "public/seed/**"
+    },
+    "api/debug-files.js": {
+      "includeFiles": "public/seed/**"
+    }
+  }
+}
