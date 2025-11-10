@@ -6,8 +6,7 @@
   "engines": { "node": ">=18" },
   "scripts": {
     "dev": "vercel dev",
-    "start": "vercel dev",
-    "build": "echo \"Nothing to build\""
+    "start": "node server.js"
   },
   "dependencies": {
     "node-fetch": "3.3.2"
