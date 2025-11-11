@@ -1,5 +1,6 @@
 // app/api/products/import/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { adminGraphQL } from "@/lib/shopify";
 import { parse } from "csv-parse/sync";
 
 const ADMIN_URL = (shop: string, version: string) =>
