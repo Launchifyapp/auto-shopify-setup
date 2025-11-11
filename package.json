@@ -1,17 +1,16 @@
 {
-  "name": "shopify-setup-serverless",
+  "name": "shopify-setup-app",
   "private": true,
-  "type": "commonjs",
-  "engines": {
-    "node": ">=18.17"
-  },
+  "type": "module",
   "scripts": {
-    "build": "echo \"no build step\"",
-    "dev": "vercel dev",
-    "start": "node api/setup/health.js",
-    "lint": "echo \"no lint configured\""
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
   },
   "dependencies": {
-    "csv-parse": "^5.5.0"
+    "csv-parse": "^5.5.6",
+    "next": "14.2.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
   }
 }
