@@ -1,5 +1,5 @@
 import { parse } from "csv-parse/sync";
-import { adminGraphQL, adminREST } from "@/lib/shopify";
+import { adminGraphQL, adminREST } from "../../../../lib/shopify";
 
 export async function runFullSetup({ shop, token }: { shop: string; token: string }) {
   // 1) Pages
