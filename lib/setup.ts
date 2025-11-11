@@ -1,4 +1,5 @@
 import { parse } from "csv-parse/sync";
+import { updateMainMenu } from "./shopifyMenuGraphQL"; // Ajoute cette ligne !
 
 // Ce code est pour Next.js/Node !
 // Ajoute ou adapte selon ton backend si tu utilises un runtime special.
@@ -86,32 +87,8 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
     ]);
 
     // ----- MODIFIER MENU PRINCIPAL -----
-    // Shopify REST API n'offre pas la modification directe du main-menu: il faut d'abord récupérer l'ID du menu et PATCH ses liens. 
-    // Ici, voici la logique à adapter en fonction de ton shop (vérifie l'ID ou modifie via l'admin API ou theme json si besoin).
-    // Pour la démo, on ajoute des liens classiques (voir doc Shopify Navigation API).
-    const menuLinks = [
-      { title: "Accueil", type: "frontpage" },
-      { title: "Nos produits", type: "collection" },
-      { title: "Livraison", type: "page" },
-      { title: "FAQ", type: "page" },
-      { title: "Contact", type: "page" }
-    ];
-    for (let i = 0; i < menuLinks.length; i++) {
-      await fetch(`https://${shop}/admin/api/2023-07/links.json`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": token
-        },
-        body: JSON.stringify({
-          link: {
-            title: menuLinks[i].title,
-            type: menuLinks[i].type,
-            position: i + 1
-          }
-        })
-      });
-    }
+    // Passe maintenant en GraphQL ! C'est géré automatiquement via la fonction dédiée :
+    await updateMainMenu(shop, token); // C'EST TOUT ! Pas besoin de boucles REST, tout est automatique.
 
     // ----- UPLOAD PRODUITS (CSV) -----
     // Voici un squelette à compléter: (conversion CSV > création de produits)
