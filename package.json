@@ -1,13 +1,17 @@
 {
-  "name": "shopify-private-app",
-  "version": "1.0.0",
+  "name": "shopify-setup-serverless",
   "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18.17"
+  },
   "scripts": {
+    "build": "echo \"no build step\"",
     "dev": "vercel dev",
-    "start": "vercel start",
-    "build": "vercel build"
+    "start": "node api/setup/health.js",
+    "lint": "echo \"no lint configured\""
   },
   "dependencies": {
-    "csv-parse": "5.5.6"
+    "csv-parse": "^5.5.0"
   }
 }
