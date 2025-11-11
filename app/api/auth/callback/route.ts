@@ -37,18 +37,19 @@ export async function GET(req: NextRequest) {
           </body>
         </html>
       `, { headers: { "Content-Type": "text/html; charset=utf-8" } });
-    } catch (err) {
-      return new NextResponse(`
-        <html>
-          <head><meta charset="UTF-8"></head>
-          <body style='color:#ffdddd; background:#101010; font-family:sans-serif; text-align:center;'>
-            <h1>Erreur pendant le setup !</h1>
-            <pre>${err.message}</pre>
-          </body>
-        </html>
-      `, { headers: { "Content-Type": "text/html; charset=utf-8" } });
-    }
-  } else {
-    return NextResponse.json({ error: "Impossible de récupérer le token." }, { status: 400 });
+   catch (err) {
+  let msg = "Erreur inconnue";
+  if (typeof err === "object" && err && "message" in err) {
+    msg = (err as { message: string }).message;
+  } else if (typeof err === "string") {
+    msg = err;
   }
+  return new NextResponse(`
+    <html>
+      <body style='color:#ffdddd; background:#101010; font-family:sans-serif; text-align:center;'>
+        <h1>Erreur pendant le setup !</h1>
+        <pre>${msg}</pre>
+      </body>
+    </html>
+  `, { headers: { "Content-Type": "text/html; charset=utf-8" } });
 }
