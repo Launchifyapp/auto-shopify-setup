@@ -28,9 +28,13 @@ export async function GET(req: NextRequest) {
 
   // Tu peux ici stocker le token admin, shop, etc. dans une DB/session
   if (data.access_token) {
-    // Page de confirmation simple
+    // Page de confirmation simple avec charset UTF-8
     return new NextResponse(`
       <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Installation réussie 🎉</title>
+        </head>
         <body style='color:white; background:#101010; font-family:sans-serif; text-align:center;'>
           <h1>Installation réussie 🎉</h1>
           <p>Votre boutique Shopify est connectée.<br/><br/>
@@ -40,7 +44,7 @@ export async function GET(req: NextRequest) {
           <p>Vous pouvez maintenant utiliser l'automatisation.</p>
         </body>
       </html>
-    `, { headers: { "Content-Type": "text/html" } });
+    `, { headers: { "Content-Type": "text/html; charset=utf-8" } });
   } else {
     return NextResponse.json({ error: data.error ?? "Impossible de récupérer le token." }, { status: 400 });
   }
