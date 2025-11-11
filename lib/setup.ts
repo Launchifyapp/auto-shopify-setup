@@ -1,10 +1,11 @@
-import { parse } from "csv-parse/sync";
-import { updateMainMenu } from "./shopifyMenuGraphQL"; // Ajoute cette ligne !
 
-// Ce code est pour Next.js/Node !
-// Ajoute ou adapte selon ton backend si tu utilises un runtime special.
+const { parse } = require("csv-parse/sync");
+const { updateMainMenu } = require("./shopifyMenuGraphQL");
 
-export async function runFullSetup({ shop, token }: { shop: string; token: string }) {
+// Ce code est pour Next.js/Node
+// Adapte selon ton backend si tu utilises un runtime spécial.
+
+async function runFullSetup({ shop, token }) {
   // 1. Créer la page Livraison
   const livraisonHtml = `
 <p class="p1"><b>Livraison GRATUITE</b><b></b></p>
@@ -87,11 +88,10 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
     ]);
 
     // ----- MODIFIER MENU PRINCIPAL -----
-    // Passe maintenant en GraphQL ! C'est géré automatiquement via la fonction dédiée :
-    await updateMainMenu(shop, token); // C'EST TOUT ! Pas besoin de boucles REST, tout est automatique.
+    // Utilise maintenant l'automatisation GraphQL !
+    await updateMainMenu(shop, token);
 
     // ----- UPLOAD PRODUITS (CSV) -----
-    // Voici un squelette à compléter: (conversion CSV > création de produits)
     // const csvUrl = "https://github.com/Launchifyapp/auto-shopify-setup/releases/download/V1/products.csv";
     // const response = await fetch(csvUrl);
     // const csvText = await response.text();
@@ -108,7 +108,6 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
     // }
 
     // ----- UPLOAD THEME ZIP et publication -----
-    // Voir doc https://shopify.dev/docs/api/admin-rest/2023-07/resources/theme#[post]/admin/api/2023-07/themes.json
     // const themeZipUrl = "https://github.com/Launchifyapp/auto-shopify-setup/releases/download/V1/DREAMIFY.V2.-.FR.zip";
     // await fetch(`https://${shop}/admin/api/2023-07/themes.json`, {
     //   method: "POST",
@@ -119,15 +118,15 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
     //   body: JSON.stringify({
     //     theme: {
     //       name: "Dreamify V2",
-    //       src: themeZipUrl // Peut nécessiter un workflow particulier côté Shopify ou app partner
+    //       src: themeZipUrl
     //     }
     //   })
     // });
-    // Pour publier: faire un PUT sur /themes/{id}.json avec { "theme": { "role": "main" } }
+    // // Pour publier: faire un PUT sur /themes/{id}.json avec { "theme": { "role": "main" } }
 
     // ----- UPLOAD IMAGES .JPG -----
-    // Pour uploader des images, pointer vers l'API produits ou assets, en utilisant les bonnes URLs ou buffers binaires.
-    // Ex :
+    // Pour uploader des images, pointer vers l'API produits ou assets.
+    // Exemple:
     // await fetch(`https://${shop}/admin/api/2023-07/products/${productId}/images.json`, { ... });
 
   } catch (err) {
@@ -135,3 +134,5 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
     throw err;
   }
 }
+
+module.exports = { runFullSetup };
