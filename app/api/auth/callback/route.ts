@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runFullSetup } from "../../../lib/setup"; // Chemin à adapter selon ton arbo
+import { runFullSetup } from "../../../../lib/setup"; // Chemin à adapter selon ton arbo
 
 export async function GET(req: NextRequest) {
   const shop = req.nextUrl.searchParams.get("shop");
