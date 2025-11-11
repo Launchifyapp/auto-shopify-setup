@@ -1,5 +1,6 @@
 // app/api/theme/publish/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { adminREST } from "@/lib/shopify";
 
 export const runtime = "nodejs";
 
