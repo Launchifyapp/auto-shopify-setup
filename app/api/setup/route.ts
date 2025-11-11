@@ -1,5 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
-import { runFullSetup } from "@/lib/setup";
+// AVANT
+// import { runFullSetup } from "@/lib/setup";
+// import { adminGraphQL, adminREST } from "@/lib/shopify";
+
+// APRÈS
+import { runFullSetup } from "../../../lib/setup";
+import { adminGraphQL, adminREST } from "../../../lib/shopify";
+
 
 export async function POST(req: NextRequest) {
   const { shop, token } = await req.json();
