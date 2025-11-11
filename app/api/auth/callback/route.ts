@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runFullSetup } from "@/lib/setup";
+import { runFullSetup } from "../../../../lib/setup";
+
 
 // ⚠️ Pour prod, ajoute la vérification HMAC/state.
 // Ici on fait simple pour démarrer.
