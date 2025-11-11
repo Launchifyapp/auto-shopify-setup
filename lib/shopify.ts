@@ -1,5 +1,3 @@
-import { setupMainMenu } from "./setupShopifyMainMenu";
-
 // API helper pour récupérer le thème principal
 export async function getMainThemeId(shop: string, token: string): Promise<number | undefined> {
   const res = await fetch(`https://${shop}/admin/api/2023-07/themes.json`, {
@@ -44,5 +42,5 @@ export async function createSmartCollection(shop: string, token: string, title: 
   });
 }
 
-// Exporte la fonction de setup du menu principal
-export { setupMainMenu };
+// Tu peux ajouter un export pour les fonctions GraphQL si besoin, 
+// mais plus d'import setupShopifyMainMenu !
