@@ -1,4 +1,4 @@
-// Fonction utilitaire pour requêtes GraphQL Shopify Admin
+// UTILITAIRE POUR QUERIES GRAPHQL SHOPIFY
 export async function shopifyGraphQL(
   shop: string,
   token: string,
@@ -16,17 +16,13 @@ export async function shopifyGraphQL(
   return res.json();
 }
 
-// Récupérer le GID de la collection "all"
+// GID de la collection "all"
 export async function getAllCollectionGID(shop: string, token: string): Promise<string | undefined> {
   const query = `
     query {
       collections(first: 10, query: "handle:all") {
         edges {
-          node {
-            id
-            handle
-            title
-          }
+          node { id handle title }
         }
       }
     }
@@ -38,17 +34,13 @@ export async function getAllCollectionGID(shop: string, token: string): Promise<
   return allCollection ? allCollection.node.id : undefined;
 }
 
-// Récupérer le GID d'une page à partir du titre ou handle
+// GID d'une page par titre ou slug
 export async function getPageGID(shop: string, token: string, pageTitleOrHandle: string): Promise<string | undefined> {
   const query = `
     query {
       pages(first: 20) {
         edges {
-          node {
-            id
-            title
-            handle
-          }
+          node { id title handle }
         }
       }
     }
@@ -62,17 +54,13 @@ export async function getPageGID(shop: string, token: string, pageTitleOrHandle:
   return page ? page.node.id : undefined;
 }
 
-// Récupérer l'id du menu principal (main-menu)
+// GID du menu principal (main-menu)
 export async function getMainMenuId(shop: string, token: string): Promise<string | undefined> {
   const query = `
     query {
       navigationMenus(first: 10) {
         edges {
-          node {
-            id
-            handle
-            title
-          }
+          node { id handle title }
         }
       }
     }
@@ -84,12 +72,12 @@ export async function getMainMenuId(shop: string, token: string): Promise<string
   return menu ? menu.node.id : undefined;
 }
 
-// Mettre à jour le menu principal avec les GID récupérés dynamiquement
+// Création automatique du menu principal
 export async function updateMainMenu(shop: string, token: string) {
   const menuId = await getMainMenuId(shop, token);
   if (!menuId) throw new Error("Menu principal introuvable (handle: main-menu)");
 
-  // Récupération dynamique des GID
+  // ID dynamiques
   const allCollectionGID = await getAllCollectionGID(shop, token);
   const livraisonGID = await getPageGID(shop, token, "Livraison");
   const faqGID = await getPageGID(shop, token, "FAQ");
