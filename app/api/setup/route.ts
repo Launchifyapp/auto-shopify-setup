@@ -1,10 +1,5 @@
-// AVANT
-// import { runFullSetup } from "@/lib/setup";
-// import { adminGraphQL, adminREST } from "@/lib/shopify";
-
-// APRÈS
-import { runFullSetup } from "../../../lib/setup";
-import { adminGraphQL, adminREST } from "../../../lib/shopify";
+import { NextRequest, NextResponse } from "next/server";
+import { runFullSetup } from "@/lib/setup";
 
 
 export async function POST(req: NextRequest) {
