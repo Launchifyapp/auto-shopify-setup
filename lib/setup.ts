@@ -17,7 +17,7 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
     `.trim();
 
     const livraisonResp = await fetch(`https://${shop}/admin/api/2023-07/pages.json`, {
-     method: "POST",
+      method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Shopify-Access-Token": token
@@ -75,7 +75,7 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
     });
     console.log("Réponse API collection Maison & confort:", await collection2.json());
 
-    // 4. Upload produits CSV + variantes (sans lodash)
+    // 4. Upload produits CSV + variantes (patch multi-images/mono-variant)
     console.log("Import produits CSV...");
     const csvUrl = "https://github.com/Launchifyapp/auto-shopify-setup/releases/download/V1/products.csv";
     const response = await fetch(csvUrl);
@@ -90,53 +90,80 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
     }
 
     for (const [handle, group] of Object.entries(productsByHandle)) {
-      console.log("Création produit:", handle);
-
-      // Options dynamiques
       const main = group[0];
-      const options = [];
-      if (main["Option1 Name"]) options.push({ name: main["Option1 Name"] });
-      if (main["Option2 Name"]) options.push({ name: main["Option2 Name"] });
-      if (main["Option3 Name"]) options.push({ name: main["Option3 Name"] });
 
-      // Variantes
-      const variants = group.map(row => {
-        let v: { [key: string]: any } = {
-          option1: row["Option1 Value"] || "Default Title",
-          option2: row["Option2 Value"] || undefined,
-          option3: row["Option3 Value"] || undefined,
-          sku: row["Variant SKU"] || undefined,
-          price: row["Variant Price"] || main["Variant Price"] || undefined,
-          compare_at_price: row["Variant Compare At Price"] || undefined,
-          grams: row["Variant Grams"] || undefined,
-          inventory_management: row["Variant Inventory Tracker"] || undefined,
-          inventory_policy: row["Variant Inventory Policy"] || undefined,
-          fulfillment_service: row["Variant Fulfillment Service"] || undefined,
-          requires_shipping: row["Variant Requires Shipping"] || undefined,
-          taxable: row["Variant Taxable"] || undefined,
-          barcode: row["Variant Barcode"] || undefined,
-          image: row["Variant Image"] || undefined,
-          weight_unit: row["Variant Weight Unit"] || undefined
-        };
-        Object.keys(v).forEach(k => { if (v[k] === undefined) delete v[k]; });
-        return v;
-      });
+      // Check all Option1 Values
+      const option1Values = group.map(row => row["Option1 Value"]?.trim()).filter(Boolean);
 
-      // Images (uniques, avec alt)
-      const imagesSet = new Set();
-      const images: Array<{src:string, position:number, alt?:string}> = [];
-      group.forEach((row) => {
-        if (row["Image Src"] && !imagesSet.has(row["Image Src"])) {
-          imagesSet.add(row["Image Src"]);
-          images.push({
-            src: row["Image Src"],
-            position: imagesSet.size,
-            alt: row["Image Alt Text"] || undefined
+      // Images : toutes uniques du groupe pour le produit
+      const images = Array.from(new Set(
+        group
+          .map(row => row["Image Src"])
+          .filter(src => src && src.length > 6)))
+        .map((src, idx) => ({
+          src,
+          position: idx + 1,
+          alt: group.find(row => row["Image Src"] === src)?.["Image Alt Text"] || undefined
+        }));
+
+      let variants: any[] = [];
+      let options: any[] = [];
+
+      // Si toutes les Option1Value sont "Default Title" (ou vide), c'est un produit sans variantes mais possiblement avec plusieurs lignes d'images
+      if (
+        [...new Set(option1Values)].length === 1 &&
+        (option1Values[0] === "Default Title" || !option1Values[0])
+      ) {
+        // Produit mono-variant !
+        variants = [{
+          sku: main["Variant SKU"] || undefined,
+          price: main["Variant Price"] || undefined,
+          compare_at_price: main["Variant Compare At Price"] || undefined,
+          grams: main["Variant Grams"] || undefined,
+          inventory_management: main["Variant Inventory Tracker"] || undefined,
+          inventory_policy: main["Variant Inventory Policy"] || undefined,
+          fulfillment_service: main["Variant Fulfillment Service"] || undefined,
+          requires_shipping: main["Variant Requires Shipping"] || undefined,
+          taxable: main["Variant Taxable"] || undefined,
+          barcode: main["Variant Barcode"] || undefined,
+          image: main["Variant Image"] || undefined,
+          weight_unit: main["Variant Weight Unit"] || undefined
+        }];
+        options = []; // PAS d'option Shopify sur produit mono-variant !
+      } else {
+        // Produit AVEC variantes (donc plusieurs Option1Value différentes)
+        options = [];
+        if (main["Option1 Name"]) options.push({ name: main["Option1 Name"] });
+        if (main["Option2 Name"]) options.push({ name: main["Option2 Name"] });
+        if (main["Option3 Name"]) options.push({ name: main["Option3 Name"] });
+
+        variants = group
+          .filter(row => row["Option1 Value"] && row["Option1 Value"] !== "Default Title")
+          .map(row => {
+            let v: { [key: string]: any } = {
+              option1: row["Option1 Value"],
+              option2: row["Option2 Value"] || undefined,
+              option3: row["Option3 Value"] || undefined,
+              sku: row["Variant SKU"] || undefined,
+              price: row["Variant Price"] || main["Variant Price"] || undefined,
+              compare_at_price: row["Variant Compare At Price"] || undefined,
+              grams: row["Variant Grams"] || undefined,
+              inventory_management: row["Variant Inventory Tracker"] || undefined,
+              inventory_policy: row["Variant Inventory Policy"] || undefined,
+              fulfillment_service: row["Variant Fulfillment Service"] || undefined,
+              requires_shipping: row["Variant Requires Shipping"] || undefined,
+              taxable: row["Variant Taxable"] || undefined,
+              barcode: row["Variant Barcode"] || undefined,
+              image: row["Variant Image"] || undefined,
+              weight_unit: row["Variant Weight Unit"] || undefined
+            };
+            Object.keys(v).forEach(k => { if (v[k] === undefined) delete v[k]; });
+            return v;
           });
-        }
-      });
+      }
 
-      const product = {
+      // Compose le product JSON
+      const product: any = {
         title: main.Title,
         body_html: main["Body (HTML)"],
         handle: handle,
@@ -144,10 +171,10 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
         product_type: main.Type,
         tags: main.Tags,
         published: main.Published === "true",
-        options: options,
-        variants: variants,
-        images: images
+        variants,
+        images
       };
+      if (options.length > 0) product.options = options;
 
       try {
         const res = await fetch(`https://${shop}/admin/api/2023-07/products.json`, {
@@ -166,7 +193,7 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
       await new Promise(res => setTimeout(res, 300)); // anti-rate-limit
     }
 
-    // 5. Upload du thème ZIP + publication
+    // 5. Upload DU THÈME ZIP + publication (comme avant)
     console.log("Upload thème...");
     const themeZipUrl = "https://github.com/Launchifyapp/auto-shopify-setup/releases/download/V1/DREAMIFY.V2.-.FR.zip";
     const themeUploadRes = await fetch(`https://${shop}/admin/api/2023-07/themes.json`, {
