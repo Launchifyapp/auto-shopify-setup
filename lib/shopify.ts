@@ -1,6 +1,6 @@
 // API helper pour récupérer le thème principal
 export async function getMainThemeId(shop: string, token: string): Promise<number | undefined> {
-  const res = await fetch(`https://${shop}/admin/api/2024-01/themes.json`, {
+  const res = await fetch(`https://${shop}/admin/api/2023-07/themes.json`, {
     headers: {
       "Content-Type": "application/json",
       "X-Shopify-Access-Token": token
@@ -13,7 +13,7 @@ export async function getMainThemeId(shop: string, token: string): Promise<numbe
 
 // API helper pour créer une page Shopify
 export async function createShopifyPage(shop: string, token: string, title: string, body_html: string) {
-  return fetch(`https://${shop}/admin/api/2024-01/pages.json`, {
+  return fetch(`https://${shop}/admin/api/2023-07/pages.json`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -27,7 +27,7 @@ export async function createShopifyPage(shop: string, token: string, title: stri
 
 // API helper pour créer une smart collection
 export async function createSmartCollection(shop: string, token: string, title: string, tag: string) {
-  return fetch(`https://${shop}/admin/api/2024-01/smart_collections.json`, {
+  return fetch(`https://${shop}/admin/api/2023-07/smart_collections.json`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
