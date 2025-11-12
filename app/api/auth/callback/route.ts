@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { runFullSetup } from "@/lib/setup";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -27,7 +26,7 @@ export async function GET(req: NextRequest) {
     return new Response(html, { status: 400, headers: { "Content-Type": "text/html; charset=UTF-8" } });
   }
 
-  // Appel pour échanger le code contre un access_token Shopify
+  // Echange le code contre l'access_token Shopify
   const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -56,40 +55,11 @@ export async function GET(req: NextRequest) {
     return new Response(html, { status: 400, headers: { "Content-Type": "text/html; charset=UTF-8" } });
   }
 
-  // On lance la configuration complète (pages/collections/produits…) AVANT d’afficher le succès
-  try {
-    await runFullSetup({ shop, token: data.access_token });
-  } catch (err) {
-    const html = `
-      <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>Erreur - Setup Shopify</title>
-        </head>
-        <body style="font-family:Arial;margin:3rem;">
-          <h1>🚫 Erreur lors du setup Shopify</h1>
-          <p>Un problème est survenu lors de l'automatisation de ta boutique.<br/>
-          ${typeof err === "string" ? err : (err instanceof Error ? err.message : "Erreur inconnue")}</p>
-        </body>
-      </html>
-    `;
-    return new Response(html, { status: 500, headers: { "Content-Type": "text/html; charset=UTF-8" } });
-  }
+  // 👇 Redirige le client immédiatement vers la page de loader front pendant l'installation backend !
+  // Pour une sécurité maximale, stocke le token en session ou en DB côté serveur et ne le passe pas en URL
+  // Si tu veux juste le flow "démo", tu peux passer shop et token en query pour charger la page /loading
+  const redirectUrl = `/loading?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(data.access_token)}`;
+  return Response.redirect(redirectUrl, 302);
 
-  // Page de succès finale, SANS caractères spéciaux foireux
-  const html = `
-    <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>Succès - Installation Shopify</title>
-      </head>
-      <body style="font-family:Arial; margin:3rem;">
-        <h1>✅ Installation réussie !</h1>
-        <p>L'app Shopify est installée sur votre boutique.<br/>
-        Vous pouvez fermer cette page ou revenir à votre dashboard.<br/>
-        <a href="https://${shop}/admin/apps" style="color:#0077CC;">Retour vers Shopify</a></p>
-      </body>
-    </html>
-  `;
-  return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=UTF-8" } });
+  // ✅ C'est la logique moderne : la page front /loading gère le spinner et le polling, et une API séparée lance runFullSetup en backend.
 }
