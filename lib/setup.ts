@@ -115,7 +115,11 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
           image: row["Variant Image"] || undefined,
           weight_unit: row["Variant Weight Unit"] || undefined
         };
-        Object.keys(v).forEach(k => v[k] === undefined && delete v[k]);
+        Object.keys(v).forEach((k) => {
+  if ((v as any)[k] === undefined) {
+    delete (v as any)[k];
+  }
+});
         return v;
       });
 
