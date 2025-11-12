@@ -1,5 +1,4 @@
 import { parse } from "csv-parse/sync";
-import { updateMainMenu } from "./shopifyMenuGraphQL";
 
 // Ce code est pour Next.js/Node !
 // Adapte selon ton backend si tu utilises un runtime spécial.
@@ -86,8 +85,7 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
       })
     ]);
 
-    // ---------- AUTOMATISATION MENU PRINCIPAL (GraphQL) ----------
-    await updateMainMenu(shop, token);
+    // ---------- (PAS DE MENU PRINCIPAL) ----------
 
     // ----- UPLOAD PRODUITS (CSV) -----
     // const csvUrl = "https://github.com/Launchifyapp/auto-shopify-setup/releases/download/V1/products.csv";
