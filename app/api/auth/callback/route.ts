@@ -1,28 +1,74 @@
 import { NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {
-  // ... identique au dessus pour l'échange du code ...
+  const { searchParams } = new URL(req.url);
 
-  if (data.access_token) {
-    // TODO: Stockage token si besoin
+  const code = searchParams.get("code");
+  const shop = searchParams.get("shop");
 
-    // Renvoie une vraie page HTML
+  const client_id = process.env.SHOPIFY_API_KEY!;
+  const client_secret = process.env.SHOPIFY_API_SECRET!;
+
+  if (!code || !shop) {
+    // Renvoie une page d'erreur
     const html = `
       <html>
         <head>
-          <title>Installation réussie !</title>
+          <title>Erreur - Installation Shopify</title>
         </head>
-        <body>
-          <h1>Bravo, l'installation Shopify est réussie !</h1>
-          <p>Votre boutique est prête. Vous pouvez fermer cette page.</p>
+        <body style="font-family:Arial;margin:3rem;">
+          <h1>🚫 Erreur lors de l'installation de l'application Shopify</h1>
+          <p>Merci de réessayer ou contactez le support.<br/><b>Détail technique :</b> informations OAuth manquantes.</p>
         </body>
       </html>
     `;
-    return new Response(html, {
-      status: 200,
-      headers: { "Content-Type": "text/html" }
-    });
+    return new Response(html, { status: 400, headers: { "Content-Type": "text/html" } });
+  }
+
+  const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id,
+      client_secret,
+      code,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (data.access_token) {
+    // Ici tu peux stocker le token, en base ou autre
+    // Puis afficher un écran de succès
+    const html = `
+      <html>
+        <head>
+          <title>Succès - Installation Shopify</title>
+        </head>
+        <body style="font-family:Arial; margin:3rem;">
+          <h1>✅ Installation réussie !</h1>
+          <p>L'app Shopify est installée sur votre boutique.<br/>
+          Vous pouvez fermer cette page ou revenir à votre dashboard.<br/>
+          <a href="https://${shop}/admin/apps" style="color:#0077CC;">Retour vers Shopify</a></p>
+        </body>
+      </html>
+    `;
+    return new Response(html, { status: 200, headers: { "Content-Type": "text/html" } });
   } else {
-    return new Response("OAuth error", { status: 400 });
+    // Cas d'échec authentification
+    const html = `
+      <html>
+        <head>
+          <title>Erreur - Installation Shopify</title>
+        </head>
+        <body style="font-family:Arial;margin:3rem;">
+          <h1>🚫 Erreur lors de l'installation Shopify</h1>
+          <p>Impossible d'obtenir l'accès à la boutique.<br/>
+          Veuillez réessayer ou contactez le support.<br/>
+          <b>Erreur technique :</b> ${data.error || 'OAuth Shopify'}</p>
+        </body>
+      </html>
+    `;
+    return new Response(html, { status: 400, headers: { "Content-Type": "text/html" } });
   }
 }
