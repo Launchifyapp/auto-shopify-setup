@@ -6,8 +6,8 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get("code");
   const shop = searchParams.get("shop");
 
-  const client_id = process.env.cfa8956ee2e19e9f8c583f54582fe43a!;
-  const client_secret = process.env.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!;
+  const client_id = process.env.SHOPIFY_API_KEY!;
+  const client_secret = process.env.SHOPIFY_API_SECRET!;
 
   if (!code || !shop) {
     return new Response(JSON.stringify({ error: "Missing code or shop param" }), { status: 400 });
