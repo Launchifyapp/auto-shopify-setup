@@ -1,4 +1,4 @@
-// Fonction générique pour requêtes GraphQL Shopify Admin
+// Utilitaires génériques pour parler à l’API Shopify (REST et GraphQL)
 
 export async function shopifyGraphQL(
   shop: string,
@@ -17,7 +17,6 @@ export async function shopifyGraphQL(
   return res.json();
 }
 
-// Fonction utilitaire pour requêtes REST Shopify Admin
 export async function shopifyREST(
   shop: string,
   token: string,
