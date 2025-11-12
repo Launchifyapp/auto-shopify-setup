@@ -5,11 +5,12 @@ export async function GET(req: NextRequest) {
 
   const code = searchParams.get("code");
   const shop = searchParams.get("shop");
+
   const client_id = process.env.SHOPIFY_API_KEY!;
   const client_secret = process.env.SHOPIFY_API_SECRET!;
 
   if (!code || !shop) {
-    return new Response(JSON.stringify({ error: "Missing code or shop param" }), { status: 400 });
+    return new Response("Missing code or shop param", { status: 400 });
   }
 
   const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
@@ -25,9 +26,13 @@ export async function GET(req: NextRequest) {
   const data = await response.json();
 
   if (data.access_token) {
-    // Stockage à faire ici selon ta logique (DB, env, KV, ...)
-    return new Response(JSON.stringify({ access_token: data.access_token, scope: data.scope }), { status: 200 });
+    // TODO: Stockage token en base ou cookie, si besoin.
+
+    // Redirection Next.js v13+/app API :
+    return Response.redirect("https://ton-domaine.com/success", 302);
+    // Ou, si tu as une page /success dans ton projet :
+    // return Response.redirect("/success", 302);
   } else {
-    return new Response(JSON.stringify({ error: "No access_token in response", details: data }), { status: 400 });
+    return new Response("OAuth error", { status: 400 });
   }
 }
