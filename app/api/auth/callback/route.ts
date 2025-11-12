@@ -5,7 +5,6 @@ export async function GET(req: NextRequest) {
 
   const code = searchParams.get("code");
   const shop = searchParams.get("shop");
-
   const client_id = process.env.SHOPIFY_API_KEY!;
   const client_secret = process.env.SHOPIFY_API_SECRET!;
 
@@ -26,8 +25,7 @@ export async function GET(req: NextRequest) {
   const data = await response.json();
 
   if (data.access_token) {
-    // Tu peux stocker l'access_token ici (DB, KV...)
-    console.log("Access Token Shopify:", data.access_token);
+    // Stockage à faire ici selon ta logique (DB, env, KV, ...)
     return new Response(JSON.stringify({ access_token: data.access_token, scope: data.scope }), { status: 200 });
   } else {
     return new Response(JSON.stringify({ error: "No access_token in response", details: data }), { status: 400 });
