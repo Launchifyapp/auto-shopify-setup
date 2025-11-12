@@ -1,46 +1,37 @@
-// API helper pour récupérer le thème principal
-export async function getMainThemeId(shop: string, token: string): Promise<number | undefined> {
-  const res = await fetch(`https://${shop}/admin/api/2023-07/themes.json`, {
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
-    }
-  });
-  const { themes } = await res.json();
-  const mainTheme = themes.find((theme: any) => theme.role === "main");
-  return mainTheme ? mainTheme.id : undefined;
-}
+// Fonction générique pour requêtes GraphQL Shopify Admin
 
-// API helper pour créer une page Shopify
-export async function createShopifyPage(shop: string, token: string, title: string, body_html: string) {
-  return fetch(`https://${shop}/admin/api/2023-07/pages.json`, {
+export async function shopifyGraphQL(
+  shop: string,
+  token: string,
+  query: string,
+  variables: any = {}
+) {
+  const res = await fetch(`https://${shop}/admin/api/2023-07/graphql.json`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Shopify-Access-Token": token
     },
-    body: JSON.stringify({
-      page: { title, body_html }
-    })
+    body: JSON.stringify({ query, variables })
   });
+  return res.json();
 }
 
-// API helper pour créer une smart collection
-export async function createSmartCollection(shop: string, token: string, title: string, tag: string) {
-  return fetch(`https://${shop}/admin/api/2023-07/smart_collections.json`, {
-    method: "POST",
+// Fonction utilitaire pour requêtes REST Shopify Admin
+export async function shopifyREST(
+  shop: string,
+  token: string,
+  endpoint: string,
+  method: string = "GET",
+  body?: any
+) {
+  const res = await fetch(`https://${shop}/admin/api/2023-07/${endpoint}`, {
+    method,
     headers: {
       "Content-Type": "application/json",
       "X-Shopify-Access-Token": token
     },
-    body: JSON.stringify({
-      smart_collection: {
-        title,
-        rules: [{ column: "tag", relation: "equals", condition: tag }]
-      }
-    })
+    body: body ? JSON.stringify(body) : undefined
   });
+  return res.json();
 }
-
-// Tu peux ajouter un export pour les fonctions GraphQL si besoin, 
-// mais plus d'import setupShopifyMainMenu !
