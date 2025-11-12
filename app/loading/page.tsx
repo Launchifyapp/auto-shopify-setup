@@ -1,15 +1,17 @@
 "use client";
 import { useEffect, useState } from "react";
 
-export default function LoadingPage({ searchParams }: { searchParams: { shop: string } }) {
+export default function LoadingPage({ searchParams }: { searchParams: { shop: string, token: string } }) {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
     // Lance le setup via une API séparée
-    fetch(`/api/setup?shop=${searchParams.shop}`)
-      .then(res => res.json())
-      .then(() => setDone(true));
-  }, [searchParams.shop]);
+    if (searchParams.shop && searchParams.token) {
+      fetch(`/api/setup?shop=${encodeURIComponent(searchParams.shop)}&token=${encodeURIComponent(searchParams.token)}`)
+        .then(res => res.json())
+        .then(() => setDone(true));
+    }
+  }, [searchParams.shop, searchParams.token]);
 
   useEffect(() => {
     if (done) {
