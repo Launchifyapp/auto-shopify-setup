@@ -23,7 +23,7 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
 
   try {
     // ----- PAGE LIVRAISON -----
-    await fetch(`https://${shop}/admin/api/2023-07/pages.json`, {
+    await fetch(`https://${shop}/admin/api/2024-01/pages.json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -38,7 +38,7 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
     });
 
     // ----- PAGE FAQ -----
-    await fetch(`https://${shop}/admin/api/2023-07/pages.json`, {
+    await fetch(`https://${shop}/admin/api/2024-01/pages.json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -54,7 +54,7 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
 
     // ----- SMART COLLECTIONS "Beauté & soins" et "Maison & confort" -----
     await Promise.all([
-      fetch(`https://${shop}/admin/api/2023-07/smart_collections.json`, {
+      fetch(`https://${shop}/admin/api/2024-01/smart_collections.json`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
