@@ -1,11 +1,10 @@
+import { parse } from "csv-parse/sync";
+import { updateMainMenu } from "./shopifyMenuGraphQL";
 
-const { parse } = require("csv-parse/sync");
-const { updateMainMenu } = require("./shopifyMenuGraphQL");
-
-// Ce code est pour Next.js/Node
+// Ce code est pour Next.js/Node !
 // Adapte selon ton backend si tu utilises un runtime spécial.
 
-async function runFullSetup({ shop, token }) {
+export async function runFullSetup({ shop, token }: { shop: string; token: string }) {
   // 1. Créer la page Livraison
   const livraisonHtml = `
 <p class="p1"><b>Livraison GRATUITE</b><b></b></p>
@@ -87,8 +86,7 @@ async function runFullSetup({ shop, token }) {
       })
     ]);
 
-    // ----- MODIFIER MENU PRINCIPAL -----
-    // Utilise maintenant l'automatisation GraphQL !
+    // ---------- AUTOMATISATION MENU PRINCIPAL (GraphQL) ----------
     await updateMainMenu(shop, token);
 
     // ----- UPLOAD PRODUITS (CSV) -----
@@ -103,7 +101,7 @@ async function runFullSetup({ shop, token }) {
     //       "Content-Type": "application/json",
     //       "X-Shopify-Access-Token": token
     //     },
-    //     body: JSON.stringify({ product: row }) // Mapper explicitement les champs Shopify ici !
+    //     body: JSON.stringify({ product: row })
     //   });
     // }
 
@@ -125,7 +123,7 @@ async function runFullSetup({ shop, token }) {
     // // Pour publier: faire un PUT sur /themes/{id}.json avec { "theme": { "role": "main" } }
 
     // ----- UPLOAD IMAGES .JPG -----
-    // Pour uploader des images, pointer vers l'API produits ou assets.
+    // Pour uploader des images, pointer vers l'API produits ou assets
     // Exemple:
     // await fetch(`https://${shop}/admin/api/2023-07/products/${productId}/images.json`, { ... });
 
@@ -134,5 +132,3 @@ async function runFullSetup({ shop, token }) {
     throw err;
   }
 }
-
-module.exports = { runFullSetup };
