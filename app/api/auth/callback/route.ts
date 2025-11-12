@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-
   const code = searchParams.get("code");
   const shop = searchParams.get("shop");
 
@@ -10,10 +9,10 @@ export async function GET(req: NextRequest) {
   const client_secret = process.env.SHOPIFY_API_SECRET!;
 
   if (!code || !shop) {
-    // Renvoie une page d'erreur
     const html = `
       <html>
         <head>
+          <meta charset="UTF-8">
           <title>Erreur - Installation Shopify</title>
         </head>
         <body style="font-family:Arial;margin:3rem;">
@@ -22,7 +21,7 @@ export async function GET(req: NextRequest) {
         </body>
       </html>
     `;
-    return new Response(html, { status: 400, headers: { "Content-Type": "text/html" } });
+    return new Response(html, { status: 400, headers: { "Content-Type": "text/html; charset=UTF-8" } });
   }
 
   const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
@@ -38,11 +37,10 @@ export async function GET(req: NextRequest) {
   const data = await response.json();
 
   if (data.access_token) {
-    // Ici tu peux stocker le token, en base ou autre
-    // Puis afficher un écran de succès
     const html = `
       <html>
         <head>
+          <meta charset="UTF-8">
           <title>Succès - Installation Shopify</title>
         </head>
         <body style="font-family:Arial; margin:3rem;">
@@ -53,12 +51,12 @@ export async function GET(req: NextRequest) {
         </body>
       </html>
     `;
-    return new Response(html, { status: 200, headers: { "Content-Type": "text/html" } });
+    return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=UTF-8" } });
   } else {
-    // Cas d'échec authentification
     const html = `
       <html>
         <head>
+          <meta charset="UTF-8">
           <title>Erreur - Installation Shopify</title>
         </head>
         <body style="font-family:Arial;margin:3rem;">
@@ -69,6 +67,6 @@ export async function GET(req: NextRequest) {
         </body>
       </html>
     `;
-    return new Response(html, { status: 400, headers: { "Content-Type": "text/html" } });
+    return new Response(html, { status: 400, headers: { "Content-Type": "text/html; charset=UTF-8" } });
   }
 }
