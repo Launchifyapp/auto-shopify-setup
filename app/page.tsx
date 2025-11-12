@@ -3,7 +3,8 @@ import { useState } from "react";
 
 export default function InstallLanding() {
   const [shop, setShop] = useState("");
- const CLIENT_ID = process.env.SHOPIFY_API_KEY!;
+  // Utilise variable Next.js client OU hardcode si besoin
+  const CLIENT_ID = process.env.NEXT_PUBLIC_SHOPIFY_API_KEY || "ta_cle_api_shopify";
   const REDIRECT_URI = "https://auto-shopify-setup.vercel.app/api/auth/callback";
   const SCOPES = "write_products,write_themes,write_content";
 
