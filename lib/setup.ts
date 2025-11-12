@@ -16,8 +16,8 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
       </ul>
     `.trim();
 
-    await fetch(`https://${shop}/admin/api/2023-07/pages.json`, {
-      method: "POST",
+    const livraisonResp = await fetch(`https://${shop}/admin/api/2023-07/pages.json`, {
+     method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Shopify-Access-Token": token
@@ -26,11 +26,12 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
         page: { title: "Livraison", body_html: livraisonHtml }
       })
     });
+    console.log("Réponse API page Livraison:", await livraisonResp.json());
 
     // 2. Créer la page FAQ
     console.log("Création page FAQ...");
     const faqHtml = `<p>Crée ta FAQ ici</p>`;
-    await fetch(`https://${shop}/admin/api/2023-07/pages.json`, {
+    const faqResp = await fetch(`https://${shop}/admin/api/2023-07/pages.json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -40,37 +41,39 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
         page: { title: "FAQ", body_html: faqHtml }
       })
     });
+    console.log("Réponse API page FAQ:", await faqResp.json());
 
     // 3. Créer les collections
     console.log("Création des collections...");
-    await Promise.all([
-      fetch(`https://${shop}/admin/api/2023-07/smart_collections.json`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": token
-        },
-        body: JSON.stringify({
-          smart_collection: {
-            title: "Beauté & soins",
-            rules: [{ column: "tag", relation: "equals", condition: "Beauté & soins" }]
-          }
-        })
-      }),
-      fetch(`https://${shop}/admin/api/2023-07/smart_collections.json`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": token
-        },
-        body: JSON.stringify({
-          smart_collection: {
-            title: "Maison & confort",
-            rules: [{ column: "tag", relation: "equals", condition: "Maison & confort" }]
-          }
-        })
+    const collection1 = await fetch(`https://${shop}/admin/api/2023-07/smart_collections.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": token
+      },
+      body: JSON.stringify({
+        smart_collection: {
+          title: "Beauté & soins",
+          rules: [{ column: "tag", relation: "equals", condition: "Beauté & soins" }]
+        }
       })
-    ]);
+    });
+    console.log("Réponse API collection Beauté & soins:", await collection1.json());
+
+    const collection2 = await fetch(`https://${shop}/admin/api/2023-07/smart_collections.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": token
+      },
+      body: JSON.stringify({
+        smart_collection: {
+          title: "Maison & confort",
+          rules: [{ column: "tag", relation: "equals", condition: "Maison & confort" }]
+        }
+      })
+    });
+    console.log("Réponse API collection Maison & confort:", await collection2.json());
 
     // 4. Upload produits CSV + variantes (sans lodash)
     console.log("Import produits CSV...");
@@ -98,7 +101,7 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
 
       // Variantes
       const variants = group.map(row => {
-        const v = {
+        let v: { [key: string]: any } = {
           option1: row["Option1 Value"] || "Default Title",
           option2: row["Option2 Value"] || undefined,
           option3: row["Option3 Value"] || undefined,
@@ -115,11 +118,7 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
           image: row["Variant Image"] || undefined,
           weight_unit: row["Variant Weight Unit"] || undefined
         };
-        Object.keys(v).forEach((k) => {
-  if ((v as any)[k] === undefined) {
-    delete (v as any)[k];
-  }
-});
+        Object.keys(v).forEach(k => { if (v[k] === undefined) delete v[k]; });
         return v;
       });
 
@@ -137,7 +136,6 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
         }
       });
 
-      // Produit Shopify
       const product = {
         title: main.Title,
         body_html: main["Body (HTML)"],
@@ -161,11 +159,11 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
           body: JSON.stringify({ product })
         });
         const data = await res.json();
-        console.log("Réponse Shopify product:", data);
+        console.log("Réponse Shopify product:", handle, JSON.stringify(data));
       } catch (err) {
         console.log("Erreur sur le produit :", handle, err);
       }
-      await new Promise(res => setTimeout(res, 250)); // anti-rate-limit
+      await new Promise(res => setTimeout(res, 300)); // anti-rate-limit
     }
 
     // 5. Upload du thème ZIP + publication
@@ -185,21 +183,26 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
       })
     });
     const themeUploadData = await themeUploadRes.json();
-    console.log("Réponse Shopify thème:", themeUploadData);
+    console.log("Réponse Shopify thème (upload):", JSON.stringify(themeUploadData));
 
     if (themeUploadData && themeUploadData.theme && themeUploadData.theme.id) {
-      await fetch(`https://${shop}/admin/api/2023-07/themes/${themeUploadData.theme.id}.json`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": token
-        },
-        body: JSON.stringify({
-          theme: {
-            role: "main"
-          }
-        })
-      });
+      const themePublishRes = await fetch(
+        `https://${shop}/admin/api/2023-07/themes/${themeUploadData.theme.id}.json`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": token
+          },
+          body: JSON.stringify({
+            theme: {
+              role: "main"
+            }
+          })
+        }
+      );
+      const publishThemeData = await themePublishRes.json();
+      console.log("Réponse Shopify thème (publish):", JSON.stringify(publishThemeData));
       console.log("Thème publié :", themeUploadData.theme.id);
     } else {
       console.log("Échec upload thème", themeUploadData?.errors || themeUploadData);
