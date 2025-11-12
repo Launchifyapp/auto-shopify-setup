@@ -39,7 +39,11 @@ export async function getAllCollectionGID(shop: string, token: string): Promise<
 }
 
 // Récupérer le GID d'une page à partir du titre ou handle
-export async function getPageGID(shop: string, token: string, pageTitleOrHandle: string): Promise<string | undefined> {
+export async function getPageGID(
+  shop: string,
+  token: string,
+  pageTitleOrHandle: string
+): Promise<string | undefined> {
   const query = `
     query {
       pages(first: 20) {
@@ -63,7 +67,10 @@ export async function getPageGID(shop: string, token: string, pageTitleOrHandle:
 }
 
 // Récupérer l'id du menu principal (main-menu)
-export async function getMainMenuId(shop: string, token: string): Promise<string | undefined> {
+export async function getMainMenuId(
+  shop: string,
+  token: string
+): Promise<string | undefined> {
   const query = `
     query {
       navigationMenus(first: 10) {
@@ -79,12 +86,17 @@ export async function getMainMenuId(shop: string, token: string): Promise<string
   `;
   const result = await shopifyGraphQL(shop, token, query);
 
-  // Defensive parsing
+  // DEBUG : log la réponse brute pour analyse !
+  console.log("Réponse brute navigationMenus:", JSON.stringify(result, null, 2));
+
   const menuList = result?.data?.navigationMenus?.edges;
+
   if (!menuList) {
-    throw new Error("La requête navigationMenus ne retourne rien : data ou navigationMenus absent. Vérifie la version de l'API ou le scope.");
+    throw new Error(
+      "La requête navigationMenus ne retourne rien : data ou navigationMenus absent. Vérifie la version de l'API ou le scope."
+    );
   }
-  
+
   const menu = menuList.find(
     (menu: any) => menu.node.handle === "main-menu"
   );
@@ -94,7 +106,8 @@ export async function getMainMenuId(shop: string, token: string): Promise<string
 // Mettre à jour le menu principal avec les GID récupérés dynamiquement
 export async function updateMainMenu(shop: string, token: string) {
   const menuId = await getMainMenuId(shop, token);
-  if (!menuId) throw new Error("Menu principal introuvable (handle: main-menu)");
+  if (!menuId)
+    throw new Error("Menu principal introuvable (handle: main-menu)");
 
   // Récupération dynamique des GID
   const allCollectionGID = await getAllCollectionGID(shop, token);
@@ -115,7 +128,7 @@ export async function updateMainMenu(shop: string, token: string) {
       : "",
     contactGID
       ? `{ title: "Contact", type: PAGE, destination: { page: { id: "${contactGID}" } } }`
-      : "",
+      : ""
   ].filter(Boolean);
 
   const mutation = `
@@ -138,9 +151,15 @@ export async function updateMainMenu(shop: string, token: string) {
   const result = await shopifyGraphQL(shop, token, mutation);
 
   if (result.data?.navigationMenuUpdate?.userErrors?.length) {
-    console.error("Erreur Shopify:", result.data.navigationMenuUpdate.userErrors);
+    console.error(
+      "Erreur Shopify:",
+      result.data.navigationMenuUpdate.userErrors
+    );
     throw new Error("Erreur update menu Shopify.");
   }
 
-  console.log("Menu principal mis à jour 🚀 !", result.data?.navigationMenuUpdate?.navigationMenu);
+  console.log(
+    "Menu principal mis à jour 🚀 !",
+    result.data?.navigationMenuUpdate?.navigationMenu
+  );
 }
