@@ -26,22 +26,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
       body: JSON.stringify({
         query: `
-          mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
-            stagedUploadsCreate(input: $input) {
-              stagedTargets {
-                url
-                resourceUrl
-                parameters {
-                  name
-                  value
-                }
-              }
-              userErrors {
-                field
-                message
-              }
-            }
-          }
+         mutation fileCreate($files: [FileCreateInput!]!) {
+  fileCreate(files: $files) {
+    files {
+      id
+      alt
+      createdAt
+      fileStatus
+      preview {
+        image {
+          url
+        }
+      }
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
         `,
         variables: {
          input: [{
