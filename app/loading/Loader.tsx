@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 
 export default function Loader() {
   const searchParams = useSearchParams();
-  const shop = searchParams.get("shop");
-  const token = searchParams.get("token");
+  const shop = searchParams?.get("shop") ?? "";
+  const token = searchParams?.get("token") ?? "";
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
