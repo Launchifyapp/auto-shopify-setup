@@ -2,11 +2,6 @@ import { parse } from 'csv-parse/sync';
 import { Buffer } from "buffer";
 
 export async function runFullSetup({ shop, token }: { shop: string; token: string }) {
-// Utilisation des variables d'environnement Shopify
-const shop = process.env.SHOPIFY_STORE;
-const token = process.env.SHOPIFY_ADMIN_TOKEN;
-
-export async function runFullSetup() {
   try {
     // 1. UPLOAD vos images dans Shopify Files
     const mediaFiles = [
@@ -25,9 +20,8 @@ export async function runFullSetup() {
         }
         const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
         const base64Str = imgBuffer.toString("base64");
-        console.log(`Base64 for ${file.filename}:`, base64Str.substring(0, 100)); // debug
+        console.log(`Base64 for ${file.filename}:`, base64Str.substring(0, 100));
 
-        // Try ATTACHMENT (base64) first
         const fileRes = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
           method: "POST",
           headers: {
@@ -54,7 +48,6 @@ export async function runFullSetup() {
           console.log(`RESPONSE NON JSON POUR ${file.filename} | Status: ${status} | Corps:\n${text}`);
         }
 
-        // Fallback: If 406, try with "source" instead of base64
         if (status === 406 || !isJson) {
           console.log(`ATTACHMENT failed, trying SOURCE for ${file.filename}...`);
           const fileRes2 = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
@@ -83,7 +76,7 @@ export async function runFullSetup() {
       } catch (err) {
         console.log("Erreur upload file", file.filename, err);
       }
-      await new Promise(res => setTimeout(res, 1500)); // anti-rate-limit
+      await new Promise(res => setTimeout(res, 1500));
     }
 
     // 2. Créer la page Livraison
@@ -171,7 +164,6 @@ export async function runFullSetup() {
       console.log('STEP: Création produits');
       for (const [handle, group] of Object.entries(productsByHandle)) {
         const main = group[0];
-
         const option1Values = group.map(row => row["Option1 Value"]?.trim()).filter(Boolean);
         const images = Array.from(new Set(
           group.map(row => row["Image Src"]).filter(src => src && src.length > 6)
@@ -313,9 +305,7 @@ export async function runFullSetup() {
         });
       }
     }
-    // Fin global
   } catch (err) {
     console.log("Erreur globale runFullSetup:", err);
   }
 }
-  }
