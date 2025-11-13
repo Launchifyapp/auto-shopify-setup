@@ -44,13 +44,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         `,
         variables: {
-          input: [{
-            filename,
-            mimeType,
-            resource: "IMAGE",
-            httpMethod: "POST",
-            fileSize: 1,
-          }]
+         input: [{
+  filename,
+  mimeType,
+  resource: "IMAGE",
+  httpMethod: "POST",
+  fileSize: "1",
+}]
         },
       }),
     });
