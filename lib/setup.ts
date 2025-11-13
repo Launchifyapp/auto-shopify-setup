@@ -12,7 +12,6 @@ const mediaFiles = [
   { url: "https://auto-shopify-setup.vercel.app/image4.webp", filename: "image4.webp", mimeType: "image/webp" }
 ];
 
-// Upload en batch via ton API Next.js
 try {
   const batchRes = await fetch("https://auto-shopify-setup.vercel.app/api/upload-file", {
     method: "POST",
@@ -20,12 +19,19 @@ try {
     body: JSON.stringify({ images: mediaFiles })
   });
   const uploads = await batchRes.json();
+
   if (uploads.ok) {
-    uploads.uploads.forEach((result, idx) => {
+    uploads.uploads.forEach((result: any, idx: number) => {
       if (result.ok) {
-        console.log(`Upload réussi [${mediaFiles[idx].filename}] Shopify ID :`, result.result?.data?.fileCreate?.files?.[0]?.id);
+        console.log(
+          `Upload réussi [${mediaFiles[idx].filename}] Shopify ID :`,
+          result.result?.data?.fileCreate?.files?.[0]?.id
+        );
       } else {
-        console.log(`Erreur upload [${mediaFiles[idx].filename}]`, result.error || result.result);
+        console.log(
+          `Erreur upload [${mediaFiles[idx].filename}]`,
+          result.error || result.result
+        );
       }
     });
   } else {
@@ -34,7 +40,6 @@ try {
 } catch (err) {
   console.log("Erreur upload batch images Shopify:", err);
 }
-
     // 2. Créer la page Livraison
     const livraisonHtml = `
       <p><b>Livraison GRATUITE</b></p>
