@@ -288,8 +288,6 @@ try {
     // Fin global
   } catch (err) {
     console.log("Erreur globale runFullSetup:", err);
-  }
-}
     // catch globale si besoin
   }
 }
