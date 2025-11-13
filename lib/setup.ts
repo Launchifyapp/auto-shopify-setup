@@ -27,6 +27,8 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
     });
 
     // 1 bis. Upload media files into Shopify Files
+import { Buffer } from "buffer"; // Pour NodeJS
+
 const mediaFiles = [
   { url: "https://auto-shopify-setup.vercel.app/image1.jpg", filename: "image1.jpg" },
   { url: "https://auto-shopify-setup.vercel.app/image2.jpg", filename: "image2.jpg" },
@@ -36,6 +38,14 @@ const mediaFiles = [
 
 for (const file of mediaFiles) {
   try {
+    // Fetch le binaire du fichier
+    const imgRes = await fetch(file.url);
+    const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+    // Encode en base64
+    const base64Str = imgBuffer.toString("base64");
+
+    // Upload via attachment (base64)
     const fileRes = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
       method: "POST",
       headers: {
@@ -44,17 +54,13 @@ for (const file of mediaFiles) {
       },
       body: JSON.stringify({
         file: {
-          source: file.url,
-          filename: file.filename
+          attachment: base64Str,      // LE FICHIER EN BASE64
+          filename: file.filename     // Nom pour Shopify
         }
       })
     });
-
-    // Récupère le statut HTTP et le corps texte
     const status = fileRes.status;
     const text = await fileRes.text();
-
-    // Essaye de parser le JSON, sinon affiche la réponse brute
     let data;
     try {
       data = JSON.parse(text);
@@ -65,7 +71,7 @@ for (const file of mediaFiles) {
   } catch (err) {
     console.log("Erreur upload file", file.filename, err);
   }
-  await new Promise(res => setTimeout(res, 1500)); // Attente anti-rate-limit Shopify
+  await new Promise(res => setTimeout(res, 1500));
 }
 
     // 2. Créer la page FAQ
