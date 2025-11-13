@@ -26,6 +26,48 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
       })
     });
 
+    // 1 bis. Upload media files into Shopify Files
+const mediaFiles = [
+  { url: "https://auto-shopify-setup.vercel.app/image1.jpg", filename: "image1.jpg" },
+  { url: "https://auto-shopify-setup.vercel.app/image2.jpg", filename: "image2.jpg" },
+  { url: "https://auto-shopify-setup.vercel.app/image3.jpg", filename: "image3.jpg" },
+  { url: "https://auto-shopify-setup.vercel.app/image4.webp", filename: "image4.webp" }
+];
+
+for (const file of mediaFiles) {
+  try {
+    const fileRes = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": token
+      },
+      body: JSON.stringify({
+        file: {
+          source: file.url,
+          filename: file.filename
+        }
+      })
+    });
+
+    // Récupère le statut HTTP et le corps texte
+    const status = fileRes.status;
+    const text = await fileRes.text();
+
+    // Essaye de parser le JSON, sinon affiche la réponse brute
+    let data;
+    try {
+      data = JSON.parse(text);
+      console.log(`Upload file: ${file.filename} | Status: ${status}`, data);
+    } catch (e) {
+      console.log(`RESPONSE NON JSON POUR ${file.filename} | Status: ${status} | Corps:\n${text}`);
+    }
+  } catch (err) {
+    console.log("Erreur upload file", file.filename, err);
+  }
+  await new Promise(res => setTimeout(res, 1500)); // Attente anti-rate-limit Shopify
+}
+
     // 2. Créer la page FAQ
     const faqHtml = `<p>Crée ta FAQ ici</p>`;
     await fetch(`https://${shop}/admin/api/2023-07/pages.json`, {
@@ -173,47 +215,7 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
       await new Promise(res => setTimeout(res, 300)); // anti-rate-limit
     }
 
-// 5. Upload media files into Shopify Files
-const mediaFiles = [
-  { url: "https://auto-shopify-setup.vercel.app/image1.jpg", filename: "image1.jpg" },
-  { url: "https://auto-shopify-setup.vercel.app/image2.jpg", filename: "image2.jpg" },
-  { url: "https://auto-shopify-setup.vercel.app/image3.jpg", filename: "image3.jpg" },
-  { url: "https://auto-shopify-setup.vercel.app/image4.webp", filename: "image4.webp" }
-];
 
-for (const file of mediaFiles) {
-  try {
-    const fileRes = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": token
-      },
-      body: JSON.stringify({
-        file: {
-          source: file.url,
-          filename: file.filename
-        }
-      })
-    });
-
-    // Récupère le statut HTTP et le corps texte
-    const status = fileRes.status;
-    const text = await fileRes.text();
-
-    // Essaye de parser le JSON, sinon affiche la réponse brute
-    let data;
-    try {
-      data = JSON.parse(text);
-      console.log(`Upload file: ${file.filename} | Status: ${status}`, data);
-    } catch (e) {
-      console.log(`RESPONSE NON JSON POUR ${file.filename} | Status: ${status} | Corps:\n${text}`);
-    }
-  } catch (err) {
-    console.log("Erreur upload file", file.filename, err);
-  }
-  await new Promise(res => setTimeout(res, 1500)); // Attente anti-rate-limit Shopify
-}
     // 6. Upload DU THÈME ZIP + publication (avec polling)
     const themeZipUrl = "https://auto-shopify-setup.vercel.app/DREAMIFY.zip";
     const themeUploadRes = await fetch(`https://${shop}/admin/api/2023-07/themes.json`, {
