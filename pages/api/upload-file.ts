@@ -18,10 +18,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Step 1: stagedUploadsCreate
     const stagedRes = await fetch(SHOPIFY_GRAPHQL_ENDPOINT, {
       method: "POST",
-     headers: new Headers({
-  "Content-Type": "application/json",
-  "X-Shopify-Access-Token": SHOPIFY_ADMIN_TOKEN ?? "",
-}),
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": SHOPIFY_ADMIN_TOKEN ?? "",
+      } as HeadersInit,
       body: JSON.stringify({
         query: `
           mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
@@ -62,8 +62,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const uploadRes = await fetch(target.url, {
       method: "POST",
-      body: uploadForm as unknown as BodyInit, // pour TypeScript
-      // formdata-node gère automatiquement les headers multipart
+      body: uploadForm as unknown as BodyInit,
+      // formdata-node gère headers multipart
     });
 
     if (!uploadRes.ok) {
@@ -81,7 +81,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       headers: {
         "Content-Type": "application/json",
         "X-Shopify-Access-Token": SHOPIFY_ADMIN_TOKEN ?? "",
-      },
+      } as HeadersInit,
       body: JSON.stringify({
         query: `
           mutation fileCreate($files: [FileCreateInput!]!) {
