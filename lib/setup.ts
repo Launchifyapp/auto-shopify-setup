@@ -3,7 +3,54 @@ import { Buffer } from "buffer";
 
 export async function runFullSetup({ shop, token }: { shop: string; token: string }) {
   try {
-    // 1. Créer la page Livraison
+    // 1. Upload media files into Shopify Files EN PREMIER !
+    const mediaFiles = [
+      { url: "https://auto-shopify-setup.vercel.app/image1.jpg", filename: "image1.jpg" },
+      { url: "https://auto-shopify-setup.vercel.app/image2.jpg", filename: "image2.jpg" },
+      { url: "https://auto-shopify-setup.vercel.app/image3.jpg", filename: "image3.jpg" },
+      { url: "https://auto-shopify-setup.vercel.app/image4.webp", filename: "image4.webp" }
+    ];
+
+    for (const file of mediaFiles) {
+      try {
+        const imgRes = await fetch(file.url);
+        if (!imgRes.ok) {
+          console.log(`Image inaccessible: ${file.url} => Status: ${imgRes.status}`);
+          continue;
+        }
+        const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+        const base64Str = imgBuffer.toString("base64");
+
+        const fileRes = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": token
+          },
+          body: JSON.stringify({
+            file: {
+              attachment: base64Str,
+              filename: file.filename
+            }
+          })
+        });
+
+        const status = fileRes.status;
+        const text = await fileRes.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+          console.log(`Upload file: ${file.filename} | Status: ${status}`, data);
+        } catch (e) {
+          console.log(`RESPONSE NON JSON POUR ${file.filename} | Status: ${status} | Corps:\n${text}`);
+        }
+      } catch (err) {
+        console.log("Erreur upload file", file.filename, err);
+      }
+      await new Promise(res => setTimeout(res, 1500));
+    }
+
+    // 2. Créer la page Livraison
     const livraisonHtml = `
       <p><b>Livraison GRATUITE</b></p>
       <p>Le traitement des commandes prend de 1 à 3 jours ouvrables avant l'expédition. Une fois l'article expédié, le délai de livraison estimé est le suivant:</p>
@@ -27,54 +74,7 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
       })
     });
 
-    // 1 bis. Upload media files into Shopify Files
-
-const mediaFiles = [
-  { url: "https://auto-shopify-setup.vercel.app/image1.jpg", filename: "image1.jpg" },
-  { url: "https://auto-shopify-setup.vercel.app/image2.jpg", filename: "image2.jpg" },
-  { url: "https://auto-shopify-setup.vercel.app/image3.jpg", filename: "image3.jpg" },
-  { url: "https://auto-shopify-setup.vercel.app/image4.webp", filename: "image4.webp" }
-];
-
-for (const file of mediaFiles) {
-  try {
-    // Fetch le binaire du fichier
-    const imgRes = await fetch(file.url);
-    const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
-
-    // Encode en base64
-    const base64Str = imgBuffer.toString("base64");
-
-    // Upload via attachment (base64)
-    const fileRes = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": token
-      },
-      body: JSON.stringify({
-        file: {
-          attachment: base64Str,      // LE FICHIER EN BASE64
-          filename: file.filename     // Nom pour Shopify
-        }
-      })
-    });
-    const status = fileRes.status;
-    const text = await fileRes.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-      console.log(`Upload file: ${file.filename} | Status: ${status}`, data);
-    } catch (e) {
-      console.log(`RESPONSE NON JSON POUR ${file.filename} | Status: ${status} | Corps:\n${text}`);
-    }
-  } catch (err) {
-    console.log("Erreur upload file", file.filename, err);
-  }
-  await new Promise(res => setTimeout(res, 1500));
-}
-
-    // 2. Créer la page FAQ
+    // 3. Créer la page FAQ
     const faqHtml = `<p>Crée ta FAQ ici</p>`;
     await fetch(`https://${shop}/admin/api/2023-07/pages.json`, {
       method: "POST",
@@ -87,7 +87,7 @@ for (const file of mediaFiles) {
       })
     });
 
-    // 3. Créer les collections
+    // 4. Créer les collections
     await fetch(`https://${shop}/admin/api/2023-07/smart_collections.json`, {
       method: "POST",
       headers: {
@@ -116,7 +116,7 @@ for (const file of mediaFiles) {
       })
     });
 
-    // 4. Import produits CSV + variantes
+    // 5. Import produits CSV + variantes
     const csvUrl = "https://github.com/Launchifyapp/auto-shopify-setup/releases/download/V1/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
@@ -130,7 +130,6 @@ for (const file of mediaFiles) {
 
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
-
       const option1Values = group.map(row => row["Option1 Value"]?.trim()).filter(Boolean);
       const images = Array.from(new Set(
         group.map(row => row["Image Src"]).filter(src => src && src.length > 6)
@@ -161,7 +160,7 @@ for (const file of mediaFiles) {
           image: main["Variant Image"] || undefined,
           weight_unit: main["Variant Weight Unit"] || undefined
         }];
-        options = []; 
+        options = [];
       } else {
         options = [];
         if (main["Option1 Name"]) options.push({ name: main["Option1 Name"] });
@@ -218,9 +217,8 @@ for (const file of mediaFiles) {
       } catch (err) {
         // log erreur si besoin
       }
-      await new Promise(res => setTimeout(res, 300)); // anti-rate-limit
+      await new Promise(res => setTimeout(res, 300));
     }
-
 
     // 6. Upload DU THÈME ZIP + publication (avec polling)
     const themeZipUrl = "https://auto-shopify-setup.vercel.app/DREAMIFY.zip";
@@ -239,7 +237,6 @@ for (const file of mediaFiles) {
     });
     const themeUploadData = await themeUploadRes.json();
 
-    // --- P O L L pour attendre le thème prêt !
     if (themeUploadData?.theme?.id) {
       const themeId = themeUploadData.theme.id;
       let statusOk = false, tries = 0;
