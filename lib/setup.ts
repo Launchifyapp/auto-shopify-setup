@@ -70,7 +70,7 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
     });
 
     // 5. Import produits CSV + variantes
-    const csvUrl = "https://github.com/Launchifyapp/auto-shopify-setup/releases/download/V1/products.csv";
+    const csvUrl = "https://github.com/Launchifyapp/auto-shopify-setup/blob/main/public/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
     const records = parse(csvText, { columns: true, skip_empty_lines: true });
