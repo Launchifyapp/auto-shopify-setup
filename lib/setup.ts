@@ -221,7 +221,7 @@ try {
     }
 
     // 6. Upload DU THÈME ZIP + publication (avec polling)
-    const themeZipUrl = "https://auto-shopify-setup.vercel.app/DREAMIFY-V2.zip";
+    const themeZipUrl = "https://auto-shopify-setup.vercel.app/theme.zip";
     const themeUploadRes = await fetch(`https://${shop}/admin/api/2023-07/themes.json`, {
       method: "POST",
       headers: {
