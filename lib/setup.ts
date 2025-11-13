@@ -1,54 +1,7 @@
 import { parse } from "csv-parse/sync";
-import { Buffer } from "buffer";
 
 export async function runFullSetup({ shop, token }: { shop: string; token: string }) {
   try {
-    // 1. Upload media files into Shopify Files EN PREMIER !
-    const mediaFiles = [
-      { url: "https://auto-shopify-setup.vercel.app/image1.jpg", filename: "image1.jpg" },
-      { url: "https://auto-shopify-setup.vercel.app/image2.jpg", filename: "image2.jpg" },
-      { url: "https://auto-shopify-setup.vercel.app/image3.jpg", filename: "image3.jpg" },
-      { url: "https://auto-shopify-setup.vercel.app/image4.webp", filename: "image4.webp" }
-    ];
-
-    for (const file of mediaFiles) {
-      try {
-        const imgRes = await fetch(file.url);
-        if (!imgRes.ok) {
-          console.log(`Image inaccessible: ${file.url} => Status: ${imgRes.status}`);
-          continue;
-        }
-        const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
-        const base64Str = imgBuffer.toString("base64");
-
-        const fileRes = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Shopify-Access-Token": token
-          },
-          body: JSON.stringify({
-            file: {
-              attachment: base64Str,
-              filename: file.filename
-            }
-          })
-        });
-
-        const status = fileRes.status;
-        const text = await fileRes.text();
-        let data;
-        try {
-          data = JSON.parse(text);
-          console.log(`Upload file: ${file.filename} | Status: ${status}`, data);
-        } catch (e) {
-          console.log(`RESPONSE NON JSON POUR ${file.filename} | Status: ${status} | Corps:\n${text}`);
-        }
-      } catch (err) {
-        console.log("Erreur upload file", file.filename, err);
-      }
-      await new Promise(res => setTimeout(res, 1500));
-    }
 
     // 2. Créer la page Livraison
     const livraisonHtml = `
