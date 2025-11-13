@@ -1,3 +1,4 @@
+import { parse } from 'csv-parse/sync';
 import { Buffer } from "buffer";
 
 export async function runFullSetup({ shop, token }: { shop: string; token: string }) {
