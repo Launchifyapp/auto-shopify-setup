@@ -16,40 +16,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { url, filename, mimeType } = req.body;
 
     // Step 1: stagedUploadsCreate
-    const stagedRes = await fetch(SHOPIFY_GRAPHQL_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": SHOPIFY_ADMIN_TOKEN ?? "",
-      } as HeadersInit,
-      body: JSON.stringify({
-        query: `
-          mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
-            stagedUploadsCreate(input: $input) {
-              stagedTargets {
-                url
-                resourceUrl
-                parameters {
-                  name
-                  value
-                }
-              }
+   const stagedRes = await fetch(SHOPIFY_GRAPHQL_ENDPOINT, {
+  method: "POST",
+  headers: new Headers({
+    "Content-Type": "application/json",
+    "X-Shopify-Access-Token": SHOPIFY_ADMIN_TOKEN ?? "",
+  }),
+  body: JSON.stringify({
+    query: `
+      mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+        stagedUploadsCreate(input: $input) {
+          stagedTargets {
+            url
+            resourceUrl
+            parameters {
+              name
+              value
             }
           }
-        `,
-        variables: {
-          input: [{
-            filename,
-            mimeType,
-            resource: "IMAGE", // "FILE" pour PDF ou ZIP
-            httpMethod: "POST",
-            fileSize: 1,
-          }]
-        },
-      }),
-    });
-    const stagedJson = await stagedRes.json();
-    const target = stagedJson.data.stagedUploadsCreate.stagedTargets[0];
+        }
+      }
+    `,
+    variables: {
+      input: [{
+        filename,
+        mimeType,
+        resource: "IMAGE", // "FILE" pour PDF ou ZIP
+        httpMethod: "POST",
+        fileSize: 1,
+      }]
+    },
+  }),
+});
+const stagedJson = await stagedRes.json();
+const target = stagedJson.data.stagedUploadsCreate.stagedTargets[0];
 
     // Step 2: upload to S3
     const uploadForm = new FormData();
