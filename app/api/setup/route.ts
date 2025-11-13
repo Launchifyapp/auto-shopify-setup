@@ -5,7 +5,6 @@ export async function GET(req: NextRequest) {
   const shop = searchParams.get("shop");
   const token = searchParams.get("token");
 
-  // --- Config thèmes
   const API_VERSION = process.env.SHOPIFY_API_VERSION || "2023-07";
   const themeName = "Dreamify V2 FR";
   const themeUrl = "https://auto-shopify-setup.vercel.app/DREAMIFY.zip";
@@ -14,7 +13,7 @@ export async function GET(req: NextRequest) {
     return Response.json({ ok: false, error: "Paramètres shop/token manquants !" }, { status: 400 });
   }
 
-  // 1. Upload du thème ZIP
+  // 1. Upload du thème
   const createThemeRes = await fetch(`https://${shop}/admin/api/${API_VERSION}/themes.json`, {
     method: "POST",
     headers: {
@@ -33,7 +32,27 @@ export async function GET(req: NextRequest) {
     return Response.json({ ok: false, error: "Échec upload thème!", details: created }, { status: 400 });
   }
 
-  // 2. Publication automatique du thème
+  // 2. Poll jusqu'à ce que le thème soit prêt à être publié !
+  let statusOk = false;
+  let tries = 0;
+  while (!statusOk && tries < 20) { // Attente max ~40sec
+    await new Promise((res) => setTimeout(res, 2000)); // Pause 2s
+    tries++;
+    const res = await fetch(`https://${shop}/admin/api/${API_VERSION}/themes/${themeId}.json`, {
+      headers: { "X-Shopify-Access-Token": token }
+    });
+    const theme = await res.json();
+    // On log pour debug, optionnel
+    if (theme?.theme?.role === "unpublished" && theme?.theme?.processing === false) {
+      statusOk = true;
+    }
+  }
+
+  if (!statusOk) {
+    return Response.json({ ok: false, error: "Le thème n'est pas prêt à être publié après 40s.", details: "status: waiting/timeout" }, { status: 400 });
+  }
+
+  // 3. Publication du thème
   const publishRes = await fetch(`https://${shop}/admin/api/${API_VERSION}/themes/${themeId}.json`, {
     method: "PUT",
     headers: {
@@ -50,8 +69,5 @@ export async function GET(req: NextRequest) {
     return Response.json({ ok: false, error: "Erreur publication thème", details: err }, { status: 400 });
   }
 
-  // --- Tu peux ajouter ici d'autres automatisations !
-
-  // --- Réponse finale
   return Response.json({ ok: true, themeId, published: true });
 }
