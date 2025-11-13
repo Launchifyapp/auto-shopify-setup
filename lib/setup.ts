@@ -77,7 +77,7 @@ const csvText = await response.text();
 console.log('CSV length:', csvText.length); // log pour debug
 
 try {
-  const records = parse(csvText, { columns: true, skip_empty_lines: true });
+ const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: ";" });
   console.log('Nb produits à importer:', records.length);
   const productsByHandle: Record<string, any[]> = {};
   for (const row of records) {
