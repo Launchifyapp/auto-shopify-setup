@@ -5,44 +5,35 @@ import { Buffer } from "buffer";
 export async function runFullSetup({ shop, token }: { shop: string; token: string }) {
   try {
     // 1. UPLOAD vos images dans Shopify Files – MODE SOURCE UNIQUEMENT
-    const mediaFiles = [
-      { url: "https://auto-shopify-setup.vercel.app/image1.jpg", filename: "image1.jpg", mime_type: "image/jpeg" },
-      { url: "https://auto-shopify-setup.vercel.app/image2.jpg", filename: "image2.jpg", mime_type: "image/jpeg" },
-      { url: "https://auto-shopify-setup.vercel.app/image3.jpg", filename: "image3.jpg", mime_type: "image/jpeg" },
-      { url: "https://auto-shopify-setup.vercel.app/image4.webp", filename: "image4.webp", mime_type: "image/webp" }
-    ];
+const mediaFiles = [
+  { url: "https://auto-shopify-setup.vercel.app/image1.jpg", filename: "image1.jpg", mimeType: "image/jpeg" },
+  { url: "https://auto-shopify-setup.vercel.app/image2.jpg", filename: "image2.jpg", mimeType: "image/jpeg" },
+  { url: "https://auto-shopify-setup.vercel.app/image3.jpg", filename: "image3.jpg", mimeType: "image/jpeg" },
+  { url: "https://auto-shopify-setup.vercel.app/image4.webp", filename: "image4.webp", mimeType: "image/webp" }
+];
 
-    for (const file of mediaFiles) {
-      try {
-        // On n'utilise QUE le mode "source" ici !
-        const fileRes = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Shopify-Access-Token": token
-          },
-          body: JSON.stringify({
-            file: {
-              source: file.url,
-              filename: file.filename,
-              mime_type: file.mime_type,
-            }
-          })
-        });
-
-        const status = fileRes.status;
-        const text = await fileRes.text();
-        try {
-          const data = JSON.parse(text);
-          console.log(`Upload SOURCE file: ${file.filename} | Status: ${status}`, data);
-        } catch (e) {
-          console.log(`RESPONSE NON JSON (SOURCE) POUR ${file.filename} | Status: ${status} | Corps:\n${text}`);
-        }
-      } catch (err) {
-        console.log("Erreur upload file", file.filename, err);
+// Upload en batch via ton API Next.js
+try {
+  const batchRes = await fetch("https://auto-shopify-setup.vercel.app/api/upload-file", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ images: mediaFiles })
+  });
+  const uploads = await batchRes.json();
+  if (uploads.ok) {
+    uploads.uploads.forEach((result, idx) => {
+      if (result.ok) {
+        console.log(`Upload réussi [${mediaFiles[idx].filename}] Shopify ID :`, result.result?.data?.fileCreate?.files?.[0]?.id);
+      } else {
+        console.log(`Erreur upload [${mediaFiles[idx].filename}]`, result.error || result.result);
       }
-      await new Promise(res => setTimeout(res, 1500)); // anti-rate-limit Shopify
-    }
+    });
+  } else {
+    console.log("Erreur batch upload", uploads.error);
+  }
+} catch (err) {
+  console.log("Erreur upload batch images Shopify:", err);
+}
 
     // 2. Créer la page Livraison
     const livraisonHtml = `
