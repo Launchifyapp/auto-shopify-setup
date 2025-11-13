@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server";
-import FormData from "form-data";
+import { FormData } from "formdata-node";
+import { File } from "fetch-blob";
 
-const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
-const SHOPIFY_ADMIN_TOKEN = process.env.SHOPIFY_ADMIN_TOKEN;
+const SHOPIFY_STORE = process.env.SHOPIFY_STORE!;
+const SHOPIFY_ADMIN_TOKEN = process.env.SHOPIFY_ADMIN_TOKEN!;
 const SHOPIFY_GRAPHQL_ENDPOINT = `https://${SHOPIFY_STORE}/admin/api/2023-07/graphql.json`;
 
 export async function POST(req: NextRequest) {
+  // Récupère les données du body JSON
   const { url, filename, mimeType } = await req.json();
 
   // Step 1: stagedUploadsCreate
@@ -34,7 +36,7 @@ export async function POST(req: NextRequest) {
         input: [{
           filename,
           mimeType,
-          resource: "IMAGE", // "FILE" pour PDF ou ZIP
+          resource: "IMAGE",
           httpMethod: "POST",
           fileSize: 1,
         }]
@@ -49,21 +51,23 @@ export async function POST(req: NextRequest) {
   for (const p of target.parameters) {
     uploadForm.append(p.name, p.value);
   }
+  // Récupère le buffer de l'image depuis l'url distante
   const imageRes = await fetch(url);
   const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
-  uploadForm.append("file", imageBuffer, { filename, contentType: mimeType });
+  uploadForm.append("file", new File([imageBuffer], filename, { type: mimeType }));
 
+  // Envoie le file sur S3
   const uploadRes = await fetch(target.url, {
     method: "POST",
-    body: uploadForm as any,
-    headers: uploadForm.getHeaders(),
+    body: uploadForm,
+    // formdata-node gère les headers automatiquement pour multipart
   });
 
   if (!uploadRes.ok) {
     return Response.json({ ok: false, error: "Erreur upload S3", details: await uploadRes.text() }, { status: 500 });
   }
 
-  // Step 3: fileCreate
+  // Step 3: fileCreate (référence le fichier dans Shopify)
   const fileCreateRes = await fetch(SHOPIFY_GRAPHQL_ENDPOINT, {
     method: "POST",
     headers: {
