@@ -1,7 +1,56 @@
-import { parse } from "csv-parse/sync";
+import { Buffer } from "buffer";
 
 export async function runFullSetup({ shop, token }: { shop: string; token: string }) {
   try {
+    // 1. UPLOAD vos images dans Shopify Files
+    const mediaFiles = [
+      { url: "https://auto-shopify-setup.vercel.app/image1.jpg", filename: "image1.jpg", mime_type: "image/jpeg" },
+      { url: "https://auto-shopify-setup.vercel.app/image2.jpg", filename: "image2.jpg", mime_type: "image/jpeg" },
+      { url: "https://auto-shopify-setup.vercel.app/image3.jpg", filename: "image3.jpg", mime_type: "image/jpeg" },
+      { url: "https://auto-shopify-setup.vercel.app/image4.webp", filename: "image4.webp", mime_type: "image/webp" }
+    ];
+
+    for (const file of mediaFiles) {
+      try {
+        // Download image from remote URL as Buffer
+        const imgRes = await fetch(file.url);
+        if (!imgRes.ok) {
+          console.log(`Image inaccessible: ${file.url} => Status: ${imgRes.status}`);
+          continue;
+        }
+        const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+        const base64Str = imgBuffer.toString("base64");
+        console.log(`Base64 for ${file.filename}:`, base64Str.substring(0, 100)); // debug
+
+        // Upload to Shopify Files via "attachment" (base64)
+        const fileRes = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": token
+          },
+          body: JSON.stringify({
+            file: {
+              attachment: base64Str,
+              filename: file.filename,
+              mime_type: file.mime_type
+            }
+          })
+        });
+
+        const status = fileRes.status;
+        const text = await fileRes.text();
+        try {
+          const data = JSON.parse(text);
+          console.log(`Upload file: ${file.filename} | Status: ${status}`, data);
+        } catch (e) {
+          console.log(`RESPONSE NON JSON POUR ${file.filename} | Status: ${status} | Corps:\n${text}`);
+        }
+      } catch (err) {
+        console.log("Erreur upload file", file.filename, err);
+      }
+      await new Promise(res => setTimeout(res, 1500)); // anti-rate-limit
+    }
 
     // 2. Créer la page Livraison
     const livraisonHtml = `
@@ -238,6 +287,9 @@ try {
     }
     // Fin global
   } catch (err) {
+    console.log("Erreur globale runFullSetup:", err);
+  }
+}
     // catch globale si besoin
   }
 }
