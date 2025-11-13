@@ -13,10 +13,10 @@ export async function POST(req: NextRequest) {
   // Step 1: stagedUploadsCreate
   const stagedRes = await fetch(SHOPIFY_GRAPHQL_ENDPOINT, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": SHOPIFY_ADMIN_TOKEN,
-    },
+headers: new Headers({
+  "Content-Type": "application/json",
+  "X-Shopify-Access-Token": SHOPIFY_ADMIN_TOKEN ?? "",
+}),
     body: JSON.stringify({
       query: `
         mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
