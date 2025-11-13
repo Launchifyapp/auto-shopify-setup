@@ -26,40 +26,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
       body: JSON.stringify({
         query: `
-         mutation fileCreate($files: [FileCreateInput!]!) {
-  fileCreate(files: $files) {
-    files {
-      id
-      alt
-      createdAt
-      fileStatus
-      preview {
-        image {
-          url
-        }
-      }
-    }
-    userErrors {
-      field
-      message
-    }
-  }
-}
+          mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+            stagedUploadsCreate(input: $input) {
+              stagedTargets {
+                url
+                resourceUrl
+                parameters {
+                  name
+                  value
+                }
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
         `,
         variables: {
-         input: [{
-  filename,
-  mimeType,
-  resource: "IMAGE",
-  httpMethod: "POST",
-  fileSize: "1",
-}]
+          input: [{
+            filename,
+            mimeType,
+            resource: "IMAGE",
+            httpMethod: "POST",
+            fileSize: "1", // ATTENTION: doit être string, pas number!
+          }]
         },
       }),
     });
 
     const stagedJson = await stagedRes.json();
 
+    // DEBUG: log la réponse en cas de problème
     if (
       !stagedJson?.data?.stagedUploadsCreate?.stagedTargets ||
       stagedJson?.data?.stagedUploadsCreate?.stagedTargets.length === 0
@@ -73,6 +71,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const target = stagedJson.data.stagedUploadsCreate.stagedTargets[0];
 
+    // Contrôle resourceUrl
+    if (!target.resourceUrl) {
+      return res.status(500).json({ ok: false, error: "Pas de resourceUrl retourné par stagedUploadsCreate.", target });
+    }
+
     // 2. Télécharger le fichier source
     const imageRes = await fetch(url);
     if (!imageRes.ok) {
@@ -80,20 +83,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
 
-    // 3. Créer le formulaire natif (multipart) pour S3 (FormData natif)
+    // 3. Créer le formulaire natif (multipart) pour S3
     const uploadForm = new globalThis.FormData();
-
     for (const p of target.parameters) {
       uploadForm.append(p.name, p.value);
     }
-    // IMPORTANT: Shopify/S3 veut le champ "file" comme Blob
     uploadForm.append("file", new Blob([imageBuffer], { type: mimeType }), filename);
 
     // 4. Upload du fichier vers S3
     const uploadRes = await fetch(target.url, {
       method: "POST",
       body: uploadForm,
-      // NE PAS spécifier les headers, ils sont gérés automatiquement par le FormData natif
+      // Pas de headers supplémentaires! FormData natif gère Content-Type & boundary.
     });
 
     if (!uploadRes.ok) {
@@ -103,9 +104,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         details: await uploadRes.text()
       });
     }
-    if (!target.resourceUrl) {
-  return res.status(500).json({ ok: false, error: "Pas de resourceUrl retourné par stagedUploadsCreate.", stagedJson });
-}
 
     // 5. Création du fichier chez Shopify
     const fileCreateRes = await fetch(SHOPIFY_GRAPHQL_ENDPOINT, {
@@ -121,7 +119,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               files {
                 id
                 alt
-                url
+                createdAt
+                fileStatus
+                preview {
+                  image {
+                    url
+                  }
+                }
               }
               userErrors {
                 field
