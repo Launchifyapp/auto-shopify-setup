@@ -3,6 +3,7 @@ export const config = {
 };
 
 import type { NextApiRequest, NextApiResponse } from "next";
+import FormData from "form-data";
 
 const SHOPIFY_STORE = process.env.SHOPIFY_STORE!;
 const SHOPIFY_ADMIN_TOKEN = process.env.SHOPIFY_ADMIN_TOKEN!;
@@ -78,15 +79,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
 
-    // 3. Créer le formulaire natif (multipart) pour S3
-    // Il faut utiliser les API standards JS côté Node
-    // Next.js supporte `FormData` sur Vercel depuis Node 18+
-    const uploadForm = new (globalThis.FormData || require('form-data'))();
+    // 3. Créer le formulaire natif (multipart) pour S3 (avec form-data)
+    const uploadForm = new FormData();
 
     for (const p of target.parameters) {
       uploadForm.append(p.name, p.value);
     }
-    // Ajouter le fichier selon l’API native
     uploadForm.append("file", imageBuffer, {
       filename,
       contentType: mimeType
@@ -96,7 +94,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const uploadRes = await fetch(target.url, {
       method: "POST",
       body: uploadForm,
-      // headers multipart gérés par FormData natif, ne pas surcharger
+      headers: uploadForm.getHeaders(),   // Ajoute bien les bons headers multipart
     });
 
     if (!uploadRes.ok) {
