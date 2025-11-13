@@ -3,7 +3,6 @@ export const config = {
 };
 
 import type { NextApiRequest, NextApiResponse } from "next";
-import FormData from "form-data";
 
 const SHOPIFY_STORE = process.env.SHOPIFY_STORE!;
 const SHOPIFY_ADMIN_TOKEN = process.env.SHOPIFY_ADMIN_TOKEN!;
@@ -58,7 +57,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const stagedJson = await stagedRes.json();
 
-    // DEBUG: log la réponse en cas de problème
     if (
       !stagedJson?.data?.stagedUploadsCreate?.stagedTargets ||
       stagedJson?.data?.stagedUploadsCreate?.stagedTargets.length === 0
@@ -79,22 +77,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
 
-    // 3. Créer le formulaire natif (multipart) pour S3 (avec form-data)
-    const uploadForm = new FormData();
+    // 3. Créer le formulaire natif (multipart) pour S3 (FormData natif)
+    const uploadForm = new globalThis.FormData();
 
     for (const p of target.parameters) {
       uploadForm.append(p.name, p.value);
     }
-    uploadForm.append("file", imageBuffer, {
-      filename,
-      contentType: mimeType
-    });
+    // IMPORTANT: Shopify/S3 veut le champ "file" comme Blob
+    uploadForm.append("file", new Blob([imageBuffer], { type: mimeType }), filename);
 
     // 4. Upload du fichier vers S3
     const uploadRes = await fetch(target.url, {
       method: "POST",
       body: uploadForm,
-      headers: uploadForm.getHeaders(),   // Ajoute bien les bons headers multipart
+      // NE PAS spécifier les headers, ils sont gérés automatiquement par le FormData natif
     });
 
     if (!uploadRes.ok) {
