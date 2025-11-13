@@ -1,5 +1,5 @@
 export const config = {
-  runtime: "nodejs",
+  runtime: "nodejs"
 };
 
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -17,7 +17,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const { url, filename, mimeType } = req.body;
 
-    // Step 1: stagedUploadsCreate
+    // 1. Demander le staged upload à Shopify
     const stagedRes = await fetch(SHOPIFY_GRAPHQL_ENDPOINT, {
       method: "POST",
       headers: {
@@ -36,6 +36,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                   value
                 }
               }
+              userErrors {
+                field
+                message
+              }
             }
           }
         `,
@@ -50,35 +54,60 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         },
       }),
     });
+
     const stagedJson = await stagedRes.json();
+
+    // DEBUG: log la réponse en cas de problème
+    if (
+      !stagedJson?.data?.stagedUploadsCreate?.stagedTargets ||
+      stagedJson?.data?.stagedUploadsCreate?.stagedTargets.length === 0
+    ) {
+      return res.status(500).json({
+        ok: false,
+        error: "Erreur Shopify stagedUploadsCreate",
+        stagedJson // Affiche la réponse complète pour debug
+      });
+    }
+
     const target = stagedJson.data.stagedUploadsCreate.stagedTargets[0];
 
-    // Step 2: upload to S3 (FormData natif, pas formdata-node)
-    const uploadForm = new FormData();
+    // 2. Télécharger le fichier source
+    const imageRes = await fetch(url);
+    if (!imageRes.ok) {
+      return res.status(500).json({ ok: false, error: "Image source introuvable" });
+    }
+    const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
+
+    // 3. Créer le formulaire natif (multipart) pour S3
+    // Il faut utiliser les API standards JS côté Node
+    // Next.js supporte `FormData` sur Vercel depuis Node 18+
+    const uploadForm = new (globalThis.FormData || require('form-data'))();
+
     for (const p of target.parameters) {
       uploadForm.append(p.name, p.value);
     }
-    const imageRes = await fetch(url);
-    const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
-    // Utilise le FormData natif, mais on doit utiliser un Blob ou File
-    uploadForm.append("file", new Blob([imageBuffer], { type: mimeType }), filename);
+    // Ajouter le fichier selon l’API native
+    uploadForm.append("file", imageBuffer, {
+      filename,
+      contentType: mimeType
+    });
 
+    // 4. Upload du fichier vers S3
     const uploadRes = await fetch(target.url, {
       method: "POST",
       body: uploadForm,
-      // Headers multipart gérés par FormData natif
+      // headers multipart gérés par FormData natif, ne pas surcharger
     });
 
     if (!uploadRes.ok) {
-      res.status(500).json({
+      return res.status(500).json({
         ok: false,
         error: "Erreur upload S3",
-        details: await uploadRes.text(),
+        details: await uploadRes.text()
       });
-      return;
     }
 
-    // Step 3: fileCreate
+    // 5. Création du fichier chez Shopify
     const fileCreateRes = await fetch(SHOPIFY_GRAPHQL_ENDPOINT, {
       method: "POST",
       headers: {
@@ -109,6 +138,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         },
       }),
     });
+
     const fileCreateJson = await fileCreateRes.json();
 
     res.status(200).json({ ok: true, fileCreate: fileCreateJson });
