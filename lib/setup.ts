@@ -2,8 +2,8 @@ import { parse } from "csv-parse/sync";
 
 export async function runFullSetup({ shop, token }: { shop: string; token: string }) {
   try {
-    // 1. Créer la page Livraison
-    console.log('STEP: Livraison');
+
+    // 2. Créer la page Livraison
     const livraisonHtml = `
       <p><b>Livraison GRATUITE</b></p>
       <p>Le traitement des commandes prend de 1 à 3 jours ouvrables avant l'expédition. Une fois l'article expédié, le délai de livraison estimé est le suivant:</p>
@@ -15,66 +15,72 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
         <li>Reste du monde : 7-14 jours</li>
       </ul>
     `.trim();
-    const res1 = await fetch(`https://${shop}/admin/api/2023-07/pages.json`, {
+
+    await fetch(`https://${shop}/admin/api/2023-07/pages.json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Shopify-Access-Token": token
       },
-      body: JSON.stringify({ page: { title: "Livraison", body_html: livraisonHtml } })
+      body: JSON.stringify({
+        page: { title: "Livraison", body_html: livraisonHtml }
+      })
     });
-    console.log('Livraison status:', res1.status, 'body:', await res1.text());
 
-    // 2. Créer la page FAQ
-    console.log('STEP: FAQ');
+    // 3. Créer la page FAQ
     const faqHtml = `<p>Crée ta FAQ ici</p>`;
-    const res2 = await fetch(`https://${shop}/admin/api/2023-07/pages.json`, {
+    await fetch(`https://${shop}/admin/api/2023-07/pages.json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Shopify-Access-Token": token
       },
-      body: JSON.stringify({ page: { title: "FAQ", body_html: faqHtml } })
+      body: JSON.stringify({
+        page: { title: "FAQ", body_html: faqHtml }
+      })
     });
-    console.log('FAQ status:', res2.status, 'body:', await res2.text());
 
-    // 3. Créer les collections
-    console.log('STEP: Collection 1');
-    const res3 = await fetch(`https://${shop}/admin/api/2023-07/smart_collections.json`, {
+    // 4. Créer les collections
+    await fetch(`https://${shop}/admin/api/2023-07/smart_collections.json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Shopify-Access-Token": token
       },
-      body: JSON.stringify({ smart_collection: { title: "Beauté & soins", rules: [{ column: "tag", relation: "equals", condition: "Beauté & soins" }]}})
+      body: JSON.stringify({
+        smart_collection: {
+          title: "Beauté & soins",
+          rules: [{ column: "tag", relation: "equals", condition: "Beauté & soins" }]
+        }
+      })
     });
-    console.log('Collection 1 status:', res3.status, 'body:', await res3.text());
 
-    console.log('STEP: Collection 2');
-    const res4 = await fetch(`https://${shop}/admin/api/2023-07/smart_collections.json`, {
+    await fetch(`https://${shop}/admin/api/2023-07/smart_collections.json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Shopify-Access-Token": token
       },
-      body: JSON.stringify({ smart_collection: { title: "Maison & confort", rules: [{ column: "tag", relation: "equals", condition: "Maison & confort" }]}})
+      body: JSON.stringify({
+        smart_collection: {
+          title: "Maison & confort",
+          rules: [{ column: "tag", relation: "equals", condition: "Maison & confort" }]
+        }
+      })
     });
-    console.log('Collection 2 status:', res4.status, 'body:', await res4.text());
 
-    // 4. Import produits CSV + variantes
-    console.log('STEP: Import produits CSV');
+    // 5. Import produits CSV + variantes
     const csvUrl = "https://github.com/Launchifyapp/auto-shopify-setup/releases/download/V1/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
     const records = parse(csvText, { columns: true, skip_empty_lines: true });
+
     const productsByHandle: Record<string, any[]> = {};
     for (const row of records) {
       if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
       productsByHandle[row.Handle].push(row);
     }
 
-    console.log('STEP: Création produits');
-    let compteur = 0;
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
       const option1Values = group.map(row => row["Option1 Value"]?.trim()).filter(Boolean);
@@ -151,8 +157,9 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
         images
       };
       if (options.length > 0) product.options = options;
+
       try {
-        const prodRes = await fetch(`https://${shop}/admin/api/2023-07/products.json`, {
+        await fetch(`https://${shop}/admin/api/2023-07/products.json`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -160,18 +167,14 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
           },
           body: JSON.stringify({ product })
         });
-        const prodTxt = await prodRes.text();
-        console.log('Produit', handle, 'status:', prodRes.status, '| body:', prodTxt);
       } catch (err) {
-        console.log('Erreur produit', handle, err);
+        // log erreur si besoin
       }
       await new Promise(res => setTimeout(res, 300));
-      if (++compteur > 10) break; // Pour debug, stop après 10 produits
     }
 
-    // 5. Upload DU THÈME ZIP + publication (avec polling)
-    console.log('STEP: Upload thème');
-    const themeZipUrl = "https://github.com/Launchifyapp/auto-shopify-setup/releases/download/V1/DREAMIFY-V2.zip";
+    // 6. Upload DU THÈME ZIP + publication (avec polling)
+    const themeZipUrl = "https://github.com/Launchifyapp/auto-shopify-setup/blob/main/public/DREAMIFY-V2.zip";
     const themeUploadRes = await fetch(`https://${shop}/admin/api/2023-07/themes.json`, {
       method: "POST",
       headers: {
@@ -185,20 +188,10 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
         }
       })
     });
-    const themeTxt = await themeUploadRes.text();
-    console.log('Thème upload status:', themeUploadRes.status, '| body:', themeTxt);
+    const themeUploadData = await themeUploadRes.json();
 
-    let themeId;
-    try {
-      const themeUploadData = JSON.parse(themeTxt);
-      themeId = themeUploadData?.theme?.id;
-    } catch (e) {
-      console.log('Erreur parsing theme JSON', e);
-    }
-
-    // Polling publication
-    if (themeId) {
-      console.log('STEP: Polling publication thème');
+    if (themeUploadData?.theme?.id) {
+      const themeId = themeUploadData.theme.id;
       let statusOk = false, tries = 0;
       while (!statusOk && tries < 20) {
         await new Promise(res => setTimeout(res, 2000));
@@ -206,35 +199,28 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
         const resTheme = await fetch(`https://${shop}/admin/api/2023-07/themes/${themeId}.json`, {
           headers: { "X-Shopify-Access-Token": token }
         });
-        const pollTxt = await resTheme.text();
-        console.log(`Theme poll ${tries} status:`, resTheme.status, '| body:', pollTxt);
-        let themeDetail;
-        try {
-          themeDetail = JSON.parse(pollTxt);
-        } catch (e) { continue; }
+        const themeDetail = await resTheme.json();
         if (themeDetail?.theme?.role === "unpublished" && themeDetail?.theme?.processing === false) {
           statusOk = true;
         }
       }
       if (statusOk) {
-        console.log('STEP: Publication du thème');
-        const themePutRes = await fetch(`https://${shop}/admin/api/2023-07/themes/${themeId}.json`, {
+        await fetch(`https://${shop}/admin/api/2023-07/themes/${themeId}.json`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
             "X-Shopify-Access-Token": token
           },
-          body: JSON.stringify({ theme: { role: "main" } })
+          body: JSON.stringify({
+            theme: {
+              role: "main"
+            }
+          })
         });
-        const themePutTxt = await themePutRes.text();
-        console.log('Theme publish status:', themePutRes.status, '| body:', themePutTxt);
       }
-    } else {
-      console.log('Aucun themeId uploadé, skip publication');
     }
-
-    console.log('SETUP FINI !');
+    // Fin global
   } catch (err) {
-    console.log("Erreur globale runFullSetup:", err);
+    // catch globale si besoin
   }
 }
