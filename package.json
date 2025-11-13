@@ -2,11 +2,11 @@
   "name": "auto-shopify-setup",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start"
-    "type": "module",
   },
   "dependencies": {
     "next": "^14.2.5",
