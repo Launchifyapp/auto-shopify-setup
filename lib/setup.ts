@@ -183,7 +183,7 @@ const mediaFiles = [
 
 for (const file of mediaFiles) {
   try {
-    await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
+    const fileRes = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -196,11 +196,13 @@ for (const file of mediaFiles) {
         }
       })
     });
+    const data = await fileRes.json();
+    console.log("Upload file:", file.filename, data); // <-- ON VEUT LA REPONSE
+    // Optionnel : si tu veux collecter les file URLs : data.file.url
   } catch (err) {
-    // Optionnel : log erreur upload
-    // console.log("Erreur upload file", file.filename, err);
+    console.log("Erreur upload file", file.filename, err);
   }
-  await new Promise(res => setTimeout(res, 500)); // anti-rate-limit
+  await new Promise(res => setTimeout(res, 1500)); // anti-rate-limit
 }
     
     // 6. Upload DU THÈME ZIP + publication (avec polling)
