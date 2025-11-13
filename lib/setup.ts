@@ -196,15 +196,24 @@ for (const file of mediaFiles) {
         }
       })
     });
-    const data = await fileRes.json();
-    console.log("Upload file:", file.filename, data); // <-- ON VEUT LA REPONSE
-    // Optionnel : si tu veux collecter les file URLs : data.file.url
+
+    // Récupère le statut HTTP et le corps texte
+    const status = fileRes.status;
+    const text = await fileRes.text();
+
+    // Essaye de parser le JSON, sinon affiche la réponse brute
+    let data;
+    try {
+      data = JSON.parse(text);
+      console.log(`Upload file: ${file.filename} | Status: ${status}`, data);
+    } catch (e) {
+      console.log(`RESPONSE NON JSON POUR ${file.filename} | Status: ${status} | Corps:\n${text}`);
+    }
   } catch (err) {
     console.log("Erreur upload file", file.filename, err);
   }
-  await new Promise(res => setTimeout(res, 1500)); // anti-rate-limit
+  await new Promise(res => setTimeout(res, 1500)); // Attente anti-rate-limit Shopify
 }
-    
     // 6. Upload DU THÈME ZIP + publication (avec polling)
     const themeZipUrl = "https://auto-shopify-setup.vercel.app/DREAMIFY.zip";
     const themeUploadRes = await fetch(`https://${shop}/admin/api/2023-07/themes.json`, {
