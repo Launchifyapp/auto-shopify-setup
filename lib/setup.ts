@@ -1,6 +1,7 @@
 import { parse } from 'csv-parse/sync';
 import { Buffer } from "buffer";
 
+export async function runFullSetup({ shop, token }: { shop: string; token: string }) {
 // Utilisation des variables d'environnement Shopify
 const shop = process.env.SHOPIFY_STORE;
 const token = process.env.SHOPIFY_ADMIN_TOKEN;
@@ -317,3 +318,4 @@ export async function runFullSetup() {
     console.log("Erreur globale runFullSetup:", err);
   }
 }
+  }
