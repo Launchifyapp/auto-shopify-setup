@@ -185,8 +185,7 @@ try {
       console.log('Erreur produit', handle, err);
     }
     await new Promise(res => setTimeout(res, 300)); // anti-rate-limit
-    // Pour debug, stop après 10 produits
-    if (++compteur > 10) break;
+
   }
 } catch (err) {
   console.log('Erreur parsing du CSV produits:', err);
