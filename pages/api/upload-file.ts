@@ -103,6 +103,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         details: await uploadRes.text()
       });
     }
+    if (!target.resourceUrl) {
+  return res.status(500).json({ ok: false, error: "Pas de resourceUrl retourné par stagedUploadsCreate.", stagedJson });
+}
 
     // 5. Création du fichier chez Shopify
     const fileCreateRes = await fetch(SHOPIFY_GRAPHQL_ENDPOINT, {
