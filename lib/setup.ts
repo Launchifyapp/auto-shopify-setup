@@ -174,7 +174,7 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
     }
 
     // 6. Upload DU THÈME ZIP + publication (avec polling)
-    const themeZipUrl = "https://auto-shopify-setup.vercel.app/DREAMIFY.zip";
+    const themeZipUrl = "https://github.com/Launchifyapp/auto-shopify-setup/blob/main/public/DREAMIFY-V2.zip";
     const themeUploadRes = await fetch(`https://${shop}/admin/api/2023-07/themes.json`, {
       method: "POST",
       headers: {
