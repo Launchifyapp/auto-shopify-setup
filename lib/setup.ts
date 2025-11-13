@@ -1,4 +1,5 @@
 import { parse } from "csv-parse/sync";
+import { Buffer } from "buffer";
 
 export async function runFullSetup({ shop, token }: { shop: string; token: string }) {
   try {
@@ -27,7 +28,6 @@ export async function runFullSetup({ shop, token }: { shop: string; token: strin
     });
 
     // 1 bis. Upload media files into Shopify Files
-import { Buffer } from "buffer"; // Pour NodeJS
 
 const mediaFiles = [
   { url: "https://auto-shopify-setup.vercel.app/image1.jpg", filename: "image1.jpg" },
