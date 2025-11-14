@@ -43,28 +43,27 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
       try {
         // Mutation productCreate
-        const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Shopify-Access-Token": token,
-          },
-          body: JSON.stringify({
-            query: `
-              mutation productCreate($product: ProductInput!) {
-                productCreate(product: $product) {
-                  product { id title handle options { id name position optionValues { id name hasVariants } } }
-                  userErrors { field message }
-                }
-              }
-            `,
-            variables: { product },
-          }),
-        });
-        const gqlJson = await gqlRes.json();
-        console.log('Produit créé', handle, '| GraphQL response:', JSON.stringify(gqlJson, null, 2));
-        const productId = gqlJson?.data?.productCreate?.product?.id;
-
+       const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-Shopify-Access-Token": token,
+  },
+  body: JSON.stringify({
+    query: `
+      mutation productCreate($product: ProductCreateInput!) {
+        productCreate(product: $product) {
+          product { id title handle options { id name position optionValues { id name hasVariants } } }
+          userErrors { field message }
+        }
+      }
+    `,
+    variables: { product },
+  }),
+});
+const gqlJson = await gqlRes.json();
+console.log('Produit créé', handle, '| GraphQL response:', JSON.stringify(gqlJson, null, 2));
+const productId = gqlJson?.data?.productCreate?.product?.id;
         // 2. Création des variants après productCreate (mutation productVariantCreate)
         if (productId) {
           for (const row of group) {
