@@ -37,7 +37,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         vendor: main.Vendor,
         productType: main.Type,
         tags: main.Tags?.split(",").map((t: string) => t.trim()),
-        published: main.Published === "true",
         productOptions: productOptions.length ? productOptions : undefined
       };
 
