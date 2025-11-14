@@ -3,7 +3,7 @@ import { parse } from 'csv-parse/sync';
 // Fonction principale pour automatiser la boutique (SANS upload du thème)
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
-    // 1. UPLOAD images Shopify Files via API batch
+    // 1. Upload des fichiers médias via API batch
     const mediaFiles = [
       { url: "https://auto-shopify-setup.vercel.app/image1.jpg", filename: "image1.jpg", mimeType: "image/jpeg" },
       { url: "https://auto-shopify-setup.vercel.app/image2.jpg", filename: "image2.jpg", mimeType: "image/jpeg" },
@@ -20,8 +20,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       if (uploads.ok) {
         uploads.uploads.forEach((result: any, idx: number) => {
           if (result.ok) {
-            console.log(`Upload réussi [${mediaFiles[idx].filename}] Shopify ID :`,
-              result.result?.data?.fileCreate?.files?.[0]?.id);
+            console.log(`Upload réussi [${mediaFiles[idx].filename}] Shopify ID :`, result.result?.data?.fileCreate?.files?.[0]?.id);
           } else {
             console.log(`Erreur upload [${mediaFiles[idx].filename}]`, result.error || result.result);
           }
@@ -39,7 +38,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       <p>Le traitement des commandes prend de 1 à 3 jours ouvrables avant l'expédition. Une fois l'article expédié, le délai de livraison estimé est le suivant:</p>
       <ul>
         <li>France : 4-10 jours ouvrables</li>
-        <li>Belgique: 4-10 jours ouvrables</li>
+        <li>Belgique : 4-10 jours ouvrables</li>
         <li>Suisse : 7-12 jours ouvrables</li>
         <li>Canada : 7-12 jours ouvrables</li>
         <li>Reste du monde : 7-14 jours</li>
@@ -71,35 +70,28 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     });
 
     // 4. Création des collections (Beauté & soins, Maison & confort)
-    await fetch(`https://${shop}/admin/api/2023-07/smart_collections.json`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": token
-      },
-      body: JSON.stringify({
-        smart_collection: {
-          title: "Beauté & soins",
-          rules: [{ column: "tag", relation: "equals", condition: "Beauté & soins" }]
-        }
-      })
-    });
+    const collections = [
+      { title: "Beauté & soins", tag: "Beauté & soins" },
+      { title: "Maison & confort", tag: "Maison & confort" }
+    ];
 
-    await fetch(`https://${shop}/admin/api/2023-07/smart_collections.json`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": token
-      },
-      body: JSON.stringify({
-        smart_collection: {
-          title: "Maison & confort",
-          rules: [{ column: "tag", relation: "equals", condition: "Maison & confort" }]
-        }
-      })
-    });
+    for (const col of collections) {
+      await fetch(`https://${shop}/admin/api/2023-07/smart_collections.json`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": token
+        },
+        body: JSON.stringify({
+          smart_collection: {
+            title: col.title,
+            rules: [{ column: "tag", relation: "equals", condition: col.tag }]
+          }
+        })
+      });
+    }
 
-    // 5. Import des produits CSV + variantes
+    // 5. Import des produits CSV + variantes (mutation GraphQL)
     console.log('STEP: Import produits CSV');
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
@@ -110,6 +102,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: "," });
       console.log('Nb produits à importer:', records.length);
       const productsByHandle: Record<string, any[]> = {};
+
       for (const row of records) {
         if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
         productsByHandle[row.Handle].push(row);
@@ -121,83 +114,62 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         const option1Values = group.map(row => row["Option1 Value"]?.trim()).filter(Boolean);
         const images = Array.from(new Set(
           group.map(row => row["Image Src"]).filter(src => src && src.length > 6)
-        )).map((src, idx) => ({
-          alt: group.find(row => row["Image Src"] === src)?.["Image Alt Text"] || undefined,
+        )).map(src => ({
           src,
+          alt: group.find(row => row["Image Src"] === src)?.["Image Alt Text"] || undefined,
         }));
 
-        let variants: any[] = [];
+        // Gestion des options et variantes
+        let variantObjects: any[] = [];
         let options: any[] = [];
 
-        if (
-          [...new Set(option1Values)].length === 1 &&
-          (option1Values[0] === "Default Title" || !option1Values[0])
-        ) {
-          variants = [{
-            sku: main["Variant SKU"] || null,
-            price: main["Variant Price"] || null,
-            compareAtPrice: main["Variant Compare At Price"] || null,
-            weight: main["Variant Grams"] ? Number(main["Variant Grams"]) : null,
-            inventoryManagement: main["Variant Inventory Tracker"] || null,
-            inventoryPolicy: main["Variant Inventory Policy"] || null,
-            fulfillmentService: main["Variant Fulfillment Service"] || null,
-            requiresShipping: main["Variant Requires Shipping"] === "true",
-            taxable: main["Variant Taxable"] === "true",
-            barcode: main["Variant Barcode"] || null,
-            image: main["Variant Image"] || null,
-            weightUnit: main["Variant Weight Unit"] || null
-          }];
-          options = [];
-        } else {
-          options = [];
-          if (main["Option1 Name"]) options.push(main["Option1 Name"]);
-          if (main["Option2 Name"]) options.push(main["Option2 Name"]);
-          if (main["Option3 Name"]) options.push(main["Option3 Name"]);
+        // Options
+        if (main["Option1 Name"]) options.push({ name: main["Option1 Name"] });
+        if (main["Option2 Name"]) options.push({ name: main["Option2 Name"] });
+        if (main["Option3 Name"]) options.push({ name: main["Option3 Name"] });
 
-          variants = group
-            .filter(row => row["Option1 Value"] && row["Option1 Value"] !== "Default Title")
-            .map(row => {
-              return {
-                sku: row["Variant SKU"] || null,
-                price: row["Variant Price"] || main["Variant Price"] || null,
-                compareAtPrice: row["Variant Compare At Price"] || null,
-                weight: row["Variant Grams"] ? Number(row["Variant Grams"]) : null,
-                inventoryManagement: row["Variant Inventory Tracker"] || null,
-                inventoryPolicy: row["Variant Inventory Policy"] || null,
-                fulfillmentService: row["Variant Fulfillment Service"] || null,
-                requiresShipping: row["Variant Requires Shipping"] === "true",
-                taxable: row["Variant Taxable"] === "true",
-                barcode: row["Variant Barcode"] || null,
-                image: row["Variant Image"] || null,
-                weightUnit: row["Variant Weight Unit"] || null,
-                options: [
-                  row["Option1 Value"] || null,
-                  row["Option2 Value"] || null,
-                  row["Option3 Value"] || null
-                ].filter(Boolean)
-              };
-            });
-        }
+        // Variants
+        variantObjects = group
+          .map(row => {
+            return {
+              option1: row["Option1 Value"] || undefined,
+              option2: row["Option2 Value"] || undefined,
+              option3: row["Option3 Value"] || undefined,
+              sku: row["Variant SKU"] || undefined,
+              price: row["Variant Price"] || main["Variant Price"] || undefined,
+              compare_at_price: row["Variant Compare At Price"] || undefined,
+              grams: row["Variant Grams"] ? Number(row["Variant Grams"]) : undefined,
+              inventory_management: row["Variant Inventory Tracker"] || undefined,
+              inventory_policy: row["Variant Inventory Policy"] || undefined,
+              fulfillment_service: row["Variant Fulfillment Service"] || undefined,
+              requires_shipping: row["Variant Requires Shipping"] === "true",
+              taxable: row["Variant Taxable"] === "true",
+              barcode: row["Variant Barcode"] || undefined,
+              image: row["Variant Image"] || undefined,
+              weight_unit: row["Variant Weight Unit"] || undefined
+            };
+          });
 
-        // Construction ProductInput (GraphQL)
+        // Construction des datas Produit pour GraphQL (conformité Shopify)
         const productInput: any = {
           title: main.Title,
-          bodyHtml: main["Body (HTML)"] || "",
+          body_html: main["Body (HTML)"] || "",
           handle: handle,
           vendor: main.Vendor,
-          productType: main.Type,
+          product_type: main.Type,
           tags: main.Tags,
           published: main.Published === "true",
-          options,
-          images: images.map(img => ({ altText: img.alt || img.src, src: img.src })),
-          variants,
+          options: options.length ? options : undefined,
+          images: images.length ? images : undefined,
+          variants: variantObjects.length ? variantObjects : undefined,
         };
 
-        // Clean null/undefined for Shopify GraphQL
+        // Nettoyage des champs vides/undefined
         Object.keys(productInput).forEach(
-          k => (productInput[k] === null || productInput[k] === undefined) && delete productInput[k]
+          k => (productInput[k] === undefined || productInput[k] === null) && delete productInput[k]
         );
 
+        // Envoi mutation GraphQL productCreate
         try {
           const gqlRes = await fetch(`https://${shop}/admin/api/2023-07/graphql.json`, {
             method: "POST",
@@ -217,8 +189,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
               variables: { input: productInput }
             })
           });
-          const gqlText = await gqlRes.text();
-          console.log('Produit', handle, 'GraphQL status:', gqlRes.status, '| body:', gqlText);
+          const gqlJson = await gqlRes.json();
+          console.log('Produit', handle, 'GraphQL status:', gqlRes.status, '| response:', JSON.stringify(gqlJson, null, 2));
         } catch (err) {
           console.log('Erreur création produit GraphQL', handle, err);
         }
