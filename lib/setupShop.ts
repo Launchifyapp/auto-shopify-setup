@@ -147,7 +147,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           handle,
           vendor: main.Vendor,
           productType: main.Type,
-          tags: main.Tags?.split(",").map(t => t.trim()),
+          tags: main.Tags?.split(",").map((t: string) => t.trim()),
           published: main.Published === "true",
           options: options.length ? options : undefined,
           images: images.length ? images : undefined,
