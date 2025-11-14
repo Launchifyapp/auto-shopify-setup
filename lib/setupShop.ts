@@ -1,15 +1,12 @@
 import { parse } from "csv-parse/sync";
 
-// Fonction principale pour l'import produits Shopify via GraphQL API 2025-10 (création, variantes, médias)
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
-    // 1. Charger le CSV produits
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
     const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: "," });
 
-    // Regrouper les lignes par handle produit
     const productsByHandle: Record<string, any[]> = {};
     for (const row of records) {
       if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
@@ -18,12 +15,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
-
-      // 1️⃣ Créer le produit avec la mutation productCreate (sans variantes/images)
       const option1Name = main["Option1 Name"];
       const option1Values = group.map(row => row["Option1 Value"]?.trim()).filter(Boolean);
-
-      // Préparer productOptions si elles existent
       const productOptions = option1Name
         ? [{
             name: option1Name,
@@ -31,11 +24,9 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }]
         : undefined;
 
-      // Générer un handle unique pour éviter l'erreur "already in use"
-      const handleUnique =
-        handle + "-" + Math.random().toString(16).slice(2, 7);
+      // Handle unique à chaque import
+      const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
 
-      // Construction de l'objet conforme ProductCreateInput
       const product: any = {
         title: main.Title,
         descriptionHtml: main["Body (HTML)"] || "",
@@ -47,7 +38,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       };
 
       try {
-        // 🟢 Mutation productCreate
+        // Création produit
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -74,26 +65,16 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           continue;
         }
 
-        // 2️⃣ Ajout des variantes en bulk (productVariantsBulkCreate)
+        // VARIANTS - Seulement les champs autorisés
         const variants = group
           .filter(row => row["Option1 Value"] && row["Option1 Value"] !== "Default Title")
           .map(row => ({
-            sku: row["Variant SKU"] || undefined,
             price: row["Variant Price"] || main["Variant Price"] || undefined,
             compareAtPrice: row["Variant Compare At Price"] || undefined,
-            requiresShipping: row["Variant Requires Shipping"] === "true",
-            taxable: row["Variant Taxable"] === "true",
-            fulfillmentService: row["Variant Fulfillment Service"] || undefined,
-            inventoryPolicy: (row["Variant Inventory Policy"] || "DENY").toUpperCase(),
-            weight: row["Variant Grams"] ? Number(row["Variant Grams"]) : undefined,
-            weightUnit: (row["Variant Weight Unit"] || "KILOGRAMS").toUpperCase(),
+            sku: row["Variant SKU"] || undefined,
             barcode: row["Variant Barcode"] || undefined,
-            selectedOptions: option1Name
-              ? [{ name: option1Name, value: row["Option1 Value"] }]
-              : [],
           }));
 
-        // 🟢 Mutation productVariantsBulkCreate
         if (variants.length) {
           try {
             const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
@@ -106,7 +87,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
                 query: `
                   mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
                     productVariantsBulkCreate(productId: $productId, variants: $variants) {
-                      productVariants { id sku price selectedOptions { name value } }
+                      productVariants { id sku price }
                       userErrors { field message }
                     }
                   }
@@ -121,16 +102,16 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // 3️⃣ Ajout des images via productCreateMedia
+        // MEDIAS (images) - Format CreateMediaInput
         const images = Array.from(new Set(
           group.map(row => row["Image Src"])
             .filter(src => typeof src === "string" && src.length > 6)
         )).map(src => ({
           alt: group.find(row => row["Image Src"] === src)?.["Image Alt Text"] ?? "",
           originalSource: src,
+          mediaContentType: "IMAGE",   // <-- Obligatoire
         }));
 
-        // 🟢 Mutation productCreateMedia
         if (images.length) {
           try {
             const mediaRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
