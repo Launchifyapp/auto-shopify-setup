@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const themeZipUrl = searchParams.get("themeZipUrl") || "https://auto-shopify-setup.vercel.app/theme.zip";
   if (!shop || !token) return Response.json({ ok: false, error: "Paramètres shop/token manquants !" }, { status: 400 });
   try {
-    const themeId = await uploadTheme({ shop, token, themeZipUrl });
+    const themeId = await uploadTheme({ shop, token });
     return Response.json({ ok: !!themeId, themeId });
   } catch (err) {
     return Response.json({ ok: false, error: String(err) }, { status: 500 });
