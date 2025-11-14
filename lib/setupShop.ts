@@ -1,6 +1,6 @@
 import { parse } from 'csv-parse/sync';
 
-// Fonction principale pour l'import produits Shopify via GraphQL API 2025-10
+// Fonction principale pour l'import produits Shopify via GraphQL API 2025-10 (options, variants, images)
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     // 1. Charger le CSV produits
@@ -21,7 +21,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       const option1Name = main["Option1 Name"];
       const option1Values = group.map(row => row["Option1 Value"]?.trim()).filter(Boolean);
 
-      // Préparer productOptions pour le nouveau schéma
+      // Préparer productOptions pour le nouveau schéma GraphQL
       const productOptions: Array<{ name: string; values: Array<{ name: string }> }> = option1Name
         ? [{
             name: option1Name,
@@ -29,8 +29,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }]
         : [];
 
-      // Préparer la mutation GraphQL productCreate
-      // les variants et images se rajoutent APRES la création du produit avec les mutations dédiées
+      // Création du produit (mutation productCreate)
       const product = {
         title: main.Title,
         descriptionHtml: main["Body (HTML)"] || "",
@@ -43,7 +42,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       };
 
       try {
-        // Mutation productCreate classique du schéma 2025-10 (options dans productOptions)
+        // Mutation productCreate
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -64,14 +63,11 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         });
         const gqlJson = await gqlRes.json();
         console.log('Produit créé', handle, '| GraphQL response:', JSON.stringify(gqlJson, null, 2));
-
-        // Si l'id du produit existe on peut créer variants et images en mutation séparée
         const productId = gqlJson?.data?.productCreate?.product?.id;
 
-        // 2. Création des variants (NE PAS inclure dans productCreate !)
+        // 2. Création des variants après productCreate (mutation productVariantCreate)
         if (productId) {
           for (const row of group) {
-            // Ne pas créer variant "Default Title" inutiles
             if (row["Option1 Value"] === "Default Title" || !row["Option1 Value"]) continue;
             const variant = {
               productId,
@@ -89,8 +85,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
                 ? [{ name: option1Name, value: row["Option1 Value"] }]
                 : [],
             };
-
-            // mutation productVariantCreate
             try {
               const variantRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
                 method: "POST",
@@ -119,7 +113,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // 3. Création des images via productImageCreate (si productId)
+        // 3. Création des images via productImageCreate (mutation)
         if (productId) {
           const images = Array.from(new Set(
             group.map(row => row["Image Src"])
