@@ -87,10 +87,12 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
               row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim() !== "Default Title"
             ))
             .map(row => {
-              const optionValues: { name: string }[] = [];
+              const optionValues: { name: string; optionName: string }[] = [];
               productOptions.forEach((opt, idx) => {
                 const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
-                if (value && value !== "Default Title") optionValues.push({ name: value });
+                if (value && value !== "Default Title") {
+                  optionValues.push({ name: value, optionName: opt.name });
+                }
               });
               return {
                 price: row["Variant Price"] || main["Variant Price"] || undefined,
@@ -133,7 +135,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             }
           }
         }
-        // Média/images: non traité ici (à faire en batch après création)
+        // Media/images: non traité ici (à faire en batch après création)
 
       } catch (err) {
         console.log('Erreur création produit GraphQL', handleUnique, err);
