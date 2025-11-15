@@ -1,8 +1,7 @@
 import fs from "fs";
 import path from "path";
-import { fileTypeFromBuffer } from "file-type";
+// fetch est global sur Node >=18 ou Next.js, donc ne pas importer node-fetch !
 
-// CONFIGS
 const IMAGES_DIR = "./public/products_images/";
 const EXTRA_IMAGES = [
   "./public/image1.jpg",
@@ -10,9 +9,10 @@ const EXTRA_IMAGES = [
   "./public/image4.jpg",
   "./public/image4.webp"
 ];
-const UPLOAD_API_ENDPOINT = "http://localhost:3000/api/upload-file"; // Next.js endpoint, adapte si remote
+// Change selon ton setup local ! Utilise en local http://localhost:3000/api/upload-file
+const UPLOAD_API_ENDPOINT = "http://localhost:3000/api/upload-file";
 
-// List all files in products_images
+// Utilitaire pour récupérer les images du dossier
 function getAllImageFiles(): string[] {
   return fs.readdirSync(IMAGES_DIR)
     .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f))
@@ -20,17 +20,20 @@ function getAllImageFiles(): string[] {
 }
 
 function getMimeType(filePath: string): string {
-  const ext = filePath.split(".").pop()?.toLowerCase();
+  const ext = filePath.split('.').pop()?.toLowerCase();
   if (ext === "png") return "image/png";
   if (ext === "webp") return "image/webp";
   return "image/jpeg";
 }
 
-// Upload a single image via staged endpoint
-async function uploadViaStagedApi(localPath: string) {
+// Upload une image locale via /api/upload-file (staged upload Shopify)
+async function uploadViaStagedApi(localPath: string): Promise<string> {
   const filename = path.basename(localPath);
   const mimeType = getMimeType(localPath);
+  // Envoie le fichier avec chemin file:// (tu adapteras si tu utilises buffer/binary sur l'endpoint Next.js !)
+  // Pour une API Next.js, il vaut mieux utiliser multipart ou passer en public si tu lances en remote
   const payload = { url: `file://${localPath}`, filename, mimeType };
+
   const res = await fetch(UPLOAD_API_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -45,21 +48,28 @@ async function uploadViaStagedApi(localPath: string) {
 }
 
 (async () => {
-  // Images du dossier + images spéciales
+  // Liste images à uploader
   const allFiles = [...getAllImageFiles(), ...EXTRA_IMAGES];
+  let countSuccess = 0, countFail = 0, failedFiles: string[] = [];
   for (const imgPath of allFiles) {
     if (!fs.existsSync(imgPath)) {
-      console.warn(`[UPLOAD] File not found ${imgPath}`);
+      console.warn(`[UPLOAD] File not found: ${imgPath}`);
+      countFail++;
+      failedFiles.push(imgPath + " (not found)");
       continue;
     }
     try {
       const cdnUrl = await uploadViaStagedApi(imgPath);
       console.log(`[UPLOAD SUCCESS] ${imgPath} → ${cdnUrl}`);
-      // Optionnel : ici tu peux ajouter la logique pour rattacher cdnUrl à un produit/variant
+      countSuccess++;
     } catch (err) {
       console.error(`[UPLOAD ERROR] ${imgPath}`, err);
+      countFail++;
+      failedFiles.push(imgPath + " (error)");
     }
-    await new Promise(r => setTimeout(r, 250)); // anti-throttle
+    await new Promise(r => setTimeout(r, 250)); // anti-throttle Shopify
   }
+  console.log(`✔️ ${countSuccess} images uploadées. ❌ ${countFail} erreurs.`);
+  if (failedFiles.length) console.log("Images en erreur:", failedFiles);
   console.log("Batch upload TERMINÉ!");
 })();
