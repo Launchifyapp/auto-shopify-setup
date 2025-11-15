@@ -18,7 +18,11 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
       // Build productOptions dynamically, ignore default/empty option values
       type ProductOption = { name: string, values: { name: string }[] };
-      type VariantNode = { option1?: string; option2?: string; option3?: string; [key: string]: unknown };
+      type VariantNode = {
+        selectedOptions?: { name: string, value: string }[];
+        [key: string]: unknown;
+      };
+
       const optionValues1: { name: string }[] = [...new Set(group.map(row => (row["Option1 Value"] || "").trim()))]
         .filter(v => !!v && v !== "Default Title")
         .map(v => ({ name: v }));
@@ -70,8 +74,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
                     title
                     handle
                     variants(first: 50) {
-  edges { node { id sku title selectedOptions { name value } } }
-}
+                      edges { node { id sku title selectedOptions { name value } } }
+                    }
                     options { id name position optionValues { id name hasVariants } }
                   }
                   userErrors { field message }
@@ -82,19 +86,25 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }),
         });
         const gqlJson = await gqlRes.json();
-        console.log('Produit créé', handleUnique, '| GraphQL response:', JSON.stringify(gqlJson, null, 2));
         const productData = gqlJson?.data?.productCreate?.product;
         const productId = productData?.id;
+        const userErrors = gqlJson?.data?.productCreate?.userErrors ?? [];
         if (!productId) {
-          console.warn("Aucun productId généré, erreur:", gqlJson?.data?.productCreate?.userErrors);
+          console.error(
+            "Aucun productId généré.",
+            "userErrors:", userErrors.length > 0 ? userErrors : "Aucune erreur Shopify.",
+            "Réponse brute:", JSON.stringify(gqlJson, null, 2)
+          );
           continue;
         }
 
-        // 2. Collect variants already created by Shopify
+        console.log('Produit créé', handleUnique, '| GraphQL response:', JSON.stringify(gqlJson, null, 2));
+
+        // 2. Collect variants already created by Shopify, using selectedOptions
         const createdVariantsArr: VariantNode[] = productData?.variants?.edges?.map((edge: { node: VariantNode }) => edge.node) ?? [];
         const createdVariantsCount = createdVariantsArr.length;
 
-        // 3. Calculate expected number of variants from CSV
+        // 3. Calculate expected number of variants from CSV (only variants with real option values)
         const expectedVariantsCount = group.filter(row =>
           productOptions.some((opt, idx) =>
             row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim() !== "Default Title"
@@ -106,7 +116,9 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           // Find handled variant keys to avoid duplicate creation
           const alreadyCreatedKeys = new Set<string>(
             createdVariantsArr.map((v: VariantNode) =>
-              [v.option1, v.option2, v.option3].map(x => (x || "").toLocaleLowerCase()).join("/")
+              (v.selectedOptions ?? [])
+                .map(opt => (opt.value || "").toLocaleLowerCase())
+                .join("/")
             )
           );
 
@@ -115,14 +127,13 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
               row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim() !== "Default Title"
             ))
             .map(row => {
-              // Key for duplicate check
               const key = [
                 row["Option1 Value"]?.trim().toLocaleLowerCase(),
                 row["Option2 Value"]?.trim().toLocaleLowerCase(),
                 row["Option3 Value"]?.trim().toLocaleLowerCase()
               ].filter(Boolean).join("/");
 
-              if (alreadyCreatedKeys.has(key)) return undefined;
+              if (alreadyCreatedKeys.has(key)) return undefined; // Skip!
               const optionValues: { name: string; optionName: string }[] = [];
               productOptions.forEach((opt, idx) => {
                 const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
