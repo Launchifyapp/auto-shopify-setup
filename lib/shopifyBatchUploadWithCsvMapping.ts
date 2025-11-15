@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { parse } from "csv-parse/sync";
-import fileType from "file-type"; // <--- ADD: npm install file-type
+import { fileTypeFromBuffer } from "file-type";
 
 const IMAGES_DIR = "./public/products_images/";
 const SHOP_URL = "YOUR_SHOP_NAME.myshopify.com"; // ← À personnaliser
