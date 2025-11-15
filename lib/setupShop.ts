@@ -24,7 +24,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }]
         : undefined;
 
-      // Handle unique à chaque import
       const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
 
       const product: any = {
@@ -65,7 +64,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           continue;
         }
 
-        // VARIANTS - Seulement les champs autorisés
+        // VARIANTS - Champs obligatoires : rajout option1 !
         const variants = group
           .filter(row => row["Option1 Value"] && row["Option1 Value"] !== "Default Title")
           .map(row => ({
@@ -73,6 +72,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             compareAtPrice: row["Variant Compare At Price"] || undefined,
             sku: row["Variant SKU"] || undefined,
             barcode: row["Variant Barcode"] || undefined,
+            option1: row["Option1 Value"] || undefined  // << Correction ici !
           }));
 
         if (variants.length) {
@@ -96,48 +96,18 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
               }),
             });
             const bulkJson = await bulkRes.json();
-            console.log('Bulk variants response:', JSON.stringify(bulkJson, null, 2));
+            if (bulkJson?.data?.productVariantsBulkCreate?.userErrors?.length) {
+              console.error('Bulk variants userErrors:', bulkJson.data.productVariantsBulkCreate.userErrors);
+            } else {
+              console.log('Bulk variants response:', JSON.stringify(bulkJson, null, 2));
+            }
           } catch (err) {
             console.log('Erreur bulk variants GraphQL', handleUnique, err);
           }
         }
 
-        // MEDIAS (images) - Format CreateMediaInput
-        const images = Array.from(new Set(
-          group.map(row => row["Image Src"])
-            .filter(src => typeof src === "string" && src.length > 6)
-        )).map(src => ({
-          alt: group.find(row => row["Image Src"] === src)?.["Image Alt Text"] ?? "",
-          originalSource: src,
-          mediaContentType: "IMAGE",   // <-- Obligatoire
-        }));
-
-        if (images.length) {
-          try {
-            const mediaRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Shopify-Access-Token": token,
-              },
-              body: JSON.stringify({
-                query: `
-                  mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-                    productCreateMedia(productId: $productId, media: $media) {
-                      media { id alt }
-                      userErrors { field message }
-                    }
-                  }
-                `,
-                variables: { productId, media: images },
-              }),
-            });
-            const mediaJson = await mediaRes.json();
-            console.log('Media created', handleUnique, '| GraphQL response:', JSON.stringify(mediaJson, null, 2));
-          } catch (err) {
-            console.log('Erreur création media GraphQL', handleUnique, err);
-          }
-        }
+        // MEDIAS (images) - Correction: lier seulement des URLs Shopify CDN !
+        // Laisse cette partie vide, ou utilise shopifyBatchUploadWithCsvMapping pour batcher les images uploadées
       } catch (err) {
         console.log('Erreur création produit GraphQL', handleUnique, err);
       }
