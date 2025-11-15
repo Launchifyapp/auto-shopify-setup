@@ -70,8 +70,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
                     title
                     handle
                     variants(first: 50) {
-                      edges { node { id sku title option1 option2 option3 } }
-                    }
+  edges { node { id sku title selectedOptions { name value } } }
+}
                     options { id name position optionValues { id name hasVariants } }
                   }
                   userErrors { field message }
