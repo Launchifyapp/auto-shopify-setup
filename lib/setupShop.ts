@@ -16,7 +16,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
 
-      // Prépare les options, ignore "Default Title" ou vide
+      // Build productOptions dynamically, ignore default/empty option values
       type ProductOption = { name: string, values: { name: string }[] };
       const optionValues1: { name: string }[] = [...new Set(group.map(row => (row["Option1 Value"] || "").trim()))]
         .filter(v => !!v && v !== "Default Title")
@@ -53,7 +53,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       };
 
       try {
-        // Création produit
+        // 1. Create product via productCreate mutation
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -64,7 +64,15 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             query: `
               mutation productCreate($product: ProductCreateInput!) {
                 productCreate(product: $product) {
-                  product { id title handle options { id name position optionValues { id name hasVariants } } }
+                  product {
+                    id
+                    title
+                    handle
+                    variants(first: 50) {
+                      edges { node { id sku title option1 option2 option3 } }
+                    }
+                    options { id name position optionValues { id name hasVariants } }
+                  }
                   userErrors { field message }
                 }
               }
@@ -81,24 +89,45 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           continue;
         }
 
-        // On ne fait le bulk QUE si le produit créé n'a pas déjà généré les variants via productOptions
-        const optionsFromApi = productData?.options || [];
-        const hasActualVariants = optionsFromApi.some(
-          (opt: any) => Array.isArray(opt.optionValues) && opt.optionValues.length > 0
-        );
+        // 2. Collect variants already created by Shopify
+        const createdVariantsArr = productData?.variants?.edges?.map((edge: any) => edge.node) ?? [];
+        const createdVariantsCount = createdVariantsArr.length;
 
-        if (productOptionsOrUndefined && !hasActualVariants) {
+        // 3. Calculate expected number of variants from CSV
+        const expectedVariantsCount = group.filter(row =>
+          productOptions.some((opt, idx) =>
+            row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim() !== "Default Title"
+          )
+        ).length;
+
+        // 4. If not all variants were created, bulk create remaining variants
+        if (productOptionsOrUndefined && createdVariantsCount < expectedVariantsCount) {
+          // Find handled variant keys to avoid duplicate creation
+          const alreadyCreatedKeys = new Set(
+            createdVariantsArr.map(v =>
+              // Variant key: join its option values found by index, lowercased
+              [v.option1, v.option2, v.option3].map(x => (x || "").toLocaleLowerCase()).join("/")
+            )
+          );
+
           const variants = group
             .filter(row => productOptions.some((opt, idx) =>
               row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim() !== "Default Title"
             ))
             .map(row => {
+              // Key for duplicate check
+              const key = [
+                row["Option1 Value"]?.trim().toLocaleLowerCase(),
+                row["Option2 Value"]?.trim().toLocaleLowerCase(),
+                row["Option3 Value"]?.trim().toLocaleLowerCase()
+              ].filter(Boolean).join("/");
+
+              if (alreadyCreatedKeys.has(key)) return undefined;
               const optionValues: { name: string; optionName: string }[] = [];
               productOptions.forEach((opt, idx) => {
                 const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
-                if (value && value !== "Default Title") {
+                if (value && value !== "Default Title")
                   optionValues.push({ name: value, optionName: opt.name });
-                }
               });
               return {
                 price: row["Variant Price"] || main["Variant Price"] || undefined,
@@ -108,7 +137,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
                 optionValues: optionValues.length ? optionValues : undefined,
               };
             })
-            .filter(v => v.optionValues && v.optionValues.length);
+            .filter(v => v && v.optionValues && v.optionValues.length);
 
           if (variants.length) {
             try {
@@ -141,6 +170,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             }
           }
         }
+        // Media/images: non traité ici (à faire en batch après création)
+
       } catch (err) {
         console.log('Erreur création produit GraphQL', handleUnique, err);
       }
