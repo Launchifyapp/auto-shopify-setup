@@ -85,11 +85,11 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
               );
             })
             .map(row => {
-              const optionValues: string[] = [];
-              productOptions.forEach((opt, idx) => {
-                const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
-                if (value && value !== "Default Title") optionValues.push(value);
-              });
+              const optionValues: { name: string }[] = [];
+productOptions.forEach((opt, idx) => {
+  const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
+  if (value && value !== "Default Title") optionValues.push({ name: value });
+});
               return {
                 price: row["Variant Price"] || main["Variant Price"] || undefined,
                 compareAtPrice: row["Variant Compare At Price"] || undefined,
