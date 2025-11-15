@@ -9,7 +9,8 @@ const EXTRA_IMAGES = [
   "./public/image4.jpg",
   "./public/image4.webp"
 ];
-const UPLOAD_API_ENDPOINT = "http://localhost:3000/api/upload-file"; // Adapte si ton serveur Next.js est ailleurs
+const PUBLIC_BASE = "https://auto-shopify-setup.vercel.app"; // Utilisez bien le domaine Vercel qui marche !
+const UPLOAD_API_ENDPOINT = `${PUBLIC_BASE}/api/upload-file`;
 
 /**
  * Récupère toutes les images du dossier, uniquement jpg/jpeg/png/webp, ignore les fichiers non-images
@@ -37,14 +38,12 @@ async function uploadViaStagedApi(localPath: string): Promise<string> {
   const filename = path.basename(localPath);
   const mimeType = getMimeType(localPath);
 
-  // Servez vos fichiers via Next.js : http://localhost:3000/products_images/... ou http://localhost:3000/imageX.jpg
-  // Attention, ce script suppose que Next.js expose bien les fichiers statiques dans /public/
+  // Servez vos fichiers via le domaine Vercel public
   let url;
-  // Si dans IMAGES_DIR alors chemin relatif /products_images/
   if (localPath.startsWith(IMAGES_DIR)) {
-    url = `http://localhost:3000/products_images/${filename}`;
+    url = `${PUBLIC_BASE}/products_images/${filename}`;
   } else {
-    url = `http://localhost:3000/${filename}`;
+    url = `${PUBLIC_BASE}/${filename}`;
   }
 
   const payload = { url, filename, mimeType };
