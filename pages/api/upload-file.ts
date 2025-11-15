@@ -5,7 +5,15 @@ const SHOPIFY_STORE = process.env.SHOPIFY_STORE!;
 const SHOPIFY_ADMIN_TOKEN = process.env.SHOPIFY_ADMIN_TOKEN!;
 const SHOPIFY_GRAPHQL_ENDPOINT = `https://${SHOPIFY_STORE}/admin/api/2023-07/graphql.json`;
 
+// Utilitaire pour normaliser le domaine des urls images
+function normalizeImageUrl(url: string): string {
+  return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
+}
+
 async function uploadOne({ url, filename, mimeType }: { url: string, filename: string, mimeType: string }) {
+  // Remplace domaine non accepté par Shopify
+  url = normalizeImageUrl(url);
+
   // 1. Step: Staged upload request
   const stagedRes = await fetch(SHOPIFY_GRAPHQL_ENDPOINT, {
     method: "POST",
