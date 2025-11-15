@@ -1,4 +1,14 @@
 import { parse } from "csv-parse/sync";
+import { writeFileSync } from "fs";
+import path from "path";
+
+// ... Chemin local où tu veux écrire le mapping (change si besoin)
+const PRODUCT_MAPPING_PATH = "./productHandleToId.json";
+const VARIANT_MAPPING_PATH = "./variantKeyToId.json";
+
+// Mappings utilisés entre scripts
+const productHandleToId: Record<string, string> = {};
+const variantKeyToId: Record<string, string> = {};
 
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
@@ -16,10 +26,12 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
 
-      // Build productOptions dynamically, ignore default/empty option values
       type ProductOption = { name: string, values: { name: string }[] };
       type VariantNode = {
+        id?: string;
         selectedOptions?: { name: string, value: string }[];
+        sku?: string;
+        title?: string;
         [key: string]: unknown;
       };
 
@@ -45,6 +57,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       }
       const productOptionsOrUndefined = productOptions.length ? productOptions : undefined;
 
+      // On conserve le handle unique pour mapping
       const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
 
       const product: any = {
@@ -58,7 +71,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       };
 
       try {
-        // 1. Create product via productCreate mutation
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -97,23 +109,35 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           );
           continue;
         }
+        // Enregistre le mapping handle → productId 
+        productHandleToId[handle] = productId;
 
         console.log('Produit créé', handleUnique, '| GraphQL response:', JSON.stringify(gqlJson, null, 2));
 
-        // 2. Collect variants already created by Shopify, using selectedOptions
+        // Récupère les variants créés initialement
         const createdVariantsArr: VariantNode[] = productData?.variants?.edges?.map((edge: { node: VariantNode }) => edge.node) ?? [];
         const createdVariantsCount = createdVariantsArr.length;
 
-        // 3. Calculate expected number of variants from CSV (only variants with real option values)
+        // Mapping variante pour upload images (clé = handle + valeurs d'options)
+        for (const v of createdVariantsArr) {
+          // Génère la clé, exemple : "t-shirt:rouge:M"
+          const variantKey =
+            handle + ":" +
+            (v.selectedOptions ?? []).map(opt => opt.value).join(":");
+          if (v.id) {
+            variantKeyToId[variantKey] = v.id;
+          }
+        }
+
+        // Calcul du nombre de variants attendus
         const expectedVariantsCount = group.filter(row =>
           productOptions.some((opt, idx) =>
             row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim() !== "Default Title"
           )
         ).length;
 
-        // 4. If not all variants were created, bulk create remaining variants
+        // Bulk create si variants manquants
         if (productOptionsOrUndefined && createdVariantsCount < expectedVariantsCount) {
-          // Find handled variant keys to avoid duplicate creation
           const alreadyCreatedKeys = new Set<string>(
             createdVariantsArr.map((v: VariantNode) =>
               (v.selectedOptions ?? [])
@@ -133,7 +157,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
                 row["Option3 Value"]?.trim().toLocaleLowerCase()
               ].filter(Boolean).join("/");
 
-              if (alreadyCreatedKeys.has(key)) return undefined; // Skip!
+              if (alreadyCreatedKeys.has(key)) return undefined;
               const optionValues: { name: string; optionName: string }[] = [];
               productOptions.forEach((opt, idx) => {
                 const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
@@ -176,18 +200,28 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
               } else {
                 console.log('Bulk variants response:', JSON.stringify(bulkJson, null, 2));
               }
+              // Ajoute les nouveaux variants au mapping
+              if (bulkJson.data?.productVariantsBulkCreate?.productVariants) {
+                for (const v of bulkJson.data.productVariantsBulkCreate.productVariants) {
+                  // Impossible de deviner les options, on ignore ici mais tu peux compléter via une requête de lecture si essentiel
+                }
+              }
             } catch (err) {
               console.log('Erreur bulk variants GraphQL', handleUnique, err);
             }
           }
         }
-        // Media/images: non traité ici (à faire en batch après création)
-
+        // timeout anti-throttle Shopify : 300ms
+        await new Promise(res => setTimeout(res, 300));
       } catch (err) {
         console.log('Erreur création produit GraphQL', handleUnique, err);
       }
-      await new Promise(res => setTimeout(res, 300));
     }
+    // On écrit le mapping produit/variant pour traitement batch images
+    writeFileSync(PRODUCT_MAPPING_PATH, JSON.stringify(productHandleToId, null, 2));
+    writeFileSync(VARIANT_MAPPING_PATH, JSON.stringify(variantKeyToId, null, 2));
+    console.log("📦 Mapping produits enregistré:", PRODUCT_MAPPING_PATH);
+    console.log("📦 Mapping variantes enregistré:", VARIANT_MAPPING_PATH);
   } catch (err) {
     console.log("Erreur globale setupShop:", err);
   }
