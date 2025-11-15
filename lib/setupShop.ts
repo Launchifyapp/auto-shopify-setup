@@ -74,14 +74,20 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         });
         const gqlJson = await gqlRes.json();
         console.log('Produit créé', handleUnique, '| GraphQL response:', JSON.stringify(gqlJson, null, 2));
-        const productId = gqlJson?.data?.productCreate?.product?.id;
+        const productData = gqlJson?.data?.productCreate?.product;
+        const productId = productData?.id;
         if (!productId) {
           console.warn("Aucun productId généré, erreur:", gqlJson?.data?.productCreate?.userErrors);
           continue;
         }
 
-        // Crée les variants uniquement s'il y a des options
-        if (productOptionsOrUndefined) {
+        // On ne fait le bulk QUE si le produit créé n'a pas déjà généré les variants via productOptions
+        const optionsFromApi = productData?.options || [];
+        const hasActualVariants = optionsFromApi.some(
+          (opt: any) => Array.isArray(opt.optionValues) && opt.optionValues.length > 0
+        );
+
+        if (productOptionsOrUndefined && !hasActualVariants) {
           const variants = group
             .filter(row => productOptions.some((opt, idx) =>
               row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim() !== "Default Title"
@@ -135,8 +141,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             }
           }
         }
-        // Media/images: non traité ici (à faire en batch après création)
-
       } catch (err) {
         console.log('Erreur création produit GraphQL', handleUnique, err);
       }
