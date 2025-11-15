@@ -1,5 +1,10 @@
 import { parse } from "csv-parse/sync";
 
+// Utilitaire pour normaliser le domaine des urls images
+function normalizeImageUrl(url: string): string {
+  return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
+}
+
 // Fonction qui crée les produits Shopify et attache leurs images immédiatement après création.
 // Ne dépend pas d'écriture/lecture fichier JSON pour le mapping => compatible serverless/Next.js.
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
@@ -18,9 +23,9 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
     // Fonctions utilitaires image Shopify GraphQL
     async function uploadImageToShopify(shop: string, token: string, imageUrl: string, filename: string): Promise<string> {
-      // Si déjà CDN Shopify, retourne directement (sinon, uploader depuis l'URL)
       if (imageUrl.startsWith("https://cdn.shopify.com")) return imageUrl;
-      // Pour simplifier, on suppose ici que les URLs sont publiques, et on utilise fileCreate par URL (sinon, uploader en base64 !)
+      const normalizedUrl = normalizeImageUrl(imageUrl);
+
       const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -35,10 +40,10 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           `,
           variables: {
             files: [{
-              originalSource: imageUrl,
+              originalSource: normalizedUrl,
               originalFileName: filename,
-              mimeType: imageUrl.endsWith('.png') ? "image/png"
-                : imageUrl.endsWith('.webp') ? "image/webp"
+              mimeType: normalizedUrl.endsWith('.png') ? "image/png"
+                : normalizedUrl.endsWith('.webp') ? "image/webp"
                 : "image/jpeg"
             }]
           }
@@ -197,7 +202,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         const productImageUrl = main["Image Src"];
         const imageAltText = main["Image Alt Text"] ?? "";
         if (productImageUrl) {
-          // Upload image (si nécessaire) et attache au produit
           let cdnUrl;
           try {
             cdnUrl = await uploadImageToShopify(shop, token, productImageUrl, productImageUrl.split('/').pop() ?? 'image.jpg');
@@ -214,10 +218,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
         // Pour chaque variante existante, attache image si infos dans CSV
         for (const v of createdVariantsArr) {
-          // Génère la clé, exemple : "handle:option1:option2:option3"
           const variantKey = handle + ":" +
             (v.selectedOptions ?? []).map(opt => opt.value).join(":");
-          // Trouver la ligne du CSV qui correspond à cette combinaison
           const variantCsvRow = group.find(row =>
             [row["Option1 Value"], row["Option2 Value"], row["Option3 Value"]]
             .filter(Boolean)
@@ -236,14 +238,12 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // Nombre de variantes attendues
         const expectedVariantsCount = group.filter(row =>
           productOptions.some((opt, idx) =>
             row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim() !== "Default Title"
           )
         ).length;
 
-        // Bulk variants si variantes manquantes
         if (productOptionsOrUndefined && createdVariantsCount < expectedVariantsCount) {
           const alreadyCreatedKeys = new Set<string>(
             createdVariantsArr.map((v: VariantNode) =>
@@ -307,7 +307,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
               } else {
                 console.log('Bulk variants response:', JSON.stringify(bulkJson, null, 2));
               }
-              // Tu pourrais ici requêter à nouveau le produit pour obtenir les nouveaux variants & leur rattacher les images correspondantes (si besoin)
             } catch (err) {
               console.log('Erreur bulk variants GraphQL', handleUnique, err);
             }
