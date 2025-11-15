@@ -44,7 +44,7 @@ async function uploadOne({url, filename, mimeType, buffer}: {url?: string, filen
   // 3. S3 upload
   const uploadForm = new globalThis.FormData();
   for (const p of target.parameters) uploadForm.append(p.name, p.value);
-  uploadForm.append("file", new Blob([imageBuf], {type: mimeType}), filename);
+  uploadForm.append("file", new Uint8Array(imageBuf), filename);
   const s3Res = await fetch(target.url, {method:"POST", body:uploadForm});
   if (!s3Res.ok) return {ok:false, error:"S3 upload error", details: await s3Res.text()};
   // 4. Shopify mutation
