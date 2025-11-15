@@ -1,14 +1,29 @@
 import fs from "fs";
 import path from "path";
 import { parse } from "csv-parse/sync";
-import { fileTypeFromBuffer } from "file-type"; // Correction import
+import { fileTypeFromBuffer } from "file-type";
 
-// Variables à personnaliser
+// Chemins de mapping produits/variantes générés par setupShop.ts
+const PRODUCT_MAPPING_PATH = "./productHandleToId.json";
+const VARIANT_MAPPING_PATH = "./variantKeyToId.json";
+
+// Paramétrage
 const IMAGES_DIR = "./public/products_images/";
 const SHOP_URL = "YOUR_SHOP_NAME.myshopify.com"; // ← À personnaliser
 const TOKEN = "YOUR_API_TOKEN"; // ← À personnaliser
 
-// Fonction pour extraire le nom de fichier local (sans les paramètres)
+// Utilitaire CSV
+async function getCsvRecords(csvUrl: string) {
+  const response = await fetch(csvUrl);
+  const csvText = await response.text();
+  return parse(csvText, { columns: true, skip_empty_lines: true, delimiter: "," });
+}
+
+// Utilitaires mapping
+const productHandleToId = JSON.parse(fs.readFileSync(PRODUCT_MAPPING_PATH, "utf8")); // {handle: productId}
+const variantKeyToId = JSON.parse(fs.readFileSync(VARIANT_MAPPING_PATH, "utf8"));     // {handle:option:...: variantId}
+
+// Utilitaire images
 function extractFilenameFromShopifyUrl(url: string): string {
   const lastSlash = url.lastIndexOf("/");
   if (lastSlash < 0) return url;
@@ -17,40 +32,19 @@ function extractFilenameFromShopifyUrl(url: string): string {
   return filename;
 }
 
-// Récupère et parse le CSV distant
-async function getCsvRecords(csvUrl: string) {
-  const response = await fetch(csvUrl);
-  const csvText = await response.text();
-  return parse(csvText, { columns: true, skip_empty_lines: true, delimiter: "," });
-}
-
-const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
-
-// Mappings à remplir dynamiquement après la création des produits/variantes
-const productHandleToId: Record<string, string> = {};
-const variantKeyToId: Record<string, string> = {};
-
-// Audit et upload image locale vers Shopify Files
+// Upload image locale vers Shopify Files
 async function uploadImageToShopify(filePath: string, filename: string): Promise<string> {
   const buffer = fs.readFileSync(filePath);
-
-  // Vérification du buffer
   if (buffer.length === 0) throw new Error(`Image vide: ${filename}`);
   if (buffer.length > 20 * 1024 * 1024) throw new Error(`Image trop volumineuse (>20Mo): ${filename}`);
-
   const type = await fileTypeFromBuffer(buffer);
   const ext = path.extname(filename).replace('.', '').toLowerCase();
-
-  // Mime type dynamique (selon contenu, puis selon extension)
-  const mimeType = type?.mime || (
-    ext === "jpg" || ext === "jpeg" ? "image/jpeg" :
-    ext === "png" ? "image/png" :
-    ext === "webp" ? "image/webp" :
-    "application/octet-stream"
-  );
-
+  const mimeType = type?.mime ||
+    (ext === "jpg" || ext === "jpeg" ? "image/jpeg" :
+     ext === "png" ? "image/png" :
+     ext === "webp" ? "image/webp" :
+     "application/octet-stream");
   const encoded = buffer.toString("base64");
-
   const res = await fetch(`https://${SHOP_URL}/admin/api/2023-10/graphql.json`, {
     method: "POST",
     headers: {"Content-Type": "application/json", "X-Shopify-Access-Token": TOKEN},
@@ -82,7 +76,7 @@ async function uploadImageToShopify(filePath: string, filename: string): Promise
   throw new Error("Upload image failed for " + filename + " | " + JSON.stringify(json));
 }
 
-// Rattache une image à un produit Shopify
+// Attacher une image au produit Shopify
 async function attachImageToProduct(productId: string, imageUrl: string, altText: string = "") {
   const media = [{
     originalSource: imageUrl,
@@ -111,7 +105,7 @@ async function attachImageToProduct(productId: string, imageUrl: string, altText
   return json;
 }
 
-// (Optionnel) Rattache une image à une variante Shopify
+// Rattacher une image à une variante Shopify
 async function attachImageToVariant(variantId: string, imageUrl: string, altText: string = "") {
   const res = await fetch(`https://${SHOP_URL}/admin/api/2023-10/graphql.json`, {
     method: "POST",
@@ -141,6 +135,7 @@ async function attachImageToVariant(variantId: string, imageUrl: string, altText
 }
 
 (async () => {
+  const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
   const records = await getCsvRecords(csvUrl);
 
   for (const record of records) {
@@ -170,18 +165,23 @@ async function attachImageToVariant(variantId: string, imageUrl: string, altText
     const productId = productHandleToId[handle];
 
     // 4. Mapping variante si existant
-    const optionValue = record["Option1 Value"];
-    const variantKey = handle + ":" + optionValue;
+    const optionKeyArr = [];
+    if (record["Option1 Value"]) optionKeyArr.push(record["Option1 Value"].trim());
+    if (record["Option2 Value"]) optionKeyArr.push(record["Option2 Value"].trim());
+    if (record["Option3 Value"]) optionKeyArr.push(record["Option3 Value"].trim());
+    const variantKey = handle + ":" + optionKeyArr.join(":");
     const variantId = variantKeyToId[variantKey];
 
     // 5. Rattache au produit principal
     if (productId) {
       await attachImageToProduct(productId, cdnUrl, record["Image Alt Text"] ?? "");
+      console.log(`Image rattachée au produit: ${handle} → ${productId}`);
     }
 
     // 6. (Optionnel) Rattache à la variante si besoin
-    if (variantId && optionValue) {
+    if (variantId && optionKeyArr.length) {
       await attachImageToVariant(variantId, cdnUrl, record["Image Alt Text"] ?? "");
+      console.log(`Image rattachée à variante: ${variantKey} → ${variantId}`);
     }
 
     await new Promise(res => setTimeout(res, 250)); // evite throttling
