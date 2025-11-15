@@ -15,13 +15,24 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
-      const option1Name = main["Option1 Name"];
-      const option1Values = group.map(row => row["Option1 Value"]?.trim()).filter(Boolean);
-      const productOptions = option1Name
-        ? [{
-            name: option1Name,
-            values: [...new Set(option1Values)].map(v => ({ name: v }))
-          }]
+
+      // Detection automatique du nombre et nom d'options
+      const optionNames = [
+        main["Option1 Name"]?.trim(),
+        main["Option2 Name"]?.trim(),
+        main["Option3 Name"]?.trim(),
+      ].filter(Boolean);
+      const productOptions = optionNames.length
+        ? optionNames.map((optionName, idx) => ({
+            name: optionName,
+            values: [
+              ...new Set(
+                group
+                  .map(row => row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim())
+                  .filter((v: string | undefined) => !!v && v !== "Default Title")
+              ),
+            ].map(v => ({ name: v })),
+          }))
         : undefined;
 
       // Handle unique à chaque import
@@ -38,7 +49,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       };
 
       try {
-        // Création produit
+        // Création du produit
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -65,50 +76,68 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           continue;
         }
 
-        // VARIANTS - pas d'option1/option2, juste les fields Shopify: price, compareAtPrice, sku...
-        const variants = group
-          .filter(row => row["Option1 Value"] && row["Option1 Value"] !== "Default Title")
-          .map(row => ({
-            price: row["Variant Price"] || main["Variant Price"] || undefined,
-            compareAtPrice: row["Variant Compare At Price"] || undefined,
-            sku: row["Variant SKU"] || undefined,
-            barcode: row["Variant Barcode"] || undefined,
-            // Ne PAS mettre option1,: Shopify déduit via l'ordre et les options du produit
-          }));
+        // Création des variants uniquement s'il y a des options
+        if (productOptions && productOptions.length > 0) {
+          // Variant array construction, utilise toutes les options présentes
+          const variants = group
+            .filter(row => {
+              // au moins 1 option value non vide et pas "Default Title"
+              return optionNames.some((optionName, idx) =>
+                row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim() !== "Default Title"
+              );
+            })
+            .map(row => {
+              // optionValues = array dynamique en fonction des options présentes
+              const optionValues: string[] = [];
+              optionNames.forEach((optionName, idx) => {
+                const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
+                if (value && value !== "Default Title") optionValues.push(value);
+              });
+              return {
+                price: row["Variant Price"] || main["Variant Price"] || undefined,
+                compareAtPrice: row["Variant Compare At Price"] || undefined,
+                sku: row["Variant SKU"] || undefined,
+                barcode: row["Variant Barcode"] || undefined,
+                optionValues: optionValues.length ? optionValues : undefined,
+              };
+            })
+            .filter(v => v.optionValues && v.optionValues.length); // skip variant if no optionValues
 
-        if (variants.length) {
-          try {
-            const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Shopify-Access-Token": token,
-              },
-              body: JSON.stringify({
-                query: `
-                  mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-                    productVariantsBulkCreate(productId: $productId, variants: $variants) {
-                      productVariants { id sku price }
-                      userErrors { field message }
+          if (variants.length) {
+            try {
+              const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Shopify-Access-Token": token,
+                },
+                body: JSON.stringify({
+                  query: `
+                    mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+                      productVariantsBulkCreate(productId: $productId, variants: $variants) {
+                        productVariants { id sku price }
+                        userErrors { field message }
+                      }
                     }
-                  }
-                `,
-                variables: { productId, variants },
-              }),
-            });
-            const bulkJson = await bulkRes.json();
-            if (bulkJson?.data?.productVariantsBulkCreate?.userErrors?.length) {
-              console.error('Bulk variants userErrors:', bulkJson.data.productVariantsBulkCreate.userErrors);
-            } else {
-              console.log('Bulk variants response:', JSON.stringify(bulkJson, null, 2));
+                  `,
+                  variables: { productId, variants },
+                }),
+              });
+              const bulkJson = await bulkRes.json();
+              if (bulkJson?.data?.productVariantsBulkCreate?.userErrors?.length) {
+                console.error('Bulk variants userErrors:', bulkJson.data.productVariantsBulkCreate.userErrors);
+              } else {
+                console.log('Bulk variants response:', JSON.stringify(bulkJson, null, 2));
+              }
+            } catch (err) {
+              console.log('Erreur bulk variants GraphQL', handleUnique, err);
             }
-          } catch (err) {
-            console.log('Erreur bulk variants GraphQL', handleUnique, err);
           }
         }
 
-        // MEDIAS - Les images doivent être des URLs Shopify CDN ! Le batch upload via fileCreate se fait ailleurs (avec mapping id/handle)
-        // Ici, éventuellement collecter les images si tu veux un mapping ou audit.
+        // (Optionnel) Médiatisation images: utiliser le batch image après la création avec mapping produit/variant
+        // Ici, tu peux juste préparer le mapping { handleUnique, productId } à utiliser plus bas.
+
       } catch (err) {
         console.log('Erreur création produit GraphQL', handleUnique, err);
       }
