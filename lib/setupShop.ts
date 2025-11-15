@@ -16,21 +16,27 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
 
-      // Résout le problème de type sur productOptions !
+      // Prépare les options, ignore "Default Title" ou vide
       type ProductOption = { name: string, values: { name: string }[] };
-      const optionValues1: string[] = [...new Set(group.map(row => (row["Option1 Value"] || "").trim()).filter(v => !!v && v !== "Default Title"))];
-      const optionValues2: string[] = [...new Set(group.map(row => (row["Option2 Value"] || "").trim()).filter(v => !!v && v !== "Default Title"))];
-      const optionValues3: string[] = [...new Set(group.map(row => (row["Option3 Value"] || "").trim()).filter(v => !!v && v !== "Default Title"))];
+      const optionValues1: { name: string }[] = [...new Set(group.map(row => (row["Option1 Value"] || "").trim()))]
+        .filter(v => !!v && v !== "Default Title")
+        .map(v => ({ name: v }));
+      const optionValues2: { name: string }[] = [...new Set(group.map(row => (row["Option2 Value"] || "").trim()))]
+        .filter(v => !!v && v !== "Default Title")
+        .map(v => ({ name: v }));
+      const optionValues3: { name: string }[] = [...new Set(group.map(row => (row["Option3 Value"] || "").trim()))]
+        .filter(v => !!v && v !== "Default Title")
+        .map(v => ({ name: v }));
 
       const productOptions: ProductOption[] = [];
       if (main["Option1 Name"] && optionValues1.length) {
-        productOptions.push({ name: main["Option1 Name"].trim(), values: optionValues1.map(v => ({ name: v })) });
+        productOptions.push({ name: main["Option1 Name"].trim(), values: optionValues1 });
       }
       if (main["Option2 Name"] && optionValues2.length) {
-        productOptions.push({ name: main["Option2 Name"].trim(), values: optionValues2.map(v => ({ name: v })) });
+        productOptions.push({ name: main["Option2 Name"].trim(), values: optionValues2 });
       }
       if (main["Option3 Name"] && optionValues3.length) {
-        productOptions.push({ name: main["Option3 Name"].trim(), values: optionValues3.map(v => ({ name: v })) });
+        productOptions.push({ name: main["Option3 Name"].trim(), values: optionValues3 });
       }
       const productOptionsOrUndefined = productOptions.length ? productOptions : undefined;
 
@@ -74,22 +80,18 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           continue;
         }
 
-        // Variant creation seulement si options
+        // Crée les variants uniquement s'il y a des options
         if (productOptionsOrUndefined) {
-          // Génère toutes les combinaisons de variantes
           const variants = group
-            .filter(row => {
-              // Vérifie qu'il y a bien au moins une valeur d'option non vide et pas "Default Title"
-              return productOptions.some((opt, idx) =>
-                row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim() !== "Default Title"
-              );
-            })
+            .filter(row => productOptions.some((opt, idx) =>
+              row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim() !== "Default Title"
+            ))
             .map(row => {
               const optionValues: { name: string }[] = [];
-productOptions.forEach((opt, idx) => {
-  const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
-  if (value && value !== "Default Title") optionValues.push({ name: value });
-});
+              productOptions.forEach((opt, idx) => {
+                const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
+                if (value && value !== "Default Title") optionValues.push({ name: value });
+              });
               return {
                 price: row["Variant Price"] || main["Variant Price"] || undefined,
                 compareAtPrice: row["Variant Compare At Price"] || undefined,
