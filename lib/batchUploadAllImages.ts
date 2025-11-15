@@ -8,7 +8,9 @@ const EXTRA_IMAGES = [
   "./public/image4.jpg",
   "./public/image4.webp"
 ];
-const PUBLIC_BASE = "https://supreme-umbrella-7vjq5w6ww4442wqpp-3000.app.github.dev"; // Ton URL Codespaces
+
+// Remplace ici par ton VERCEL DOMAIN qui fonctionne !
+const PUBLIC_BASE = "https://auto-shopify-setup.vercel.app";
 const UPLOAD_API_ENDPOINT = `${PUBLIC_BASE}/api/upload-file`;
 
 /**
@@ -17,7 +19,7 @@ const UPLOAD_API_ENDPOINT = `${PUBLIC_BASE}/api/upload-file`;
 function getAllImageFiles(): string[] {
   return fs.readdirSync(IMAGES_DIR)
     .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f) && fs.statSync(path.join(IMAGES_DIR, f)).size > 0 && !fs.lstatSync(path.join(IMAGES_DIR, f)).isDirectory())
-    .map(f => f); // on veut juste le nom du fichier
+    .map(f => f);
 }
 
 function getMimeType(filename: string): string {
@@ -28,7 +30,6 @@ function getMimeType(filename: string): string {
 }
 
 async function uploadViaStagedApi(filename: string): Promise<string> {
-  // Attention, url HTTP, pas chemin local !
   let url;
   if (fs.existsSync(path.join(IMAGES_DIR, filename))) {
     url = `${PUBLIC_BASE}/products_images/${filename}`;
@@ -52,7 +53,6 @@ async function uploadViaStagedApi(filename: string): Promise<string> {
 }
 
 (async () => {
-  // Liste des fichiers du dossier + extra images existantes
   const extraFilenames = EXTRA_IMAGES
     .map(f => path.basename(f))
     .filter(f => fs.existsSync(path.join("public", f)) || fs.existsSync(path.join(IMAGES_DIR, f)));
