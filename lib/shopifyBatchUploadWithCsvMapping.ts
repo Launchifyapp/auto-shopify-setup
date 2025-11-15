@@ -1,13 +1,12 @@
 import fs from "fs";
 import path from "path";
 import { parse } from "csv-parse/sync";
+import fileType from "file-type"; // <--- ADD: npm install file-type
 
-// Variables à personnaliser
 const IMAGES_DIR = "./public/products_images/";
 const SHOP_URL = "YOUR_SHOP_NAME.myshopify.com"; // ← À personnaliser
 const TOKEN = "YOUR_API_TOKEN"; // ← À personnaliser
 
-// Fonction pour extraire le nom de fichier local (sans les paramètres)
 function extractFilenameFromShopifyUrl(url: string): string {
   const lastSlash = url.lastIndexOf("/");
   if (lastSlash < 0) return url;
@@ -16,7 +15,6 @@ function extractFilenameFromShopifyUrl(url: string): string {
   return filename;
 }
 
-// Récupère et parse le CSV distant
 async function getCsvRecords(csvUrl: string) {
   const response = await fetch(csvUrl);
   const csvText = await response.text();
@@ -25,17 +23,19 @@ async function getCsvRecords(csvUrl: string) {
 
 const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
 
-// Mappings à remplir dynamiquement après la création des produits/variantes
-// Ex: { "2-in-1-smartwatch-earpods-copy": "gid://shopify/Product/1234567890" }
 const productHandleToId: Record<string, string> = {};
-// Ex: { "2-in-1-smartwatch-earpods-copy:Gris foncé": "gid://shopify/ProductVariant/999" }
 const variantKeyToId: Record<string, string> = {};
 
-// Upload une image locale vers Shopify Files
+// Audit et upload image locale vers Shopify Files
 async function uploadImageToShopify(filePath: string, filename: string): Promise<string> {
-  const ext = path.extname(filename).replace('.', '').toLowerCase();
-  const mimeType = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "png" ? "image/png" : "image/webp";
   const buffer = fs.readFileSync(filePath);
+  // Audit buffer
+  if (buffer.length === 0) throw new Error(`Image vide: ${filename}`);
+  if (buffer.length > 20 * 1024 * 1024) throw new Error(`Image trop volumineuse (>20Mo): ${filename}`);
+  const type = await fileType.fromBuffer(buffer);
+  const ext = path.extname(filename).replace('.', '').toLowerCase();
+  // Correction: mimeType dynamique
+  const mimeType = type?.mime || (ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "application/octet-stream");
   const encoded = buffer.toString("base64");
 
   const res = await fetch(`https://${SHOP_URL}/admin/api/2023-10/graphql.json`, {
@@ -60,6 +60,9 @@ async function uploadImageToShopify(filePath: string, filename: string): Promise
     })
   });
   const json = await res.json();
+  if (json.data?.fileCreate?.userErrors?.length) {
+    console.error("Shopify fileCreate userErrors:", json.data.fileCreate.userErrors);
+  }
   if (json.data?.fileCreate?.files?.[0]?.url) {
     return json.data.fileCreate.files[0].url;
   }
@@ -128,7 +131,6 @@ async function attachImageToVariant(variantId: string, imageUrl: string, altText
   const records = await getCsvRecords(csvUrl);
 
   for (const record of records) {
-    // 1. Récupère le nom de fichier local depuis l’URL ("Image Src")
     const urlInCsv = record["Image Src"];
     const filename = extractFilenameFromShopifyUrl(urlInCsv);
     if (!filename) continue;
@@ -168,7 +170,7 @@ async function attachImageToVariant(variantId: string, imageUrl: string, altText
       await attachImageToVariant(variantId, cdnUrl, record["Image Alt Text"] ?? "");
     }
 
-    await new Promise(res => setTimeout(res, 250)); // evite throttling
+    await new Promise(res => setTimeout(res, 250));
   }
   console.log("Batch upload terminé !");
 })();
