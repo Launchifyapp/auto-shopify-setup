@@ -1,12 +1,14 @@
 import fs from "fs";
 import path from "path";
 import { parse } from "csv-parse/sync";
-import { fileTypeFromBuffer } from "file-type";
+import { fileTypeFromBuffer } from "file-type"; // Correction import
 
+// Variables à personnaliser
 const IMAGES_DIR = "./public/products_images/";
 const SHOP_URL = "YOUR_SHOP_NAME.myshopify.com"; // ← À personnaliser
 const TOKEN = "YOUR_API_TOKEN"; // ← À personnaliser
 
+// Fonction pour extraire le nom de fichier local (sans les paramètres)
 function extractFilenameFromShopifyUrl(url: string): string {
   const lastSlash = url.lastIndexOf("/");
   if (lastSlash < 0) return url;
@@ -15,6 +17,7 @@ function extractFilenameFromShopifyUrl(url: string): string {
   return filename;
 }
 
+// Récupère et parse le CSV distant
 async function getCsvRecords(csvUrl: string) {
   const response = await fetch(csvUrl);
   const csvText = await response.text();
@@ -23,19 +26,29 @@ async function getCsvRecords(csvUrl: string) {
 
 const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
 
+// Mappings à remplir dynamiquement après la création des produits/variantes
 const productHandleToId: Record<string, string> = {};
 const variantKeyToId: Record<string, string> = {};
 
 // Audit et upload image locale vers Shopify Files
 async function uploadImageToShopify(filePath: string, filename: string): Promise<string> {
   const buffer = fs.readFileSync(filePath);
-  // Audit buffer
+
+  // Vérification du buffer
   if (buffer.length === 0) throw new Error(`Image vide: ${filename}`);
   if (buffer.length > 20 * 1024 * 1024) throw new Error(`Image trop volumineuse (>20Mo): ${filename}`);
-  const type = await fileType.fromBuffer(buffer);
+
+  const type = await fileTypeFromBuffer(buffer);
   const ext = path.extname(filename).replace('.', '').toLowerCase();
-  // Correction: mimeType dynamique
-  const mimeType = type?.mime || (ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "application/octet-stream");
+
+  // Mime type dynamique (selon contenu, puis selon extension)
+  const mimeType = type?.mime || (
+    ext === "jpg" || ext === "jpeg" ? "image/jpeg" :
+    ext === "png" ? "image/png" :
+    ext === "webp" ? "image/webp" :
+    "application/octet-stream"
+  );
+
   const encoded = buffer.toString("base64");
 
   const res = await fetch(`https://${SHOP_URL}/admin/api/2023-10/graphql.json`, {
@@ -131,6 +144,7 @@ async function attachImageToVariant(variantId: string, imageUrl: string, altText
   const records = await getCsvRecords(csvUrl);
 
   for (const record of records) {
+    // 1. Récupère le nom de fichier local depuis l’URL ("Image Src")
     const urlInCsv = record["Image Src"];
     const filename = extractFilenameFromShopifyUrl(urlInCsv);
     if (!filename) continue;
@@ -170,7 +184,7 @@ async function attachImageToVariant(variantId: string, imageUrl: string, altText
       await attachImageToVariant(variantId, cdnUrl, record["Image Alt Text"] ?? "");
     }
 
-    await new Promise(res => setTimeout(res, 250));
+    await new Promise(res => setTimeout(res, 250)); // evite throttling
   }
   console.log("Batch upload terminé !");
 })();
