@@ -16,12 +16,13 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
 
-      // Préparation des options dynamiques, ignore "Default Title" ou valeurs vides
-      const optionValues1 = [...new Set(group.map(row => (row["Option1 Value"] || "").trim()).filter(v => !!v && v !== "Default Title"))];
-      const optionValues2 = [...new Set(group.map(row => (row["Option2 Value"] || "").trim()).filter(v => !!v && v !== "Default Title"))];
-      const optionValues3 = [...new Set(group.map(row => (row["Option3 Value"] || "").trim()).filter(v => !!v && v !== "Default Title"))];
+      // Résout le problème de type sur productOptions !
+      type ProductOption = { name: string, values: { name: string }[] };
+      const optionValues1: string[] = [...new Set(group.map(row => (row["Option1 Value"] || "").trim()).filter(v => !!v && v !== "Default Title"))];
+      const optionValues2: string[] = [...new Set(group.map(row => (row["Option2 Value"] || "").trim()).filter(v => !!v && v !== "Default Title"))];
+      const optionValues3: string[] = [...new Set(group.map(row => (row["Option3 Value"] || "").trim()).filter(v => !!v && v !== "Default Title"))];
 
-      const productOptions = [];
+      const productOptions: ProductOption[] = [];
       if (main["Option1 Name"] && optionValues1.length) {
         productOptions.push({ name: main["Option1 Name"].trim(), values: optionValues1.map(v => ({ name: v })) });
       }
