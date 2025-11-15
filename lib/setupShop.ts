@@ -24,6 +24,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }]
         : undefined;
 
+      // Handle unique à chaque import
       const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
 
       const product: any = {
@@ -64,7 +65,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           continue;
         }
 
-        // VARIANTS - Champs obligatoires : rajout option1 !
+        // VARIANTS - pas d'option1/option2, juste les fields Shopify: price, compareAtPrice, sku...
         const variants = group
           .filter(row => row["Option1 Value"] && row["Option1 Value"] !== "Default Title")
           .map(row => ({
@@ -72,7 +73,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             compareAtPrice: row["Variant Compare At Price"] || undefined,
             sku: row["Variant SKU"] || undefined,
             barcode: row["Variant Barcode"] || undefined,
-            option1: row["Option1 Value"] || undefined  // << Correction ici !
+            // Ne PAS mettre option1,: Shopify déduit via l'ordre et les options du produit
           }));
 
         if (variants.length) {
@@ -106,8 +107,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // MEDIAS (images) - Correction: lier seulement des URLs Shopify CDN !
-        // Laisse cette partie vide, ou utilise shopifyBatchUploadWithCsvMapping pour batcher les images uploadées
+        // MEDIAS - Les images doivent être des URLs Shopify CDN ! Le batch upload via fileCreate se fait ailleurs (avec mapping id/handle)
+        // Ici, éventuellement collecter les images si tu veux un mapping ou audit.
       } catch (err) {
         console.log('Erreur création produit GraphQL', handleUnique, err);
       }
