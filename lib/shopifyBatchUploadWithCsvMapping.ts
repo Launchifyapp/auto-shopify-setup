@@ -1,0 +1,175 @@
+import fs from "fs";
+import path from "path";
+import fetch from "node-fetch";
+import { parse } from "csv-parse/sync";
+
+// Variables à personnaliser
+const IMAGES_DIR = "./public/products_images/";
+const SHOP_URL = "YOUR_SHOP_NAME.myshopify.com"; // ← À personnaliser
+const TOKEN = "YOUR_API_TOKEN"; // ← À personnaliser
+
+// Fonction pour extraire le nom de fichier local (sans les paramètres)
+function extractFilenameFromShopifyUrl(url: string): string {
+  const lastSlash = url.lastIndexOf("/");
+  if (lastSlash < 0) return url;
+  const fileWithParams = url.substring(lastSlash + 1);
+  const [filename] = fileWithParams.split("?"); // ignore query params
+  return filename;
+}
+
+// Récupère et parse le CSV distant
+async function getCsvRecords(csvUrl: string) {
+  const response = await fetch(csvUrl);
+  const csvText = await response.text();
+  return parse(csvText, { columns: true, skip_empty_lines: true, delimiter: "," });
+}
+
+const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
+
+// Mappings à remplir dynamiquement après la création des produits/variantes
+// Ex: { "2-in-1-smartwatch-earpods-copy": "gid://shopify/Product/1234567890" }
+const productHandleToId: Record<string, string> = {};
+// Ex: { "2-in-1-smartwatch-earpods-copy:Gris foncé": "gid://shopify/ProductVariant/999" }
+const variantKeyToId: Record<string, string> = {};
+
+// Upload une image locale vers Shopify Files
+async function uploadImageToShopify(filePath: string, filename: string): Promise<string> {
+  const ext = path.extname(filename).replace('.', '').toLowerCase();
+  const mimeType = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "png" ? "image/png" : "image/webp";
+  const buffer = fs.readFileSync(filePath);
+  const encoded = buffer.toString("base64");
+
+  const res = await fetch(`https://${SHOP_URL}/admin/api/2023-10/graphql.json`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json", "X-Shopify-Access-Token": TOKEN},
+    body: JSON.stringify({
+      query: `
+        mutation fileCreate($files: [FileCreateInput!]!) {
+          fileCreate(files: $files) {
+            files { url }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: {
+        files: [{
+          originalFileName: filename,
+          mimeType,
+          content: encoded
+        }]
+      }
+    })
+  });
+  const json = await res.json();
+  if (json.data?.fileCreate?.files?.[0]?.url) {
+    return json.data.fileCreate.files[0].url;
+  }
+  throw new Error("Upload image failed for " + filename + " | " + JSON.stringify(json));
+}
+
+// Rattache une image à un produit Shopify
+async function attachImageToProduct(productId: string, imageUrl: string, altText: string = "") {
+  const media = [{
+    originalSource: imageUrl,
+    mediaContentType: "IMAGE",
+    alt: altText
+  }];
+  const res = await fetch(`https://${SHOP_URL}/admin/api/2023-10/graphql.json`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json", "X-Shopify-Access-Token": TOKEN},
+    body: JSON.stringify({
+      query: `
+        mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+          productCreateMedia(productId: $productId, media: $media) {
+            media { id alt }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: { productId, media }
+    })
+  });
+  const json = await res.json();
+  if (json.data?.productCreateMedia?.userErrors?.length) {
+    console.error("Erreur productCreateMedia:", JSON.stringify(json.data.productCreateMedia.userErrors));
+  }
+  return json;
+}
+
+// (Optionnel) Rattache une image à une variante Shopify
+async function attachImageToVariant(variantId: string, imageUrl: string, altText: string = "") {
+  const res = await fetch(`https://${SHOP_URL}/admin/api/2023-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": TOKEN },
+    body: JSON.stringify({
+      query: `
+        mutation productVariantUpdate($input: ProductVariantUpdateInput!) {
+          productVariantUpdate(input: $input) {
+            productVariant { id image { id src altText } }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: {
+        input: {
+          id: variantId,
+          image: { src: imageUrl, altText }
+        }
+      }
+    })
+  });
+  const json = await res.json();
+  if (json.data?.productVariantUpdate?.userErrors?.length) {
+    console.error("Erreur productVariantUpdate:", JSON.stringify(json.data.productVariantUpdate.userErrors));
+  }
+  return json;
+}
+
+(async () => {
+  const records = await getCsvRecords(csvUrl);
+
+  for (const record of records) {
+    // 1. Récupère le nom de fichier local depuis l’URL ("Image Src")
+    const urlInCsv = record["Image Src"];
+    const filename = extractFilenameFromShopifyUrl(urlInCsv);
+    if (!filename) continue;
+
+    const localImgPath = path.join(IMAGES_DIR, filename);
+    if (!fs.existsSync(localImgPath)) {
+      console.warn("Image manquante dans le dossier local:", filename);
+      continue;
+    }
+
+    // 2. Upload l'image vers Shopify Files
+    let cdnUrl;
+    try {
+      cdnUrl = await uploadImageToShopify(localImgPath, filename);
+      console.log("Image uploadée:", filename, "-> CDN:", cdnUrl);
+    } catch (err) {
+      console.error("Erreur upload", filename, err);
+      continue;
+    }
+
+    // 3. Mapping produit
+    const handle = record["Handle"];
+    const productId = productHandleToId[handle];
+
+    // 4. Mapping variante si existant
+    const optionValue = record["Option1 Value"];
+    const variantKey = handle + ":" + optionValue;
+    const variantId = variantKeyToId[variantKey];
+
+    // 5. Rattache au produit principal
+    if (productId) {
+      await attachImageToProduct(productId, cdnUrl, record["Image Alt Text"] ?? "");
+    }
+
+    // 6. (Optionnel) Rattache à la variante si besoin
+    if (variantId && optionValue) {
+      await attachImageToVariant(variantId, cdnUrl, record["Image Alt Text"] ?? "");
+    }
+
+    await new Promise(res => setTimeout(res, 250)); // evite throttling
+  }
+  console.log("Batch upload terminé !");
+})();
