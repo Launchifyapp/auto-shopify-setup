@@ -1,7 +1,5 @@
 import fs from "fs";
 import path from "path";
-// fetch est global sur Node >=18 ou Next.js, donc ne pas importer node-fetch !
-
 const IMAGES_DIR = "./public/products_images/";
 const EXTRA_IMAGES = [
   "./public/image1.jpg",
@@ -9,67 +7,46 @@ const EXTRA_IMAGES = [
   "./public/image4.jpg",
   "./public/image4.webp"
 ];
-// Change selon ton setup local ! Utilise en local http://localhost:3000/api/upload-file
-const UPLOAD_API_ENDPOINT = "http://localhost:3000/api/upload-file";
+const UPLOAD_API_ENDPOINT = "http://localhost:3000/api/upload-file"; // endpoint Next.js qui télécharge de http://localhost:3000/public/...
 
-// Utilitaire pour récupérer les images du dossier
-function getAllImageFiles(): string[] {
+function getAllFiles(): string[] {
   return fs.readdirSync(IMAGES_DIR)
     .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f))
-    .map(f => path.join(IMAGES_DIR, f));
+    .map(f => f); // f = filename only
 }
 
-function getMimeType(filePath: string): string {
-  const ext = filePath.split('.').pop()?.toLowerCase();
-  if (ext === "png") return "image/png";
-  if (ext === "webp") return "image/webp";
+function mimeType(filename: string): string {
+  if (filename.endsWith(".png")) return "image/png";
+  if (filename.endsWith(".webp")) return "image/webp";
   return "image/jpeg";
 }
 
-// Upload une image locale via /api/upload-file (staged upload Shopify)
-async function uploadViaStagedApi(localPath: string): Promise<string> {
-  const filename = path.basename(localPath);
-  const mimeType = getMimeType(localPath);
-  // Envoie le fichier avec chemin file:// (tu adapteras si tu utilises buffer/binary sur l'endpoint Next.js !)
-  // Pour une API Next.js, il vaut mieux utiliser multipart ou passer en public si tu lances en remote
-  const payload = { url: `file://${localPath}`, filename, mimeType };
-
-  const res = await fetch(UPLOAD_API_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  const json = await res.json();
-  if (json.ok && json.uploads?.[0]?.result?.data?.fileCreate?.files?.[0]?.preview?.image?.url) {
-    return json.uploads[0].result.data.fileCreate.files[0].preview.image.url;
-  } else {
-    throw new Error(`Staged upload error for ${filename}: ${JSON.stringify(json)}`);
-  }
-}
-
 (async () => {
-  // Liste images à uploader
-  const allFiles = [...getAllImageFiles(), ...EXTRA_IMAGES];
-  let countSuccess = 0, countFail = 0, failedFiles: string[] = [];
-  for (const imgPath of allFiles) {
-    if (!fs.existsSync(imgPath)) {
-      console.warn(`[UPLOAD] File not found: ${imgPath}`);
-      countFail++;
-      failedFiles.push(imgPath + " (not found)");
-      continue;
-    }
+  const allFiles = [...getAllFiles(), ...EXTRA_IMAGES.map(f => path.basename(f))];
+  for (const fname of allFiles) {
+    // Images dans public → accessibles via URL HTTP sur Next.js local…
+    const url = `http://localhost:3000/products_images/${fname}`;
+    // Pour les extras : adapte la racine si nécessaire
+    let imgUrl = url;
+    if (!fs.existsSync(path.join(IMAGES_DIR, fname)))
+      imgUrl = `http://localhost:3000/${fname}`;
+    const payload = { url: imgUrl, filename: fname, mimeType: mimeType(fname) };
     try {
-      const cdnUrl = await uploadViaStagedApi(imgPath);
-      console.log(`[UPLOAD SUCCESS] ${imgPath} → ${cdnUrl}`);
-      countSuccess++;
+      const res = await fetch(UPLOAD_API_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const result = await res.json();
+      if (result.ok && result.uploads?.[0]) {
+        console.log(`UPLOAD OK: ${fname} → ${result.uploads[0].result.data.fileCreate.files[0].preview.image.url}`);
+      } else {
+        console.error("UPLOAD FAIL:", fname, result);
+      }
     } catch (err) {
-      console.error(`[UPLOAD ERROR] ${imgPath}`, err);
-      countFail++;
-      failedFiles.push(imgPath + " (error)");
+      console.error("UPLOAD ERR", fname, err);
     }
-    await new Promise(r => setTimeout(r, 250)); // anti-throttle Shopify
+    await new Promise(r => setTimeout(r, 300));
   }
-  console.log(`✔️ ${countSuccess} images uploadées. ❌ ${countFail} erreurs.`);
-  if (failedFiles.length) console.log("Images en erreur:", failedFiles);
-  console.log("Batch upload TERMINÉ!");
+  console.log("Upload batch terminé !");
 })();
