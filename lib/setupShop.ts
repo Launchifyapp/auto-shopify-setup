@@ -18,6 +18,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
       // Build productOptions dynamically, ignore default/empty option values
       type ProductOption = { name: string, values: { name: string }[] };
+      type VariantNode = { option1?: string; option2?: string; option3?: string; [key: string]: unknown };
       const optionValues1: { name: string }[] = [...new Set(group.map(row => (row["Option1 Value"] || "").trim()))]
         .filter(v => !!v && v !== "Default Title")
         .map(v => ({ name: v }));
@@ -90,7 +91,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         }
 
         // 2. Collect variants already created by Shopify
-        const createdVariantsArr = productData?.variants?.edges?.map((edge: any) => edge.node) ?? [];
+        const createdVariantsArr: VariantNode[] = productData?.variants?.edges?.map((edge: { node: VariantNode }) => edge.node) ?? [];
         const createdVariantsCount = createdVariantsArr.length;
 
         // 3. Calculate expected number of variants from CSV
@@ -103,9 +104,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         // 4. If not all variants were created, bulk create remaining variants
         if (productOptionsOrUndefined && createdVariantsCount < expectedVariantsCount) {
           // Find handled variant keys to avoid duplicate creation
-          const alreadyCreatedKeys = new Set(
-            createdVariantsArr.map(v =>
-              // Variant key: join its option values found by index, lowercased
+          const alreadyCreatedKeys = new Set<string>(
+            createdVariantsArr.map((v: VariantNode) =>
               [v.option1, v.option2, v.option3].map(x => (x || "").toLocaleLowerCase()).join("/")
             )
           );
