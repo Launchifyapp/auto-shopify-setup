@@ -83,7 +83,7 @@ async function attachImageToProduct(productId: string, imageUrl: string, altText
   const csvText = await response.text();
   const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: "," });
   const mapping: Record<string, any> = {};
-  records.forEach(r => {
+  records.forEach((r: any) => {
     const handle = r["Handle"];
     const imageUrl = r["Image Src"];
     const filename = imageUrl.substring(imageUrl.lastIndexOf("/") + 1).split("?")[0];
