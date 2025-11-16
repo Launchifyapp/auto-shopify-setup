@@ -1,31 +1,151 @@
 import { parse } from "csv-parse/sync";
 import { Buffer } from "buffer";
+import path from "path";
+import fs from "fs";
 
-/** Détecte le séparateur ; ou , pour CSV Shopify FR/EN */
+/**
+ * Détecte le séparateur ; ou , pour CSV Shopify FR/EN
+ */
 function guessCsvDelimiter(csvText: string): ";" | "," {
   const firstLine = csvText.split("\n")[0];
   return firstLine.indexOf(";") >= 0 ? ";" : ",";
 }
 
 /**
- * Upload une image sur Shopify:
- * - Tente mutation GraphQL fileCreate (originalSource sur URL)
- * - Si erreur, fallback REST Files API en base64
- * - Jamais de double lecture du body
- * Retourne l'URL CDN Shopify obtenue OU log + throw le corps d'erreur
+ * Shopify staged upload workflow:
+ * 1. Request pre-signed S3 upload URL with stagedUploadsCreate
+ * 2. POST file to S3 URL with provided fields
+ * 3. Call fileCreate using S3 resourceUrl
  */
-async function uploadImageToShopify(shop: string, token: string, imageUrl: string, filename: string): Promise<string> {
+async function getStagedUploadUrl(shop: string, token: string, filename: string, mimeType: string) {
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token
+    },
+    body: JSON.stringify({
+      query: `
+        mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+          stagedUploadsCreate(input: $input) {
+            stagedTargets {
+              url
+              resourceUrl
+              parameters { name value }
+            }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: {
+        input: [{
+          filename,
+          mimeType,
+          resource: "FILE"
+        }]
+      }
+    })
+  });
+
+  const bodyText = await res.text();
+  let json: any = null;
+  try {
+    json = JSON.parse(bodyText);
+  } catch {
+    throw new Error(`stagedUploadsCreate failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
+  }
+  if (!json?.data?.stagedUploadsCreate?.stagedTargets?.[0]) {
+    throw new Error("stagedUploadsCreate returned no stagedTargets: " + JSON.stringify(json));
+  }
+  return json.data.stagedUploadsCreate.stagedTargets[0];
+}
+
+/**
+ * Upload le fichier en POST multipart vers S3
+ */
+async function uploadToStagedUrl(stagedTarget: any, fileBuffer: Buffer, mimeType: string) {
+  const formData = new FormData();
+  for (const param of stagedTarget.parameters) {
+    formData.append(param.name, param.value);
+  }
+  formData.append('file', fileBuffer, { type: mimeType });
+
+  const res = await fetch(stagedTarget.url, {
+    method: 'POST',
+    body: formData
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`S3 upload failed: ${res.status} | ${errText}`);
+  }
+  return stagedTarget.resourceUrl;
+}
+
+/**
+ * Crée le fichier Shopify via fileCreate, source = staged resourceUrl S3
+ */
+async function fileCreateFromStaged(shop: string, token: string, resourceUrl: string, filename: string, mimeType: string) {
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token
+    },
+    body: JSON.stringify({
+      query: `
+        mutation fileCreate($files: [FileCreateInput!]!) {
+          fileCreate(files: $files) {
+            files { url fileStatus }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: {
+        files: [{
+          originalSource: resourceUrl,
+          originalFileName: filename,
+          mimeType
+        }]
+      }
+    })
+  });
+  const bodyText = await res.text();
+  let json: any = null;
+  try {
+    json = JSON.parse(bodyText);
+  } catch {
+    throw new Error(`fileCreate failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
+  }
+  if (json.data?.fileCreate?.files?.[0]?.url) {
+    return json.data.fileCreate.files[0].url;
+  }
+  if (json.data?.fileCreate?.userErrors?.length) {
+    throw new Error('File create userErrors: ' + JSON.stringify(json.data.fileCreate.userErrors));
+  }
+  throw new Error(`fileCreate failed | Response: ${bodyText}`);
+}
+
+/**
+ * Upload universel : directe par URL si accepté, sinon staged upload Shopify
+ * Si tu passes une url locale, télécharge puis upload; sinon upload staged sur download remote image
+ */
+async function uploadImageToShopifyUniversal(shop: string, token: string, imageUrl: string, filename: string): Promise<string> {
   if (imageUrl.startsWith("https://cdn.shopify.com")) return imageUrl;
 
-  // 1. Tentative mutation GraphQL
-  const graphRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+  // 1. Tentative fileCreate direct par URL
+  const mimeType =
+    filename.endsWith('.png') ? "image/png"
+    : filename.endsWith('.webp') ? "image/webp"
+    : "image/jpeg";
+
+  const fileCreateRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
     body: JSON.stringify({
       query: `
         mutation fileCreate($files: [FileCreateInput!]!) {
           fileCreate(files: $files) {
-            files { url }
+            files { url fileStatus }
             userErrors { field message }
           }
         }
@@ -34,57 +154,41 @@ async function uploadImageToShopify(shop: string, token: string, imageUrl: strin
         files: [{
           originalSource: imageUrl,
           originalFileName: filename,
-          mimeType: imageUrl.endsWith('.png') ? "image/png"
-            : imageUrl.endsWith('.webp') ? "image/webp"
-            : "image/jpeg"
+          mimeType
         }]
       }
     })
   });
-
-  const graphBodyText = await graphRes.text();
-  let graphJson: any = null;
+  const fileCreateBodyText = await fileCreateRes.text();
+  let fileCreateJson: any = null;
   try {
-    graphJson = JSON.parse(graphBodyText);
+    fileCreateJson = JSON.parse(fileCreateBodyText);
   } catch {
-    throw new Error(`Shopify img upload failed: Non-JSON response (${graphRes.status}) | Body: ${graphBodyText}`);
-  }
-  if (graphJson.data?.fileCreate?.files?.[0]?.url) {
-    return graphJson.data.fileCreate.files[0].url;
+    throw new Error(`fileCreate failed: Non-JSON response (${fileCreateRes.status}) | Body: ${fileCreateBodyText}`);
   }
 
-  // 2. Fallback : download + REST Files API en base64
-  const imgRes = await fetch(imageUrl);
-  if (!imgRes.ok) throw new Error("download image error");
-  const buf = Buffer.from(await imgRes.arrayBuffer());
-  const base64 = buf.toString("base64");
-
-  const restFilesRes = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
-    },
-    body: JSON.stringify({
-      file: {
-        attachment: base64,
-        filename,
-        mime_type: imageUrl.endsWith('.png') ? "image/png"
-          : imageUrl.endsWith('.webp') ? "image/webp"
-          : "image/jpeg"
-      }
-    }),
-  });
-
-  const restBodyText = await restFilesRes.text();
-  let restJson: any = null;
-  try {
-    restJson = JSON.parse(restBodyText);
-  } catch {
-    throw new Error(`Shopify base64 upload failed: Non-JSON response (${restFilesRes.status}) | Body: ${restBodyText}`);
+  // Si succès direct
+  if (fileCreateJson.data?.fileCreate?.files?.[0]?.url) {
+    return fileCreateJson.data.fileCreate.files[0].url;
   }
-  if (restJson.file?.url) return restJson.file.url;
-  throw new Error("Upload image failed for " + filename + " | GraphQL: " + JSON.stringify(graphJson) + " | REST: " + JSON.stringify(restJson));
+  // Si userError, refuse le domaine → staged upload
+  if (fileCreateJson.data?.fileCreate?.userErrors?.length) {
+    // Download image en mémoire
+    const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) throw new Error("download image error");
+    const buf = Buffer.from(await imgRes.arrayBuffer());
+
+    // Step 1: stagedUploadsCreate
+    const stagedTarget = await getStagedUploadUrl(shop, token, filename, mimeType);
+
+    // Step 2: Upload to S3
+    const resourceUrl = await uploadToStagedUrl(stagedTarget, buf, mimeType);
+
+    // Step 3: fileCreate using S3 URL
+    return await fileCreateFromStaged(shop, token, resourceUrl, filename, mimeType);
+  }
+
+  throw new Error(`Shopify fileCreate failed | Response: ${fileCreateBodyText}`);
 }
 
 /**
@@ -162,7 +266,7 @@ async function attachImageToVariant(shop: string, token: string, variantId: stri
 }
 
 /**
- * Fonction principale : crée les produits à partir du CSV et attache les images
+ * Fonction principale : crée les produits à partir du CSV et attache les images avec upload universel
  */
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
@@ -172,14 +276,12 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     const delimiter = guessCsvDelimiter(csvText);
     const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter });
 
-    // Regroupe les lignes du CSV par Handle produit
     const productsByHandle: Record<string, any[]> = {};
     for (const row of records) {
       if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
       productsByHandle[row.Handle].push(row);
     }
 
-    // Traitement produit par produit
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
 
@@ -225,7 +327,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       };
 
       try {
-        // Création produit Shopify
+        // Création du produit
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -274,12 +376,12 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         }
         console.log('Produit créé', handleUnique, '| GraphQL response:', JSON.stringify(gqlJson, null, 2));
 
-        // Upload et attache image principale
+        // Upload image et rattachement produit
         const productImageUrl = main["Image Src"];
         const imageAltText = main["Image Alt Text"] ?? "";
         if (productImageUrl && !productImageUrl.startsWith("https://cdn.shopify.com")) {
           try {
-            const cdnUrl = await uploadImageToShopify(shop, token, productImageUrl, productImageUrl.split('/').pop() ?? 'image.jpg');
+            const cdnUrl = await uploadImageToShopifyUniversal(shop, token, productImageUrl, productImageUrl.split('/').pop() ?? 'image.jpg');
             await attachImageToProduct(shop, token, productId, cdnUrl, imageAltText);
             console.log(`Image rattachée au produit: ${handle} → ${productId}`);
           } catch (err) {
@@ -289,8 +391,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
         // Création/gestion variants et attachement images des variantes
         const createdVariantsArr: VariantNode[] = productData?.variants?.edges?.map((edge: { node: VariantNode }) => edge.node) ?? [];
-        const createdVariantsCount = createdVariantsArr.length;
-
         for (const v of createdVariantsArr) {
           const variantKey = handle + ":" +
             (v.selectedOptions ?? []).map(opt => opt.value).join(":");
@@ -308,94 +408,11 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             let variantImageUrl = variantCsvRow["Variant Image"];
             let variantAltText = variantCsvRow["Image Alt Text"] ?? "";
             try {
-              const cdnUrl = await uploadImageToShopify(shop, token, variantImageUrl, variantImageUrl.split('/').pop() ?? 'variant.jpg');
+              const cdnUrl = await uploadImageToShopifyUniversal(shop, token, variantImageUrl, variantImageUrl.split('/').pop() ?? 'variant.jpg');
               await attachImageToVariant(shop, token, v.id, cdnUrl, variantAltText);
               console.log(`Image rattachée à variante: ${variantKey} → ${v.id}`);
             } catch (err) {
               console.error("Erreur upload/attach image variante", variantKey, err);
-            }
-          }
-        }
-
-        const expectedVariantsCount = group.filter(row =>
-          productOptions.some((opt, idx) =>
-            row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim() !== "Default Title"
-          )
-        ).length;
-
-        if (productOptionsOrUndefined && createdVariantsCount < expectedVariantsCount) {
-          const alreadyCreatedKeys = new Set<string>(
-            createdVariantsArr.map((v: VariantNode) =>
-              (v.selectedOptions ?? [])
-                .map(opt => (opt.value || "").toLocaleLowerCase())
-                .join("/")
-            )
-          );
-
-          const variants = group
-            .filter(row => productOptions.some((opt, idx) =>
-              row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim() !== "Default Title"
-            ))
-            .map(row => {
-              const key = [
-                row["Option1 Value"]?.trim().toLocaleLowerCase(),
-                row["Option2 Value"]?.trim().toLocaleLowerCase(),
-                row["Option3 Value"]?.trim().toLocaleLowerCase()
-              ].filter(Boolean).join("/");
-
-              if (alreadyCreatedKeys.has(key)) return undefined;
-              const optionValues: { name: string; optionName: string }[] = [];
-              productOptions.forEach((opt, idx) => {
-                const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
-                if (value && value !== "Default Title")
-                  optionValues.push({ name: value, optionName: opt.name });
-              });
-              return {
-                price: row["Variant Price"] || main["Variant Price"] || undefined,
-                compareAtPrice: row["Variant Compare At Price"] || undefined,
-                sku: row["Variant SKU"] || undefined,
-                barcode: row["Variant Barcode"] || undefined,
-                optionValues: optionValues.length ? optionValues : undefined,
-              };
-            })
-            .filter(v => v && v.optionValues && v.optionValues.length);
-
-          if (variants.length) {
-            try {
-              const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "X-Shopify-Access-Token": token,
-                },
-                body: JSON.stringify({
-                  query: `
-                    mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-                      productVariantsBulkCreate(productId: $productId, variants: $variants) {
-                        productVariants { id sku price }
-                        userErrors { field message }
-                      }
-                    }
-                  `,
-                  variables: { productId, variants },
-                }),
-              });
-
-              const bulkBodyText = await bulkRes.text();
-              let bulkJson: any = null;
-              try {
-                bulkJson = JSON.parse(bulkBodyText);
-              } catch {
-                throw new Error(`productVariantsBulkCreate failed: Non-JSON response (${bulkRes.status}) | Body: ${bulkBodyText}`);
-              }
-
-              if (bulkJson?.data?.productVariantsBulkCreate?.userErrors?.length) {
-                console.error('Bulk variants userErrors:', bulkJson.data.productVariantsBulkCreate.userErrors);
-              } else {
-                console.log('Bulk variants response:', JSON.stringify(bulkJson, null, 2));
-              }
-            } catch (err) {
-              console.log('Erreur bulk variants GraphQL', handleUnique, err);
             }
           }
         }
