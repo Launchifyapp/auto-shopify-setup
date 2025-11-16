@@ -1,11 +1,10 @@
 import { parse } from "csv-parse/sync";
 import { Buffer } from "buffer";
 
-/**
- * Utilitaire pour normaliser le domaine des urls images Vercel
- */
-function normalizeImageUrl(url: string): string {
-  return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
+/** Détecte le séparateur ; ou , pour CSV Shopify FR/EN */
+function guessCsvDelimiter(csvText: string): ";" | "," {
+  const firstLine = csvText.split("\n")[0];
+  return firstLine.indexOf(";") >= 0 ? ";" : ",";
 }
 
 /**
@@ -16,8 +15,6 @@ function normalizeImageUrl(url: string): string {
  */
 async function uploadImageToShopify(shop: string, token: string, imageUrl: string, filename: string): Promise<string> {
   if (imageUrl.startsWith("https://cdn.shopify.com")) return imageUrl;
-  const normalizedUrl = normalizeImageUrl(imageUrl);
-
   // 1. Tentative mutation GraphQL
   const graphRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -33,10 +30,10 @@ async function uploadImageToShopify(shop: string, token: string, imageUrl: strin
       `,
       variables: {
         files: [{
-          originalSource: normalizedUrl,
+          originalSource: imageUrl,
           originalFileName: filename,
-          mimeType: normalizedUrl.endsWith('.png') ? "image/png"
-            : normalizedUrl.endsWith('.webp') ? "image/webp"
+          mimeType: imageUrl.endsWith('.png') ? "image/png"
+            : imageUrl.endsWith('.webp') ? "image/webp"
             : "image/jpeg"
         }]
       }
@@ -46,13 +43,11 @@ async function uploadImageToShopify(shop: string, token: string, imageUrl: strin
   if (graphJson.data?.fileCreate?.files?.[0]?.url) {
     return graphJson.data.fileCreate.files[0].url;
   }
-
   // 2. Fallback : download + REST Files API en base64
-  const imgRes = await fetch(normalizedUrl);
+  const imgRes = await fetch(imageUrl);
   if (!imgRes.ok) throw new Error("download image error");
   const buf = Buffer.from(await imgRes.arrayBuffer());
   const base64 = buf.toString("base64");
-
   const restFilesRes = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
     method: "POST",
     headers: {
@@ -63,8 +58,8 @@ async function uploadImageToShopify(shop: string, token: string, imageUrl: strin
       file: {
         attachment: base64,
         filename,
-        mime_type: normalizedUrl.endsWith('.png') ? "image/png"
-          : normalizedUrl.endsWith('.webp') ? "image/webp"
+        mime_type: imageUrl.endsWith('.png') ? "image/png"
+          : imageUrl.endsWith('.webp') ? "image/webp"
           : "image/jpeg"
       }
     }),
@@ -144,7 +139,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
-    const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: "," });
+    const delimiter = guessCsvDelimiter(csvText);
+    const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter });
 
     // Regroupe les lignes du CSV par Handle produit
     const productsByHandle: Record<string, any[]> = {};
@@ -243,7 +239,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         // Upload et attache image principale
         const productImageUrl = main["Image Src"];
         const imageAltText = main["Image Alt Text"] ?? "";
-        if (productImageUrl) {
+        // Filtre l'image déjà sur Shopify CDN !
+        if (productImageUrl && !productImageUrl.startsWith("https://cdn.shopify.com")) {
           try {
             const cdnUrl = await uploadImageToShopify(shop, token, productImageUrl, productImageUrl.split('/').pop() ?? 'image.jpg');
             await attachImageToProduct(shop, token, productId, cdnUrl, imageAltText);
@@ -265,8 +262,13 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             .filter(Boolean)
             .join(":") === (v.selectedOptions ?? []).map(opt => opt.value).join(":")
           );
-          if (variantCsvRow && v.id && variantCsvRow["Image Src"]) {
-            let variantImageUrl = variantCsvRow["Image Src"];
+          if (
+            variantCsvRow &&
+            v.id &&
+            variantCsvRow["Variant Image"] &&
+            !variantCsvRow["Variant Image"].startsWith("https://cdn.shopify.com")
+          ) {
+            let variantImageUrl = variantCsvRow["Variant Image"];
             let variantAltText = variantCsvRow["Image Alt Text"] ?? "";
             try {
               const cdnUrl = await uploadImageToShopify(shop, token, variantImageUrl, variantImageUrl.split('/').pop() ?? 'variant.jpg');
