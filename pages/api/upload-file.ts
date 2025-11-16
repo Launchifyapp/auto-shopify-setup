@@ -1,6 +1,8 @@
-export const config = { runtime: "nodejs" };
+export const config = { runtime: 'nodejs' };
 import type { NextApiRequest, NextApiResponse } from "next";
-import { FormData, File } from 'formdata-node';
+import { FormData, File } from "formdata-node";
+import { FormDataEncoder } from "form-data-encoder";
+import { fetch } from "undici";
 import { Buffer } from "buffer";
 
 const SHOPIFY_STORE = process.env.SHOPIFY_STORE!;
@@ -11,7 +13,7 @@ function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
 
-async function uploadOne({ url, filename, mimeType }: { url: string, filename: string, mimeType: string }) {
+async function uploadOne({ url, filename, mimeType }: { url: string; filename: string; mimeType: string }) {
   url = normalizeImageUrl(url);
 
   // 1. Step: Staged upload request
@@ -37,7 +39,6 @@ async function uploadOne({ url, filename, mimeType }: { url: string, filename: s
             mimeType,
             resource: "IMAGE",
             httpMethod: "POST",
-            // Tu peux éventuellement mettre le vrai fileSize ici !
             fileSize: "1"
           }
         ]
@@ -58,12 +59,17 @@ async function uploadOne({ url, filename, mimeType }: { url: string, filename: s
   if (!imageRes.ok) return { ok: false, error: "source download failed", status: imageRes.status };
   const imageBuf = Buffer.from(await imageRes.arrayBuffer());
 
-  // 3. Step: Send to S3 (using formdata-node)
+  // 3. Step: Send to S3 (using formdata-node + form-data-encoder + undici)
   const uploadForm = new FormData();
   for (const p of target.parameters) uploadForm.append(p.name, p.value);
   uploadForm.append("file", new File([imageBuf], filename, { type: mimeType }));
 
-  const s3Res = await fetch(target.url, { method: "POST", body: uploadForm });
+  const encoder = new FormDataEncoder(uploadForm);
+  const s3Res = await fetch(target.url, {
+    method: "POST",
+    body: encoder.encode(),
+    headers: encoder.headers
+  });
   const s3Text = await s3Res.text();
   console.log("S3 upload response:", s3Res.status, s3Text);
   if (!s3Res.ok)
