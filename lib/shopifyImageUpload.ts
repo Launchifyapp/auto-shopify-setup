@@ -1,11 +1,25 @@
 import { Buffer } from "buffer";
 
+export type ShopifyImageUploadParams = {
+  url: string,
+  filename: string,
+  mime_type: string,
+  shop: string,
+  token: string
+};
+
 /**
  * Upload une image sur Shopify Files API.
  * - Tente d'abord le mode "source" (url publique)
  * - Si refus ou erreur Shopify, télécharge l'image puis upload en "attachment" (base64)
  */
-export async function uploadShopifyImage({ url, filename, mime_type, shop, token }) {
+export async function uploadShopifyImage({
+  url,
+  filename,
+  mime_type,
+  shop,
+  token
+}: ShopifyImageUploadParams): Promise<any> {
   // 1. Tente l'import par URL source
   const res = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
     method: "POST",
