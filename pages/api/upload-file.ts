@@ -1,7 +1,6 @@
 export const config = { runtime: "nodejs" };
 import type { NextApiRequest, NextApiResponse } from "next";
-import { FormData } from "formdata-node";
-import { File } from "formdata-node/file";
+import { FormData, File } from 'formdata-node';
 import { Buffer } from "buffer";
 
 const SHOPIFY_STORE = process.env.SHOPIFY_STORE!;
