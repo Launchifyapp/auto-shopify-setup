@@ -7,6 +7,7 @@ import path from "path";
 const SHOP = process.env.SHOPIFY_STORE || "monshop.myshopify.com";
 const TOKEN = process.env.SHOPIFY_ADMIN_TOKEN || "";
 
+// Staged upload with resource: "IMAGE"
 async function getStagedUploadUrl(shop: string, token: string, filename: string, mimeType: string) {
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -23,6 +24,7 @@ async function getStagedUploadUrl(shop: string, token: string, filename: string,
           }
         }
       `,
+      // IMPORTANT: Use resource: "IMAGE" for product images
       variables: { input: [{ filename, mimeType, resource: "IMAGE" }] }
     })
   });
@@ -58,7 +60,7 @@ async function uploadToStagedUrl(stagedTarget: any, fileBuffer: Buffer, mimeType
   return stagedTarget.resourceUrl;
 }
 
-// CORRECT: Only originalSource + alt in files variable!
+// Patch: do NOT block if image is UPLOADED without preview (Shopify processes CDN asynchronously)
 async function fileCreateFromStaged(shop: string, token: string, resourceUrl: string, filename: string, mimeType: string) {
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -83,7 +85,6 @@ async function fileCreateFromStaged(shop: string, token: string, resourceUrl: st
           }
         }
       `,
-      // CORRECT: Only originalSource + alt, do NOT send mimeType/originalFileName!
       variables: { files: [{ originalSource: resourceUrl, alt: filename }] }
     })
   });
@@ -94,8 +95,17 @@ async function fileCreateFromStaged(shop: string, token: string, resourceUrl: st
   } catch {
     throw new Error(`fileCreate failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
   }
-  const imageUrl = json?.data?.fileCreate?.files?.[0]?.preview?.image?.url;
+  const fileObj = json?.data?.fileCreate?.files?.[0];
+  const imageUrl = fileObj?.preview?.image?.url;
   if (imageUrl) return imageUrl;
+  if (fileObj?.fileStatus === "UPLOADED" && !imageUrl) {
+    // Don't block: Return id/ready status for async usage; preview (cdn url) will be generated soon
+    console.warn(
+      `[Shopify] Image uploaded (${filename}), fileStatus: UPLOADED but preview.image not ready yet. MediaImage ID: ${fileObj.id}`
+    );
+    // You can optionally return a polling object or just the resourceUrl for later checking
+    return { status: "UPLOADED", id: fileObj.id, resourceUrl, previewReady: false };
+  }
   if (json.data?.fileCreate?.userErrors?.length) throw new Error('File create userErrors: ' + JSON.stringify(json.data.fileCreate.userErrors));
   throw new Error(`fileCreate failed | Response: ${bodyText}`);
 }
@@ -112,14 +122,18 @@ export async function stagedUploadShopifyFile(shop: string, token: string, fileP
   return await fileCreateFromStaged(shop, token, resourceUrl, filename, mimeType);
 }
 
-// Exemple de batch upload de tous les fichiers images dans un dossier
+// Batch upload utility
 export async function batchUploadLocalImages(dir: string) {
   const files = fs.readdirSync(dir).filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f));
   for (const fname of files) {
     const filePath = path.resolve(dir, fname);
     try {
-      const url = await stagedUploadShopifyFile(SHOP, TOKEN, filePath);
-      console.log(`[UPLOAD] ${fname} → ${url}`);
+      const urlOrObj = await stagedUploadShopifyFile(SHOP, TOKEN, filePath);
+      if (typeof urlOrObj === 'string') {
+        console.log(`[UPLOAD] ${fname} → ${urlOrObj}`);
+      } else {
+        console.log(`[UPLOAD] ${fname} UPLOADED (preview pending), MediaImage ID: ${urlOrObj.id}`);
+      }
     } catch (err) {
       console.error(`[FAIL] ${fname}: ${err}`);
     }
