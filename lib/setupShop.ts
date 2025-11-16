@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs";
 import { stagedUploadShopifyFile } from "./batchUploadUniversal";
 
-/** Détecte le séparateur ; oubien , pour CSV Shopify FR/EN */
+/** Détecter le séparateur ; ou , pour CSV Shopify FR/EN */
 function guessCsvDelimiter(csvText: string): ";" | "," {
   const firstLine = csvText.split("\n")[0];
   return firstLine.indexOf(";") >= 0 ? ";" : ",";
@@ -27,7 +27,15 @@ async function uploadImageToShopifyUniversal(shop: string, token: string, imageU
       query: `
         mutation fileCreate($files: [FileCreateInput!]!) {
           fileCreate(files: $files) {
-            files { url fileStatus }
+            files {
+              id
+              fileStatus
+              preview {
+                image {
+                  url
+                }
+              }
+            }
             userErrors { field message }
           }
         }
@@ -42,7 +50,8 @@ async function uploadImageToShopifyUniversal(shop: string, token: string, imageU
   } catch {
     throw new Error(`fileCreate failed: Non-JSON response (${fileCreateRes.status}) | Body: ${fileCreateBodyText}`);
   }
-  if (fileCreateJson.data?.fileCreate?.files?.[0]?.url) return fileCreateJson.data.fileCreate.files[0].url;
+  const shopifyImageUrl = fileCreateJson?.data?.fileCreate?.files?.[0]?.preview?.image?.url;
+  if (shopifyImageUrl) return shopifyImageUrl;
   if (fileCreateJson.data?.fileCreate?.userErrors?.length) {
     // Domaine bloqué : staged upload
     const imgRes = await fetch(imageUrl);
