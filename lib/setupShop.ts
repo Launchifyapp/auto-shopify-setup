@@ -68,55 +68,86 @@ async function uploadImageToShopifyUniversal(shop: string, token: string, imageU
 /**
  * Attache l'image à un produit Shopify via GraphQL productCreateMedia
  */
-async function attachImageToProduct(shop: string, token: string, productId: string, imageUrl: string, altText: string = "") {
-  const media = [{
-    originalSource: imageUrl,
-    mediaContentType: "IMAGE",
-    alt: altText
-  }];
-  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-    method: "POST",
-    headers: {"Content-Type": "application/json", "X-Shopify-Access-Token": token},
-    body: JSON.stringify({
-      query: `
- mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-  productCreateMedia(productId: $productId, media: $media) {
-    media {
-      id
-      status
-      preview {
-        image {
-          url
+// Modification de la fonction attachImageToProduct
+async function attachImageToProduct(
+  shop: string,
+  token: string,
+  productId: string,
+  imageUrl: string,
+  altText: string = ""
+) {
+  const media = [
+    {
+      originalSource: imageUrl,
+      mediaContentType: "IMAGE",
+      alt: altText,
+    },
+  ];
+  const res = await fetch(
+    `https://${shop}/admin/api/2025-10/graphql.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": token,
+      },
+      body: JSON.stringify({
+        query: `
+        mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+          productCreateMedia(productId: $productId, media: $media) {
+            media {
+              id
+              status
+              preview {
+                image {
+                  url
+                }
+              }
+              mediaErrors {
+                code
+                message
+              }
+            }
+            mediaUserErrors {
+              code
+              message
+            }
+          }
         }
-      }
-      mediaErrors {
-        code
-        message
-      }
+        `,
+        variables: { productId, media },
+      }),
     }
-    mediaUserErrors {
-      code
-      message
-    }
-  }
-}
-      `,
-      variables: { productId, media }
-    })
-  });
+  );
   const bodyText = await res.text();
   let json: any = null;
   try {
     json = JSON.parse(bodyText);
   } catch {
-    throw new Error(`productCreateMedia failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
+    throw new Error(
+      `productCreateMedia failed: Non-JSON response (${res.status}) | Body: ${bodyText}`
+    );
   }
-  if (json.data?.productCreateMedia?.userErrors?.length) {
-    console.error("Erreur productCreateMedia:", JSON.stringify(json.data.productCreateMedia.userErrors));
+
+  // Ajout du log status/mediaErrors pour le debug
+  const mediaObj = json?.data?.productCreateMedia?.media?.[0];
+  if (
+    mediaObj &&
+    mediaObj.status !== "READY"
+  ) {
+    console.warn(
+      `Media upload status: ${mediaObj.status}`,
+      "mediaErrors:", mediaObj.mediaErrors
+    );
+  }
+  if (json.data?.productCreateMedia?.mediaUserErrors?.length) {
+    console.error(
+      "Erreur productCreateMedia [mediaUserErrors]:",
+      JSON.stringify(json.data.productCreateMedia.mediaUserErrors)
+    );
   }
   return json;
 }
-
 /**
  * Attache l'image à une variante Shopify
  */
