@@ -45,22 +45,22 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
       }
     }),
   });
- const stagedJson = await stagedRes.json() as any;
-console.log("stagedUploadsCreate:", JSON.stringify(stagedJson));
-if (
-  !stagedJson ||
-  !stagedJson.data ||
-  !stagedJson.data.stagedUploadsCreate ||
-  !Array.isArray(stagedJson.data.stagedUploadsCreate.stagedTargets) ||
-  !stagedJson.data.stagedUploadsCreate.stagedTargets.length
-) {
-  return { ok: false, error: "staged error", stagedJson };
-}
+  const stagedJson = await stagedRes.json() as any;
+  console.log("stagedUploadsCreate:", JSON.stringify(stagedJson));
+  if (
+    !stagedJson ||
+    !stagedJson.data ||
+    !stagedJson.data.stagedUploadsCreate ||
+    !Array.isArray(stagedJson.data.stagedUploadsCreate.stagedTargets) ||
+    !stagedJson.data.stagedUploadsCreate.stagedTargets.length
+  ) {
+    return { ok: false, error: "staged error", stagedJson };
+  }
 
-const target = stagedJson.data.stagedUploadsCreate.stagedTargets[0];
-if (!target || !target.resourceUrl) {
-  return { ok: false, error: "no resourceUrl", target };
-}
+  const target = stagedJson.data.stagedUploadsCreate.stagedTargets[0];
+  if (!target || !target.resourceUrl) {
+    return { ok: false, error: "no resourceUrl", target };
+  }
 
   // 2. Step: Download image from provided HTTP url
   const imageRes = await fetch(url);
@@ -94,7 +94,17 @@ if (!target || !target.resourceUrl) {
       query: `
         mutation fileCreate($files: [FileCreateInput!]!) {
           fileCreate(files: $files) {
-            files { id alt createdAt fileStatus preview { image { url } } }
+            files {
+              id
+              alt
+              createdAt
+              fileStatus
+              preview {
+                image {
+                  url
+                }
+              }
+            }
             userErrors { field message }
           }
         }
@@ -109,9 +119,10 @@ if (!target || !target.resourceUrl) {
       }
     }),
   });
-  const fileCreateJson = await fileCreateRes.json();
+  const fileCreateJson = await fileCreateRes.json() as any;
   console.log("fileCreate:", JSON.stringify(fileCreateJson));
-  return { ok: true, result: fileCreateJson };
+  let imageUrl = fileCreateJson?.data?.fileCreate?.files?.[0]?.preview?.image?.url ?? null;
+  return { ok: true, result: fileCreateJson, imageUrl };
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
