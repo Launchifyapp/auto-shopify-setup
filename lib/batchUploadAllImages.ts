@@ -1,24 +1,15 @@
 import fs from "fs";
 import path from "path";
+import { uploadShopifyImage } from "./shopifyImageUpload";
 
 const IMAGES_DIR = "./public/products_images/";
-const EXTRA_IMAGES = [
-  "./public/image1.jpg",
-  "./public/image2.jpg",
-  "./public/image4.jpg",
-  "./public/image4.webp"
-];
-
-// Remplace ici par ton VERCEL DOMAIN qui fonctionne !
 const PUBLIC_BASE = "https://auto-shopify-setup.vercel.app";
-const UPLOAD_API_ENDPOINT = `${PUBLIC_BASE}/api/upload-file`;
+const SHOP = "monshop.myshopify.com";
+const TOKEN = process.env.SHOPIFY_ADMIN_TOKEN!;
 
-/**
- * Récupère toutes les images du dossier, ignore les non-images
- */
 function getAllImageFiles(): string[] {
   return fs.readdirSync(IMAGES_DIR)
-    .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f) && fs.statSync(path.join(IMAGES_DIR, f)).size > 0 && !fs.lstatSync(path.join(IMAGES_DIR, f)).isDirectory())
+    .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f) && fs.statSync(path.join(IMAGES_DIR, f)).size > 0)
     .map(f => f);
 }
 
@@ -29,50 +20,29 @@ function getMimeType(filename: string): string {
   return "image/jpeg";
 }
 
-async function uploadViaStagedApi(filename: string): Promise<string> {
-  let url;
-  if (fs.existsSync(path.join(IMAGES_DIR, filename))) {
-    url = `${PUBLIC_BASE}/products_images/${filename}`;
-  } else {
-    url = `${PUBLIC_BASE}/${filename}`;
-  }
-
-  const mimeType = getMimeType(filename);
-  const payload = { url, filename, mimeType };
-  const res = await fetch(UPLOAD_API_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const json = await res.json();
-  if (json.ok && json.uploads?.[0]?.result?.data?.fileCreate?.files?.[0]?.preview?.image?.url) {
-    return json.uploads[0].result.data.fileCreate.files[0].preview.image.url;
-  } else {
-    throw new Error(`Staged upload error for ${filename}: ${JSON.stringify(json)}`);
-  }
-}
-
 (async () => {
-  const extraFilenames = EXTRA_IMAGES
-    .map(f => path.basename(f))
-    .filter(f => fs.existsSync(path.join("public", f)) || fs.existsSync(path.join(IMAGES_DIR, f)));
-
-  const allFiles = [...getAllImageFiles(), ...extraFilenames];
-
+  const files = getAllImageFiles();
   let countSuccess = 0, countFail = 0, failedFiles: string[] = [];
-  for (const filename of allFiles) {
+  for (const filename of files) {
+    const url = `${PUBLIC_BASE}/products_images/${filename}`;
+    const mimeType = getMimeType(filename);
     try {
-      const cdnUrl = await uploadViaStagedApi(filename);
-      console.log(`[UPLOAD SUCCESS] ${filename} → ${cdnUrl}`);
+      const result = await uploadShopifyImage({
+        url,
+        filename,
+        mime_type: mimeType,
+        shop: SHOP,
+        token: TOKEN
+      });
+      console.log(`[UPLOAD SUCCESS] ${filename}:`, result);
       countSuccess++;
     } catch (err) {
       console.error(`[UPLOAD ERROR] ${filename}`, err);
       countFail++;
-      failedFiles.push(filename + " (error)");
+      failedFiles.push(filename);
     }
-    await new Promise(r => setTimeout(r, 250)); // anti-throttle Shopify
+    await new Promise(r => setTimeout(r, 500)); // anti-throttle Shopify
   }
   console.log(`✔️ ${countSuccess} images uploadées. ❌ ${countFail} erreurs.`);
-  if (failedFiles.length) console.log("Images en erreur:", failedFiles);
-  console.log("Batch upload TERMINÉ!");
+  if (countFail) console.log("Images en erreur:", failedFiles);
 })();
