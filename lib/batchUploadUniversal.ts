@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { parse } from "csv-parse/sync";
 
 // Shopify GraphQL Admin API upload util
 async function shopifyGraphQL(shop: string, token: string, query: string, variables: any = {}) {
@@ -14,123 +15,112 @@ async function shopifyGraphQL(shop: string, token: string, query: string, variab
   return res.json();
 }
 
-const IMAGES_DIR = "./public/products_images/";
-const EXTRA_IMAGES = [
-  "./public/image1.jpg",
-  "./public/image2.jpg",
-  "./public/image3.jpg",
-  "./public/image4.webp"
-];
-const PUBLIC_BASE = "https://auto-shopify-setup.vercel.app";
-
-const SHOP = "monshop.myshopify.com";
+const SHOP = "monshop.myshopify.com"; // à adapter
 const TOKEN = process.env.SHOPIFY_ADMIN_TOKEN!;
+const CSV_PATH = "./products.csv"; // à adapter si besoin
 
 /**
- * Retourne tous les fichiers images valides du dossier
+ * Récupère toutes les images uniques du CSV (présentes dans la colonne Image Src, exclut les Shopify CDN)
  */
-function getAllImageFiles(): string[] {
-  return fs.readdirSync(IMAGES_DIR)
-    .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f) && fs.statSync(path.join(IMAGES_DIR, f)).size > 0)
-    .map(f => path.join(IMAGES_DIR, f));
-}
-
-/**
- * Retourne le mimeType à partir du nom de fichier
- */
-function getMimeType(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase();
-  if (ext === "png") return "image/png";
-  if (ext === "webp") return "image/webp";
-  return "image/jpeg";
-}
-
-(async () => {
-  const imageFiles = getAllImageFiles();
-  const extraFiles = EXTRA_IMAGES.filter(f => fs.existsSync(f) && fs.statSync(f).size > 0);
-
-  // Tous les fichiers à uploader, sans doublons
-  const allFiles = Array.from(new Set([...imageFiles, ...extraFiles]));
-
-  // Prépare le payload FileCreateInput[]
-  const filesPayload = allFiles.map(filePath => {
-    const filename = path.basename(filePath);
-    let url;
-    if (filePath.startsWith(IMAGES_DIR)) {
-      url = `${PUBLIC_BASE}/products_images/${filename}`;
-    } else {
-      url = `${PUBLIC_BASE}/${filename}`;
+function getAllCsvImages(): { url: string, filename: string }[] {
+  const csvText = fs.readFileSync(CSV_PATH, "utf8");
+  const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: "," });
+  
+  // Set pour ne pas doubler les images
+  const urls = new Set<string>();
+  for (const r of records) {
+    const src = r["Image Src"];
+    if (src && src.length > 6 && !src.startsWith("https://cdn.shopify.com")) {
+      urls.add(src);
     }
-    return {
+    // tu peux aussi inclure les Variant Image si tu veux
+    if (r["Variant Image"] && r["Variant Image"].length > 6 && !r["Variant Image"].startsWith("https://cdn.shopify.com")) {
+      urls.add(r["Variant Image"]);
+    }
+  }
+  return Array.from(urls).map(url => {
+    const filename = url.split("/").pop()?.split("?")[0] ?? "image.jpg";
+    return { url, filename };
+  });
+}
+
+/**
+ * On batch upload en mutation GraphQL par paquets de 200
+ */
+(async () => {
+  const allCsvImages = getAllCsvImages();
+  console.log(`Images uniques à uploader : ${allCsvImages.length}`);
+
+  // Découpe en batches de 200
+  const chunkSize = 200;
+  let countSuccess = 0, countFail = 0;
+  let failedImages: string[] = [];
+
+  for (let i = 0; i < allCsvImages.length; i += chunkSize) {
+    const chunk = allCsvImages.slice(i, i + chunkSize);
+    const filesPayload = chunk.map(({ url, filename }) => ({
       alt: filename,
       filename,
       contentType: "IMAGE",
       originalSource: url
-    };
-  });
+    }));
 
-  // On batch tout dans une mutation GraphQL fileCreate
-  const mutation = `
-    mutation fileCreate($files: [FileCreateInput!]!) {
-      fileCreate(files: $files) {
-        files {
-          id
-          fileStatus
-          alt
-          createdAt
-          ... on MediaImage {
-            url
-            image { width height }
+    const mutation = `
+      mutation fileCreate($files: [FileCreateInput!]!) {
+        fileCreate(files: $files) {
+          files {
+            id
+            fileStatus
+            alt
+            createdAt
+            ... on MediaImage {
+              url
+              image { width height }
+            }
           }
+          userErrors { field message }
         }
-        userErrors { field message }
+      }
+    `;
+    const variables = { files: filesPayload };
+    let results;
+    try {
+      results = await shopifyGraphQL(SHOP, TOKEN, mutation, variables);
+    } catch (err) {
+      console.error("Erreur mutation fileCreate:", err);
+      continue;
+    }
+    if (
+      results &&
+      results.data &&
+      results.data.fileCreate &&
+      Array.isArray(results.data.fileCreate.files)
+    ) {
+      for (const [idx, file] of results.data.fileCreate.files.entries()) {
+        if (file.fileStatus === "READY" || file.url) {
+          console.log(`[UPLOAD SUCCESS] ${file.alt}: ${file.url || file.id}`);
+          countSuccess++;
+        } else {
+          console.error(`[UPLOAD ERROR] ${file.alt}: Status=${file.fileStatus}`);
+          countFail++;
+          failedImages.push(file.alt);
+        }
       }
     }
-  `;
-
-  const variables = {
-    files: filesPayload
-  };
-
-  let results;
-  try {
-    results = await shopifyGraphQL(SHOP, TOKEN, mutation, variables);
-  } catch (err) {
-    console.error("Erreur mutation fileCreate:", err);
-    process.exit(1);
-  }
-
-  let countSuccess = 0, countFail = 0, failedFiles: string[] = [];
-  if (
-    results &&
-    results.data &&
-    results.data.fileCreate &&
-    Array.isArray(results.data.fileCreate.files)
-  ) {
-    for (const [idx, file] of results.data.fileCreate.files.entries()) {
-      if (file.fileStatus === "READY" || file.url) {
-        console.log(`[UPLOAD SUCCESS] ${file.alt}: ${file.url || file.id}`);
-        countSuccess++;
-      } else {
-        console.error(`[UPLOAD ERROR] ${file.alt}: Status=${file.fileStatus}`);
-        countFail++;
-        failedFiles.push(file.alt);
+    // Afficher les erreurs field/message
+    if (
+      results &&
+      results.data &&
+      results.data.fileCreate &&
+      Array.isArray(results.data.fileCreate.userErrors)
+    ) {
+      for (const ue of results.data.fileCreate.userErrors) {
+        console.error(`[USER ERROR] ${ue.field?.join(".")}: ${ue.message}`);
       }
     }
-  }
 
-  // Afficher les erreurs field/message
-  if (
-    results &&
-    results.data &&
-    results.data.fileCreate &&
-    Array.isArray(results.data.fileCreate.userErrors)
-  ) {
-    for (const ue of results.data.fileCreate.userErrors) {
-      console.error(`[USER ERROR] ${ue.field?.join(".")}: ${ue.message}`);
-    }
+    await new Promise(r => setTimeout(r, 500)); // anti-throttle Shopify
   }
-
   console.log(`✔️ ${countSuccess} images uploadées. ❌ ${countFail} erreurs.`);
-  if (countFail) console.log("Images en erreur:", failedFiles);
+  if (countFail) console.log("Images en erreur:", failedImages);
 })();
