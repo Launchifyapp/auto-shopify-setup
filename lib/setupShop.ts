@@ -2,142 +2,24 @@ import { parse } from "csv-parse/sync";
 import { Buffer } from "buffer";
 import path from "path";
 import fs from "fs";
+import { stagedUploadShopifyFile } from "./batchUploadUniversal";
 
-/**
- * Détecte le séparateur ; ou , pour CSV Shopify FR/EN
- */
+/** Détecte le séparateur ; ou , pour CSV Shopify FR/EN */
 function guessCsvDelimiter(csvText: string): ";" | "," {
   const firstLine = csvText.split("\n")[0];
   return firstLine.indexOf(";") >= 0 ? ";" : ",";
 }
 
 /**
- * Shopify staged upload workflow:
- * 1. Request pre-signed S3 upload URL with stagedUploadsCreate
- * 2. POST file to S3 URL with provided fields
- * 3. Call fileCreate using S3 resourceUrl
- */
-async function getStagedUploadUrl(shop: string, token: string, filename: string, mimeType: string) {
-  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
-    },
-    body: JSON.stringify({
-      query: `
-        mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
-          stagedUploadsCreate(input: $input) {
-            stagedTargets {
-              url
-              resourceUrl
-              parameters { name value }
-            }
-            userErrors { field message }
-          }
-        }
-      `,
-      variables: {
-        input: [{
-          filename,
-          mimeType,
-          resource: "FILE"
-        }]
-      }
-    })
-  });
-
-  const bodyText = await res.text();
-  let json: any = null;
-  try {
-    json = JSON.parse(bodyText);
-  } catch {
-    throw new Error(`stagedUploadsCreate failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
-  }
-  if (!json?.data?.stagedUploadsCreate?.stagedTargets?.[0]) {
-    throw new Error("stagedUploadsCreate returned no stagedTargets: " + JSON.stringify(json));
-  }
-  return json.data.stagedUploadsCreate.stagedTargets[0];
-}
-
-/**
- * Upload le fichier en POST multipart vers S3
- */
-async function uploadToStagedUrl(stagedTarget: any, fileBuffer: Buffer, mimeType: string) {
-  const formData = new FormData();
-  for (const param of stagedTarget.parameters) {
-    formData.append(param.name, param.value);
-  }
-  formData.append('file', fileBuffer, { type: mimeType });
-
-  const res = await fetch(stagedTarget.url, {
-    method: 'POST',
-    body: formData
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`S3 upload failed: ${res.status} | ${errText}`);
-  }
-  return stagedTarget.resourceUrl;
-}
-
-/**
- * Crée le fichier Shopify via fileCreate, source = staged resourceUrl S3
- */
-async function fileCreateFromStaged(shop: string, token: string, resourceUrl: string, filename: string, mimeType: string) {
-  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
-    },
-    body: JSON.stringify({
-      query: `
-        mutation fileCreate($files: [FileCreateInput!]!) {
-          fileCreate(files: $files) {
-            files { url fileStatus }
-            userErrors { field message }
-          }
-        }
-      `,
-      variables: {
-        files: [{
-          originalSource: resourceUrl,
-          originalFileName: filename,
-          mimeType
-        }]
-      }
-    })
-  });
-  const bodyText = await res.text();
-  let json: any = null;
-  try {
-    json = JSON.parse(bodyText);
-  } catch {
-    throw new Error(`fileCreate failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
-  }
-  if (json.data?.fileCreate?.files?.[0]?.url) {
-    return json.data.fileCreate.files[0].url;
-  }
-  if (json.data?.fileCreate?.userErrors?.length) {
-    throw new Error('File create userErrors: ' + JSON.stringify(json.data.fileCreate.userErrors));
-  }
-  throw new Error(`fileCreate failed | Response: ${bodyText}`);
-}
-
-/**
- * Upload universel : directe par URL si accepté, sinon staged upload Shopify
- * Si tu passes une url locale, télécharge puis upload; sinon upload staged sur download remote image
+ * Upload universel : directe par URL (GraphQL fileCreate) si le domaine est accepté, sinon staged upload Shopify (stagedUploadsCreate + S3 + fileCreate).
  */
 async function uploadImageToShopifyUniversal(shop: string, token: string, imageUrl: string, filename: string): Promise<string> {
   if (imageUrl.startsWith("https://cdn.shopify.com")) return imageUrl;
-
-  // 1. Tentative fileCreate direct par URL
   const mimeType =
     filename.endsWith('.png') ? "image/png"
     : filename.endsWith('.webp') ? "image/webp"
     : "image/jpeg";
-
+  // 1. Upload direct par URL via GraphQL
   const fileCreateRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -150,13 +32,7 @@ async function uploadImageToShopifyUniversal(shop: string, token: string, imageU
           }
         }
       `,
-      variables: {
-        files: [{
-          originalSource: imageUrl,
-          originalFileName: filename,
-          mimeType
-        }]
-      }
+      variables: { files: [{ originalSource: imageUrl, originalFileName: filename, mimeType }] }
     })
   });
   const fileCreateBodyText = await fileCreateRes.text();
@@ -166,28 +42,17 @@ async function uploadImageToShopifyUniversal(shop: string, token: string, imageU
   } catch {
     throw new Error(`fileCreate failed: Non-JSON response (${fileCreateRes.status}) | Body: ${fileCreateBodyText}`);
   }
-
-  // Si succès direct
-  if (fileCreateJson.data?.fileCreate?.files?.[0]?.url) {
-    return fileCreateJson.data.fileCreate.files[0].url;
-  }
-  // Si userError, refuse le domaine → staged upload
+  if (fileCreateJson.data?.fileCreate?.files?.[0]?.url) return fileCreateJson.data.fileCreate.files[0].url;
   if (fileCreateJson.data?.fileCreate?.userErrors?.length) {
-    // Download image en mémoire
+    // Domaine bloqué : staged upload
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) throw new Error("download image error");
     const buf = Buffer.from(await imgRes.arrayBuffer());
-
-    // Step 1: stagedUploadsCreate
-    const stagedTarget = await getStagedUploadUrl(shop, token, filename, mimeType);
-
-    // Step 2: Upload to S3
-    const resourceUrl = await uploadToStagedUrl(stagedTarget, buf, mimeType);
-
-    // Step 3: fileCreate using S3 URL
-    return await fileCreateFromStaged(shop, token, resourceUrl, filename, mimeType);
+    // Sauvegarde temporaire
+    const tempPath = path.join("/tmp", filename.replace(/[^\w\.-]/g, "_"));
+    fs.writeFileSync(tempPath, buf);
+    return await stagedUploadShopifyFile(shop, token, tempPath);
   }
-
   throw new Error(`Shopify fileCreate failed | Response: ${fileCreateBodyText}`);
 }
 
@@ -266,7 +131,7 @@ async function attachImageToVariant(shop: string, token: string, variantId: stri
 }
 
 /**
- * Fonction principale : crée les produits à partir du CSV et attache les images avec upload universel
+ * Fonction principale : crée les produits à partir du CSV et attache les images (upload universel)
  */
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
@@ -376,7 +241,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         }
         console.log('Produit créé', handleUnique, '| GraphQL response:', JSON.stringify(gqlJson, null, 2));
 
-        // Upload image et rattachement produit
+        // Upload et attache image principale
         const productImageUrl = main["Image Src"];
         const imageAltText = main["Image Alt Text"] ?? "";
         if (productImageUrl && !productImageUrl.startsWith("https://cdn.shopify.com")) {
