@@ -45,14 +45,22 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
       }
     }),
   });
-  const stagedJson = await stagedRes.json();
-  console.log("stagedUploadsCreate:", JSON.stringify(stagedJson));
-  if (!stagedJson?.data?.stagedUploadsCreate?.stagedTargets?.length)
-    return { ok: false, error: "staged error", stagedJson };
+ const stagedJson = await stagedRes.json() as any;
+console.log("stagedUploadsCreate:", JSON.stringify(stagedJson));
+if (
+  !stagedJson ||
+  !stagedJson.data ||
+  !stagedJson.data.stagedUploadsCreate ||
+  !Array.isArray(stagedJson.data.stagedUploadsCreate.stagedTargets) ||
+  !stagedJson.data.stagedUploadsCreate.stagedTargets.length
+) {
+  return { ok: false, error: "staged error", stagedJson };
+}
 
-  const target = stagedJson.data.stagedUploadsCreate.stagedTargets[0];
-  if (!target.resourceUrl)
-    return { ok: false, error: "no resourceUrl", target };
+const target = stagedJson.data.stagedUploadsCreate.stagedTargets[0];
+if (!target || !target.resourceUrl) {
+  return { ok: false, error: "no resourceUrl", target };
+}
 
   // 2. Step: Download image from provided HTTP url
   const imageRes = await fetch(url);
