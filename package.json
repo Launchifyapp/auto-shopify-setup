@@ -11,6 +11,7 @@
   "dependencies": {
     "csv-parse": "^5.4.0",
     "file-type": "^21.1.0",
+    "formdata-node": "^6.0.3",
     "next": "^14.2.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
