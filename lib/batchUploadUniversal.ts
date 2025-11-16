@@ -58,6 +58,7 @@ async function uploadToStagedUrl(stagedTarget: any, fileBuffer: Buffer, mimeType
   return stagedTarget.resourceUrl;
 }
 
+// CORRECTED: fileCreateFromStaged uses preview.image.url instead of files.url
 async function fileCreateFromStaged(shop: string, token: string, resourceUrl: string, filename: string, mimeType: string) {
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -69,7 +70,15 @@ async function fileCreateFromStaged(shop: string, token: string, resourceUrl: st
       query: `
         mutation fileCreate($files: [FileCreateInput!]!) {
           fileCreate(files: $files) {
-            files { url fileStatus }
+            files {
+              id
+              fileStatus
+              preview {
+                image {
+                  url
+                }
+              }
+            }
             userErrors { field message }
           }
         }
@@ -84,7 +93,8 @@ async function fileCreateFromStaged(shop: string, token: string, resourceUrl: st
   } catch {
     throw new Error(`fileCreate failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
   }
-  if (json.data?.fileCreate?.files?.[0]?.url) return json.data.fileCreate.files[0].url;
+  const imageUrl = json?.data?.fileCreate?.files?.[0]?.preview?.image?.url;
+  if (imageUrl) return imageUrl;
   if (json.data?.fileCreate?.userErrors?.length) throw new Error('File create userErrors: ' + JSON.stringify(json.data.fileCreate.userErrors));
   throw new Error(`fileCreate failed | Response: ${bodyText}`);
 }
