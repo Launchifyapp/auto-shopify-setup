@@ -12,7 +12,16 @@ async function shopifyGraphQL(shop: string, token: string, query: string, variab
     },
     body: JSON.stringify({ query, variables })
   });
-  return res.json();
+
+  let json;
+  try {
+    json = await res.json();
+  } catch (err) {
+    // Shopiy renvoie souvent une page HTML d'erreur (429, 403, etc.), pas du JSON
+    const errText = await res.text();
+    throw new Error(`Shopify fileCreate failed: Non-JSON response (${res.status}) | Body: ${errText}`);
+  }
+  return json;
 }
 
 const SHOP = "monshop.myshopify.com";        // <--- à adapter !
@@ -42,7 +51,7 @@ function getAllCsvImages(): { url: string, filename: string }[] {
     for (const src of srcs) {
       // Filtrer Shopify CDN déjà hébergées, ou URLs invalides
       if (
-        src && src.length > 6 && 
+        src && src.length > 6 &&
         !src.trim().startsWith("https://cdn.shopify.com") &&
         (src.startsWith("http://") || src.startsWith("https://"))
       ) {
@@ -97,7 +106,10 @@ function getAllCsvImages(): { url: string, filename: string }[] {
     try {
       results = await shopifyGraphQL(SHOP, TOKEN, mutation, variables);
     } catch (err) {
+      // PATCH: log le corps de réponse non JSON
       console.error("Erreur mutation fileCreate:", err);
+      countFail += filesPayload.length;
+      failedImages.push(...filesPayload.map(f => f.filename));
       continue;
     }
     if (
@@ -128,7 +140,6 @@ function getAllCsvImages(): { url: string, filename: string }[] {
         console.error(`[USER ERROR] ${ue.field?.join(".")}: ${ue.message}`);
       }
     }
-
     await new Promise(r => setTimeout(r, 500)); // anti-throttle Shopify
   }
   console.log(`✔️ ${countSuccess} images uploadées. ❌ ${countFail} erreurs.`);
