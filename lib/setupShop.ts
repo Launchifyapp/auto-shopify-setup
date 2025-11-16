@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs";
 import { stagedUploadShopifyFile } from "./batchUploadUniversal";
 
-/** Détecte le séparateur ; ou , pour CSV Shopify FR/EN */
+/** Détecte le séparateur ; oubien , pour CSV Shopify FR/EN */
 function guessCsvDelimiter(csvText: string): ";" | "," {
   const firstLine = csvText.split("\n")[0];
   return firstLine.indexOf(";") >= 0 ? ";" : ",";
