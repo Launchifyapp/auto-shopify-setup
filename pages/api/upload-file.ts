@@ -1,17 +1,18 @@
 export const config = { runtime: "nodejs" };
 import type { NextApiRequest, NextApiResponse } from "next";
+import { FormData } from "formdata-node";
+import { File } from "formdata-node/file";
+import { Buffer } from "buffer";
 
 const SHOPIFY_STORE = process.env.SHOPIFY_STORE!;
 const SHOPIFY_ADMIN_TOKEN = process.env.SHOPIFY_ADMIN_TOKEN!;
-const SHOPIFY_GRAPHQL_ENDPOINT = `https://${SHOPIFY_STORE}/admin/api/2023-07/graphql.json`;
+const SHOPIFY_GRAPHQL_ENDPOINT = `https://${SHOPIFY_STORE}/admin/api/2025-10/graphql.json`;
 
-// Utilitaire pour normaliser le domaine des urls images
 function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
 
 async function uploadOne({ url, filename, mimeType }: { url: string, filename: string, mimeType: string }) {
-  // Remplace domaine non accepté par Shopify
   url = normalizeImageUrl(url);
 
   // 1. Step: Staged upload request
@@ -37,6 +38,7 @@ async function uploadOne({ url, filename, mimeType }: { url: string, filename: s
             mimeType,
             resource: "IMAGE",
             httpMethod: "POST",
+            // Tu peux éventuellement mettre le vrai fileSize ici !
             fileSize: "1"
           }
         ]
@@ -57,11 +59,10 @@ async function uploadOne({ url, filename, mimeType }: { url: string, filename: s
   if (!imageRes.ok) return { ok: false, error: "source download failed", status: imageRes.status };
   const imageBuf = Buffer.from(await imageRes.arrayBuffer());
 
-  // 3. Step: Send to S3 (using FormData and native Blob)
-  const uploadForm = new globalThis.FormData();
+  // 3. Step: Send to S3 (using formdata-node)
+  const uploadForm = new FormData();
   for (const p of target.parameters) uploadForm.append(p.name, p.value);
-  const blob = new Blob([imageBuf], { type: mimeType });
-  uploadForm.append("file", blob, filename);
+  uploadForm.append("file", new File([imageBuf], filename, { type: mimeType }));
 
   const s3Res = await fetch(target.url, { method: "POST", body: uploadForm });
   const s3Text = await s3Res.text();
