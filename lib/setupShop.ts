@@ -15,6 +15,7 @@ function guessCsvDelimiter(csvText: string): ";" | "," {
  */
 async function uploadImageToShopify(shop: string, token: string, imageUrl: string, filename: string): Promise<string> {
   if (imageUrl.startsWith("https://cdn.shopify.com")) return imageUrl;
+
   // 1. Tentative mutation GraphQL
   const graphRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -39,10 +40,51 @@ async function uploadImageToShopify(shop: string, token: string, imageUrl: strin
       }
     })
   });
-  const graphJson = await graphRes.json();
+
+  let graphJson;
+  try {
+    graphJson = await graphRes.json();
+  } catch (err) {
+    const errText = await graphRes.text();
+    throw new Error(`Shopify img upload failed: Non-JSON response (${graphRes.status}) | Body: ${errText}`);
+  }
   if (graphJson.data?.fileCreate?.files?.[0]?.url) {
     return graphJson.data.fileCreate.files[0].url;
   }
+
+  // 2. Fallback : download + REST Files API en base64
+  const imgRes = await fetch(imageUrl);
+  if (!imgRes.ok) throw new Error("download image error");
+  const buf = Buffer.from(await imgRes.arrayBuffer());
+  const base64 = buf.toString("base64");
+
+  const restFilesRes = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token
+    },
+    body: JSON.stringify({
+      file: {
+        attachment: base64,
+        filename,
+        mime_type: imageUrl.endsWith('.png') ? "image/png"
+          : imageUrl.endsWith('.webp') ? "image/webp"
+          : "image/jpeg"
+      }
+    }),
+  });
+
+  let restJson;
+  try {
+    restJson = await restFilesRes.json();
+  } catch (err) {
+    const errText = await restFilesRes.text();
+    throw new Error(`Shopify base64 upload failed: Non-JSON response (${restFilesRes.status}) | Body: ${errText}`);
+  }
+  if (restJson.file?.url) return restJson.file.url;
+  throw new Error("Upload image failed for " + filename + " | GraphQL: " + JSON.stringify(graphJson) + " | REST: " + JSON.stringify(restJson));
+}
   // 2. Fallback : download + REST Files API en base64
   const imgRes = await fetch(imageUrl);
   if (!imgRes.ok) throw new Error("download image error");
