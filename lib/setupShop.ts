@@ -79,12 +79,27 @@ async function attachImageToProduct(shop: string, token: string, productId: stri
     headers: {"Content-Type": "application/json", "X-Shopify-Access-Token": token},
     body: JSON.stringify({
       query: `
-        mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-          productCreateMedia(productId: $productId, media: $media) {
-            media { id alt }
-            userErrors { field message }
-          }
+ mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+  productCreateMedia(productId: $productId, media: $media) {
+    media {
+      id
+      status
+      preview {
+        image {
+          url
         }
+      }
+      mediaErrors {
+        code
+        message
+      }
+    }
+    mediaUserErrors {
+      code
+      message
+    }
+  }
+}
       `,
       variables: { productId, media }
     })
