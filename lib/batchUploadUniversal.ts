@@ -58,7 +58,7 @@ async function uploadToStagedUrl(stagedTarget: any, fileBuffer: Buffer, mimeType
   return stagedTarget.resourceUrl;
 }
 
-// CORRECTED: fileCreateFromStaged uses preview.image.url instead of files.url
+// CORRECT: Only originalSource + alt in files variable!
 async function fileCreateFromStaged(shop: string, token: string, resourceUrl: string, filename: string, mimeType: string) {
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -83,6 +83,7 @@ async function fileCreateFromStaged(shop: string, token: string, resourceUrl: st
           }
         }
       `,
+      // CORRECT: Only originalSource + alt, do NOT send mimeType/originalFileName!
       variables: { files: [{ originalSource: resourceUrl, alt: filename }] }
     })
   });
