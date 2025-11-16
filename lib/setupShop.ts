@@ -40,7 +40,7 @@ async function uploadImageToShopifyUniversal(shop: string, token: string, imageU
           }
         }
       `,
-      variables: { files: [{ originalSource: imageUrl, originalFileName: filename, mimeType }] }
+      variables: { files: [{ originalSource: imageUrl, alt: filename }] }
     })
   });
   const fileCreateBodyText = await fileCreateRes.text();
