@@ -24,7 +24,7 @@ const CSV_PATH = "./products.csv"; // à adapter si besoin
  */
 function getAllCsvImages(): { url: string, filename: string }[] {
   const csvText = fs.readFileSync(CSV_PATH, "utf8");
-  const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: "," });
+  const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: ";" });
   
   // Set pour ne pas doubler les images
   const urls = new Set<string>();
