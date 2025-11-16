@@ -10,8 +10,8 @@ function guessCsvDelimiter(csvText: string): ";" | "," {
 /**
  * Upload une image sur Shopify:
  * - Tente mutation GraphQL fileCreate (originalSource sur URL)
- * - Si "processing error", fallback REST Files API en base64
- * Retourne l'URL CDN Shopify obtenue
+ * - Si "processing error" ou non-JSON, fallback REST Files API en base64
+ * Retourne l'URL CDN Shopify obtenue ou log l'erreur complète
  */
 async function uploadImageToShopify(shop: string, token: string, imageUrl: string, filename: string): Promise<string> {
   if (imageUrl.startsWith("https://cdn.shopify.com")) return imageUrl;
@@ -41,10 +41,10 @@ async function uploadImageToShopify(shop: string, token: string, imageUrl: strin
     })
   });
 
-  let graphJson;
+  let graphJson: any;
   try {
     graphJson = await graphRes.json();
-  } catch (err) {
+  } catch {
     const errText = await graphRes.text();
     throw new Error(`Shopify img upload failed: Non-JSON response (${graphRes.status}) | Body: ${errText}`);
   }
@@ -75,38 +75,13 @@ async function uploadImageToShopify(shop: string, token: string, imageUrl: strin
     }),
   });
 
-  let restJson;
+  let restJson: any;
   try {
     restJson = await restFilesRes.json();
-  } catch (err) {
+  } catch {
     const errText = await restFilesRes.text();
     throw new Error(`Shopify base64 upload failed: Non-JSON response (${restFilesRes.status}) | Body: ${errText}`);
   }
-  if (restJson.file?.url) return restJson.file.url;
-  throw new Error("Upload image failed for " + filename + " | GraphQL: " + JSON.stringify(graphJson) + " | REST: " + JSON.stringify(restJson));
-}
-  // 2. Fallback : download + REST Files API en base64
-  const imgRes = await fetch(imageUrl);
-  if (!imgRes.ok) throw new Error("download image error");
-  const buf = Buffer.from(await imgRes.arrayBuffer());
-  const base64 = buf.toString("base64");
-  const restFilesRes = await fetch(`https://${shop}/admin/api/2023-07/files.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
-    },
-    body: JSON.stringify({
-      file: {
-        attachment: base64,
-        filename,
-        mime_type: imageUrl.endsWith('.png') ? "image/png"
-          : imageUrl.endsWith('.webp') ? "image/webp"
-          : "image/jpeg"
-      }
-    }),
-  });
-  const restJson = await restFilesRes.json();
   if (restJson.file?.url) return restJson.file.url;
   throw new Error("Upload image failed for " + filename + " | GraphQL: " + JSON.stringify(graphJson) + " | REST: " + JSON.stringify(restJson));
 }
@@ -135,7 +110,13 @@ async function attachImageToProduct(shop: string, token: string, productId: stri
       variables: { productId, media }
     })
   });
-  const json = await res.json();
+  let json: any;
+  try {
+    json = await res.json();
+  } catch {
+    const errText = await res.text();
+    throw new Error(`productCreateMedia failed: Non-JSON response (${res.status}) | Body: ${errText}`);
+  }
   if (json.data?.productCreateMedia?.userErrors?.length) {
     console.error("Erreur productCreateMedia:", JSON.stringify(json.data.productCreateMedia.userErrors));
   }
@@ -166,7 +147,13 @@ async function attachImageToVariant(shop: string, token: string, variantId: stri
       }
     })
   });
-  const json = await res.json();
+  let json: any;
+  try {
+    json = await res.json();
+  } catch {
+    const errText = await res.text();
+    throw new Error(`productVariantUpdate failed: Non-JSON response (${res.status}) | Body: ${errText}`);
+  }
   if (json.data?.productVariantUpdate?.userErrors?.length) {
     console.error("Erreur productVariantUpdate:", JSON.stringify(json.data.productVariantUpdate.userErrors));
   }
@@ -264,7 +251,15 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             variables: { product },
           }),
         });
-        const gqlJson = await gqlRes.json();
+
+        let gqlJson: any;
+        try {
+          gqlJson = await gqlRes.json();
+        } catch {
+          const errText = await gqlRes.text();
+          throw new Error(`productCreate failed: Non-JSON response (${gqlRes.status}) | Body: ${errText}`);
+        }
+
         const productData = gqlJson?.data?.productCreate?.product;
         const productId = productData?.id;
         const userErrors = gqlJson?.data?.productCreate?.userErrors ?? [];
@@ -385,7 +380,15 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
                   variables: { productId, variants },
                 }),
               });
-              const bulkJson = await bulkRes.json();
+
+              let bulkJson: any;
+              try {
+                bulkJson = await bulkRes.json();
+              } catch {
+                const errText = await bulkRes.text();
+                throw new Error(`productVariantsBulkCreate failed: Non-JSON response (${bulkRes.status}) | Body: ${errText}`);
+              }
+
               if (bulkJson?.data?.productVariantsBulkCreate?.userErrors?.length) {
                 console.error('Bulk variants userErrors:', bulkJson.data.productVariantsBulkCreate.userErrors);
               } else {
