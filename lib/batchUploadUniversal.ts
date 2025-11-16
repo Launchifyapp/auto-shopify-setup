@@ -83,7 +83,7 @@ async function fileCreateFromStaged(shop: string, token: string, resourceUrl: st
           }
         }
       `,
-      variables: { files: [{ originalSource: resourceUrl, originalFileName: filename, mimeType }] }
+      variables: { files: [{ originalSource: resourceUrl, alt: filename }] }
     })
   });
   const bodyText = await res.text();
