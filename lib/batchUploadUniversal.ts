@@ -1,5 +1,4 @@
-import { FormData } from 'formdata-node'
-import { File } from 'formdata-node/file'
+import { FormData, File } from 'formdata-node'
 import fs from "fs";
 import path from "path";
 import { Buffer } from "buffer";
