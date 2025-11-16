@@ -15,47 +15,57 @@ async function shopifyGraphQL(shop: string, token: string, query: string, variab
   return res.json();
 }
 
-const SHOP = "monshop.myshopify.com"; // à adapter
+const SHOP = "monshop.myshopify.com";        // <--- à adapter !
 const TOKEN = process.env.SHOPIFY_ADMIN_TOKEN!;
-const CSV_PATH = "./products.csv"; // à adapter si besoin
+const CSV_PATH = "./products.csv";            // <--- à adapter !
 
-/**
- * Récupère toutes les images uniques du CSV (présentes dans la colonne Image Src, exclut les Shopify CDN)
- */
+/** Détection automatique du séparateur du CSV (FR ; ou US ,) */
+function guessCsvDelimiter(csvText: string): ";" | "," {
+  const firstLine = csvText.split("\n")[0];
+  return firstLine.indexOf(";") >= 0 ? ";" : ",";
+}
+
+/** Récupère toutes les images uniques du CSV (colonne Image Src & Variant Image, exclut Shopify CDN) */
 function getAllCsvImages(): { url: string, filename: string }[] {
   const csvText = fs.readFileSync(CSV_PATH, "utf8");
-  const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: ";" });
-  
+  const delimiter = guessCsvDelimiter(csvText);
+  const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter });
+
   // Set pour ne pas doubler les images
   const urls = new Set<string>();
   for (const r of records) {
-    const src = r["Image Src"];
-    if (src && src.length > 6 && !src.startsWith("https://cdn.shopify.com")) {
-      urls.add(src);
-    }
-    // tu peux aussi inclure les Variant Image si tu veux
-    if (r["Variant Image"] && r["Variant Image"].length > 6 && !r["Variant Image"].startsWith("https://cdn.shopify.com")) {
-      urls.add(r["Variant Image"]);
+    const srcs = [
+      r["Image Src"],        // image principale
+      r["Variant Image"],    // image de variante
+    ].filter(Boolean);
+
+    for (const src of srcs) {
+      // Filtrer Shopify CDN déjà hébergées, ou URLs invalides
+      if (
+        src && src.length > 6 && 
+        !src.trim().startsWith("https://cdn.shopify.com") &&
+        (src.startsWith("http://") || src.startsWith("https://"))
+      ) {
+        urls.add(src.trim());
+      }
     }
   }
+  // Mapping filename sans query params
   return Array.from(urls).map(url => {
     const filename = url.split("/").pop()?.split("?")[0] ?? "image.jpg";
     return { url, filename };
   });
 }
 
-/**
- * On batch upload en mutation GraphQL par paquets de 200
- */
+/** Batch upload par mutation GraphQL, 200 images max par batch */
 (async () => {
   const allCsvImages = getAllCsvImages();
   console.log(`Images uniques à uploader : ${allCsvImages.length}`);
 
-  // Découpe en batches de 200
+  // Batchs de 200 images
   const chunkSize = 200;
   let countSuccess = 0, countFail = 0;
   let failedImages: string[] = [];
-
   for (let i = 0; i < allCsvImages.length; i += chunkSize) {
     const chunk = allCsvImages.slice(i, i + chunkSize);
     const filesPayload = chunk.map(({ url, filename }) => ({
