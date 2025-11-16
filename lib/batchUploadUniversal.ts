@@ -23,7 +23,7 @@ async function getStagedUploadUrl(shop: string, token: string, filename: string,
           }
         }
       `,
-      variables: { input: [{ filename, mimeType, resource: "FILE" }] }
+      variables: { input: [{ filename, mimeType, resource: "IMAGE" }] }
     })
   });
 
