@@ -67,7 +67,7 @@ async function searchShopifyFileByFilename(shop: string, token: string, filename
 }
 
 // Attachement d'image à un produit Shopify
-async function attachImageToProduct(shop, token, productId, imageUrl, altText = "") {
+async function attachImageToProduct(   shop: string,   token: string,   productId: string,   imageUrl: string,   altText: string = "" ) {
   console.log(`[Shopify] Attaching image to productId=${productId}: imageUrl=${imageUrl ?? "null"}, altText="${altText}"`);
   const media = [
     {
