@@ -23,8 +23,8 @@ async function pollShopifyFileCDNByFilename(
   shop: string,
   token: string,
   filename: string,
-  intervalMs = 3000,
-  maxTries = 20
+  intervalMs = 10000, // MODIF: attendre 10s entre essais, au lieu de 3s
+  maxTries = 40      // MODIF: jusqu'à 40 essais, au lieu de 20
 ): Promise<string | null> {
   for (let attempt = 1; attempt <= maxTries; attempt++) {
     console.log(`[Shopify] Files CDN polling try=${attempt}/${maxTries} for filename=${filename}`);
@@ -252,7 +252,7 @@ export async function pipelineBulkShopify({ shop, token }: { shop: string; token
   // 5. BULK LINK: pour chaque image, polling + attachement
   for (const img of uploadQueue) {
     try {
-      const cdnUrl = await pollShopifyFileCDNByFilename(shop, token, img.filename, 3000, 20); // Attends CDN
+      const cdnUrl = await pollShopifyFileCDNByFilename(shop, token, img.filename, 10000, 40); // MODIF: attendre + longtemps pour le CDN
       if (!cdnUrl) {
         console.warn(`[Shopify] NOT FOUND: CDN for filename=${img.filename}`);
         continue;
