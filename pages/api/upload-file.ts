@@ -1,4 +1,4 @@
-     export const config = { runtime: 'nodejs' };
+export const config = { runtime: 'nodejs' };
 import type { NextApiRequest, NextApiResponse } from "next";
 import { FormData, File } from "formdata-node";
 import { FormDataEncoder } from "form-data-encoder";
@@ -29,7 +29,7 @@ async function pollShopifyImageCDNUrl(
         "X-Shopify-Access-Token": token
       },
       body: JSON.stringify({
-               query: `
+        query: `
           query GetMediaImageCDN($id: ID!) {
             file(id: $id) {
               ... on MediaImage {
@@ -45,7 +45,6 @@ async function pollShopifyImageCDNUrl(
         `,
         variables: { id: mediaImageId }
       }),
-      // Node18+/undici: duplex obligatoire si body POST
       duplex: "half"
     });
     const bodyText = await res.text();
@@ -59,9 +58,42 @@ async function pollShopifyImageCDNUrl(
     if (url) {
       return url;
     }
-           if (attempt < maxTries) {
+    if (attempt < maxTries) {
       await new Promise(res => setTimeout(res, intervalMs));
     }
+  }
+  return null;
+}
+
+// Ajout : recherche d'image par nom de fichier dans Files Shopify
+async function searchShopifyFileByFilename(shop: string, token: string, filename: string): Promise<string | null> {
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        query getFiles($filename: String!) {
+          files(first: 10, query: $filename) {
+            edges {
+              node {
+                ... on MediaImage {
+                  preview { image { url } }
+                }
+              }
+            }
+          }
+        }
+      `,
+      variables: { filename }
+    }),
+    duplex: "half"
+  });
+  const body = await res.json();
+  const node = body?.data?.files?.edges?.[0]?.node;
+  const url = node?.preview?.image?.url ?? null;
+  if (url) {
+    console.log(`[Shopify] Fallback CDN url from Files by filename (${filename}): ${url}`);
+    return url;
   }
   return null;
 }
@@ -90,7 +122,7 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
           {
             filename,
             mimeType,
-                   resource: "IMAGE",
+            resource: "IMAGE",
             httpMethod: "POST",
             fileSize: "1"
           }
@@ -120,7 +152,7 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
   const imageRes = await fetch(url);
   if (!imageRes.ok) return { ok: false, error: "source download failed", status: imageRes.status };
   const imageBuf = Buffer.from(await imageRes.arrayBuffer());
-        
+
   // 3. Step: Send to S3 (using formdata-node + form-data-encoder + undici)
   const uploadForm = new FormData();
   for (const p of target.parameters) uploadForm.append(p.name, p.value);
@@ -151,7 +183,7 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
           fileCreate(files: $files) {
             files {
               id
-                 alt
+              alt
               createdAt
               fileStatus
               preview {
@@ -179,15 +211,20 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
   console.log("fileCreate:", JSON.stringify(fileCreateJson));
   let fileObj = fileCreateJson?.data?.fileCreate?.files?.[0];
   let imageUrl = fileObj?.preview?.image?.url ?? null;
-  
-  // --- Ajout ici : Polling si l'URL CDN n'est pas disponible mais que l'image est UPLOADED ---
+
+  // --- Ajout ici : Polling et fallback filename ---
   if (!imageUrl && fileObj?.fileStatus === "UPLOADED" && fileObj?.id) {
-           console.log(`[Shopify] Polling for CDN url for MediaImage id: ${fileObj.id}`);
+    console.log(`[Shopify] Polling for CDN url for MediaImage id: ${fileObj.id}`);
     imageUrl = await pollShopifyImageCDNUrl(SHOPIFY_STORE, SHOPIFY_ADMIN_TOKEN, fileObj.id);
     if (imageUrl) {
       console.log(`[Shopify] CDN url ready: ${imageUrl}`);
     } else {
       console.warn(`[Shopify] CDN url still not ready after polling for id: ${fileObj.id}`);
+      // Fallback par recherche du filename dans Files Shopify
+      imageUrl = await searchShopifyFileByFilename(SHOPIFY_STORE, SHOPIFY_ADMIN_TOKEN, filename);
+      if (!imageUrl) {
+        console.error(`[Shopify] CDN url not found by polling nor filename for: ${filename}`);
+      }
     }
   }
   return { ok: true, result: fileCreateJson, imageUrl };
