@@ -132,8 +132,8 @@ export async function attachImageToVariant(
 }
 
 /**
- * Upload universel: directe par URL (GraphQL fileCreate) si le domaine est accepté, sinon staged upload Shopify (stagedUploadsCreate + S3 + fileCreate).
- * Utilise le fallback filename direct: retrouve l'image dans Files et utilise la CDN, plus de polling MediaImage ID.
+ * Upload universel: directe par URL (GraphQL fileCreate) si le domaine est accepté, sinon staged upload Shopify.
+ * Récupération CDN : toujours avec polling!
  */
 export async function uploadImageToShopifyUniversal(
   shop: string,
@@ -146,7 +146,6 @@ export async function uploadImageToShopifyUniversal(
     filename.endsWith('.png') ? "image/png"
     : filename.endsWith('.webp') ? "image/webp"
     : "image/jpeg";
-  // 1. Upload direct par URL via GraphQL
   console.log(`[Shopify] uploadImageToShopifyUniversal: uploading/creating ${filename}`);
   const fileCreateRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -185,18 +184,17 @@ export async function uploadImageToShopifyUniversal(
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) throw new Error("download image error");
     const buf = Buffer.from(await imgRes.arrayBuffer());
-    // Sauvegarde temporaire
     const tempPath = path.join("/tmp", filename.replace(/[^\w\.-]/g, "_"));
     fs.writeFileSync(tempPath, buf);
     let cdnUrl = await stagedUploadShopifyFile(shop, token, tempPath);
     if (!cdnUrl) {
       console.warn(`[Shopify] CDN url not available after staged upload for ${filename}`);
-      // FORCER LE POLLING ICI :
+      // FORCER LE POLLING
       cdnUrl = await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
     }
     return cdnUrl ?? null;
   }
-  // FORCER LE POLLING ICI AUSSI :
+  // FORCER LE POLLING
   return await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
 }
 
@@ -316,7 +314,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         }
         console.log('Produit créé', handleUnique, '| GraphQL response:', JSON.stringify(gqlJson, null, 2));
 
-        // Upload et attache image principale (CORRECTION: ignore les URL invalides)
+        // Upload et attache image principale
         const productImageUrl = main["Image Src"];
         const imageAltText = main["Image Alt Text"] ?? "";
         if (validImageUrl(productImageUrl) && !productImageUrl.startsWith("https://cdn.shopify.com")) {
@@ -333,7 +331,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // Création/gestion variants et attachement images des variantes (CORRECTION: ignore les URL invalides)
+        // Création/gestion variants et attachement images des variantes
         const createdVariantsArr: VariantNode[] = productData?.variants?.edges?.map((edge: { node: VariantNode }) => edge.node) ?? [];
         for (const v of createdVariantsArr) {
           const variantKey = handle + ":" +
