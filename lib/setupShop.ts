@@ -11,6 +11,13 @@ function guessCsvDelimiter(csvText: string): ";" | "," {
   return firstLine.indexOf(";") >= 0 ? ";" : ",";
 }
 
+/** Vérifie que l'URL d'image est valide (ignore "nan", "null", "undefined", vide) */
+function validImageUrl(url?: string): boolean {
+  if (!url) return false;
+  const v = url.trim().toLowerCase();
+  return !!v && v !== "nan" && v !== "null" && v !== "undefined";
+}
+
 /**
  * Attache une image à un produit Shopify
  */
@@ -83,7 +90,13 @@ export async function attachImageToProduct(
 /**
  * Attache une image à une variante Shopify
  */
-export async function attachImageToVariant(shop: string, token: string, variantId: string, imageUrl: string, altText: string = "") {
+export async function attachImageToVariant(
+  shop: string,
+  token: string,
+  variantId: string,
+  imageUrl: string,
+  altText: string = ""
+) {
   console.log(`[Shopify] Attaching image to variantId=${variantId}: imageUrl=${imageUrl ?? "null"}, altText="${altText}"`);
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -122,7 +135,12 @@ export async function attachImageToVariant(shop: string, token: string, variantI
  * Upload universel: directe par URL (GraphQL fileCreate) si le domaine est accepté, sinon staged upload Shopify (stagedUploadsCreate + S3 + fileCreate).
  * Utilise le fallback filename direct: retrouve l'image dans Files et utilise la CDN, plus de polling MediaImage ID.
  */
-export async function uploadImageToShopifyUniversal(shop: string, token: string, imageUrl: string, filename: string): Promise<string | null> {
+export async function uploadImageToShopifyUniversal(
+  shop: string,
+  token: string,
+  imageUrl: string,
+  filename: string
+): Promise<string | null> {
   if (imageUrl.startsWith("https://cdn.shopify.com")) return imageUrl;
   const mimeType =
     filename.endsWith('.png') ? "image/png"
@@ -297,10 +315,10 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         }
         console.log('Produit créé', handleUnique, '| GraphQL response:', JSON.stringify(gqlJson, null, 2));
 
-        // Upload et attache image principale
+        // Upload et attache image principale (CORRECTION: ignore les URL invalides)
         const productImageUrl = main["Image Src"];
         const imageAltText = main["Image Alt Text"] ?? "";
-        if (productImageUrl && !productImageUrl.startsWith("https://cdn.shopify.com")) {
+        if (validImageUrl(productImageUrl) && !productImageUrl.startsWith("https://cdn.shopify.com")) {
           try {
             const filename = productImageUrl.split('/').pop() ?? 'image.jpg';
             let cdnUrl = await uploadImageToShopifyUniversal(shop, token, productImageUrl, filename);
@@ -314,7 +332,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // Création/gestion variants et attachement images des variantes
+        // Création/gestion variants et attachement images des variantes (CORRECTION: ignore les URL invalides)
         const createdVariantsArr: VariantNode[] = productData?.variants?.edges?.map((edge: { node: VariantNode }) => edge.node) ?? [];
         for (const v of createdVariantsArr) {
           const variantKey = handle + ":" +
@@ -324,14 +342,14 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             .filter(Boolean)
             .join(":") === (v.selectedOptions ?? []).map(opt => opt.value).join(":")
           );
+          const variantImageUrl = variantCsvRow?.["Variant Image"];
+          const variantAltText = variantCsvRow?.["Image Alt Text"] ?? "";
           if (
             variantCsvRow &&
             v.id &&
-            variantCsvRow["Variant Image"] &&
-            !variantCsvRow["Variant Image"].startsWith("https://cdn.shopify.com")
+            validImageUrl(variantImageUrl) &&
+            !variantImageUrl.startsWith("https://cdn.shopify.com")
           ) {
-            let variantImageUrl = variantCsvRow["Variant Image"];
-            let variantAltText = variantCsvRow["Image Alt Text"] ?? "";
             try {
               const filename = variantImageUrl.split('/').pop() ?? 'variant.jpg';
               let cdnUrl = await uploadImageToShopifyUniversal(shop, token, variantImageUrl, filename);
