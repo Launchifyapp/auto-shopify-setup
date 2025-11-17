@@ -8,67 +8,8 @@ const SHOP = process.env.SHOPIFY_STORE || "monshop.myshopify.com";
 const TOKEN = process.env.SHOPIFY_ADMIN_TOKEN || "";
 
 /**
- * Polls Shopify GraphQL API for a MediaImage preview URL until it's available or timeout.
- */
-export async function pollShopifyImageCDNUrl(
-  shop: string,
-  token: string,
-  mediaImageId: string,
-  intervalMs = 3000,
-  maxTries = 20
-): Promise<string | null> {
-  for (let attempt = 1; attempt <= maxTries; attempt++) {
-    console.log(`[Shopify] PollTry ${attempt}/${maxTries} for MediaImage id=${mediaImageId}`);
-    const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": token
-      },
-      body: JSON.stringify({
-        query: `
-          query GetMediaImageCDN($id: ID!) {
-            file(id: $id) {
-              ... on MediaImage {
-                id
-                preview {
-                  image {
-                    url
-                  }
-                }
-              }
-            }
-          }
-        `,
-        variables: { id: mediaImageId }
-      }),
-      duplex: "half"
-    });
-    const bodyText = await res.text();
-    let json: any = null;
-    try {
-      json = JSON.parse(bodyText);
-    } catch {
-      console.error(`[Shopify] Polling ERROR: Failed to parse JSON! ${bodyText}`);
-      throw new Error(`Shopify polling failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
-    }
-    const url = json?.data?.file?.preview?.image?.url ?? null;
-    if (url) {
-      console.log(`[Shopify] CDN image url READY for MediaImage id=${mediaImageId}: ${url}`);
-      return url;
-    } else {
-      console.log(`[Shopify] poll step: no CDN url yet, MediaImage id=${mediaImageId}`);
-    }
-    if (attempt < maxTries) {
-      await new Promise(res => setTimeout(res, intervalMs));
-    }
-  }
-  console.warn(`[Shopify] Polling finished: CDN image url is STILL null for MediaImage id=${mediaImageId} after ${maxTries} tries`);
-  return null;
-}
-
-/**
- * Shopify Files fallback: search CDN image by filename
+ * Shopify Files fallback: search CDN image by filename.
+ * Direct lookup—no polling by MediaImage ID anymore!
  */
 async function searchShopifyFileByFilename(shop: string, token: string, filename: string): Promise<string | null> {
   console.log(`[Shopify] Fallback: search file by filename in Shopify Files: ${filename}`);
@@ -97,7 +38,7 @@ async function searchShopifyFileByFilename(shop: string, token: string, filename
   const node = body?.data?.files?.edges?.[0]?.node;
   const url = node?.preview?.image?.url ?? null;
   if (url) {
-    console.log(`[Shopify] Fallback CDN url from Files by filename (${filename}): ${url}`);
+    console.log(`[Shopify] Files Fallback CDN url found for ${filename}: ${url}`);
     return url;
   }
   console.warn(`[Shopify] No CDN url found in Files by filename: ${filename}`);
@@ -163,8 +104,7 @@ async function uploadToStagedUrl(stagedTarget: any, fileBuffer: Buffer, mimeType
 }
 
 /**
- * Patch: do NOT block if image is UPLOADED without preview (Shopify processes CDN asynchronously)
- * Now handles fallback by filename if polling doesn't provide the CDN.
+ * Upload image and get CDN url by direct Files fallback.
  */
 async function fileCreateFromStaged(shop: string, token: string, resourceUrl: string, filename: string, mimeType: string) {
   console.log(`[Shopify] fileCreateFromStaged: ${filename}`);
@@ -203,26 +143,15 @@ async function fileCreateFromStaged(shop: string, token: string, resourceUrl: st
     console.error(`[Shopify] fileCreate ERROR: ${bodyText}`);
     throw new Error(`fileCreate failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
   }
-  const fileObj = json?.data?.fileCreate?.files?.[0];
-  const imageUrl = fileObj?.preview?.image?.url;
-  if (imageUrl) {
-    console.log(`[Shopify] fileCreate preview.image.url: ${imageUrl}`);
-    return imageUrl;
-  }
-  if (fileObj?.fileStatus === "UPLOADED" && !imageUrl) {
-    console.warn(
-      `[Shopify] Image uploaded (${filename}), fileStatus: UPLOADED but preview.image not ready yet. MediaImage ID: ${fileObj.id}`
-    );
-    return { status: "UPLOADED", id: fileObj.id, resourceUrl, previewReady: false };
-  }
   if (json.data?.fileCreate?.userErrors?.length) {
     console.error('File create userErrors:', JSON.stringify(json.data.fileCreate.userErrors));
     throw new Error('File create userErrors: ' + JSON.stringify(json.data.fileCreate.userErrors));
   }
-  throw new Error(`fileCreate failed | Response: ${bodyText}`);
+  // Direct Files fallback, no polling!
+  return await searchShopifyFileByFilename(shop, token, filename);
 }
 
-export async function stagedUploadShopifyFile(shop: string, token: string, filePath: string, pollCDN = true) {
+export async function stagedUploadShopifyFile(shop: string, token: string, filePath: string) {
   const filename = path.basename(filePath);
   const mimeType =
     filename.endsWith('.png') ? "image/png"
@@ -232,55 +161,25 @@ export async function stagedUploadShopifyFile(shop: string, token: string, fileP
   const stagedTarget = await getStagedUploadUrl(shop, token, filename, mimeType);
   const fileBuffer = fs.readFileSync(filePath);
   const resourceUrl = await uploadToStagedUrl(stagedTarget, fileBuffer, mimeType, filename);
-  const urlOrObj = await fileCreateFromStaged(shop, token, resourceUrl, filename, mimeType);
-
-  // ---- POLLING CDN + Fallback by filename ----
-  if (typeof urlOrObj === 'string') {
-    console.log(`[Shopify] stagedUploadShopifyFile result (CDN url): ${urlOrObj}`);
-    return urlOrObj;
-  } else if (pollCDN && urlOrObj.status === "UPLOADED" && urlOrObj.id) {
-    console.log(`[Shopify] Polling CDN for MediaImage ${urlOrObj.id}`);
-    const cdnUrl = await pollShopifyImageCDNUrl(shop, token, urlOrObj.id);
-    if (cdnUrl) {
-      console.log(`[Shopify] CDN URL ready for ${filename}: ${cdnUrl}`);
-      return cdnUrl;
-    } else {
-      console.warn(`[Shopify] CDN URL not ready after polling for ${urlOrObj.id}, searching Files by filename.`);
-      // Fallback: search Files by filename for CDN URL
-      const fallbackCdnUrl = await searchShopifyFileByFilename(shop, token, filename);
-      if (fallbackCdnUrl) {
-        console.log(`[Shopify] Fallback returned CDN url: ${fallbackCdnUrl}`);
-        return fallbackCdnUrl;
-      }
-      // On retourne l'objet et la resourceUrl, le frontend peut re-poller si besoin
-      console.error(`[Shopify] Final fallback failed, returning urlOrObj`);
-      return urlOrObj;
-    }
-  } else {
-    return urlOrObj;
-  }
+  return await fileCreateFromStaged(shop, token, resourceUrl, filename, mimeType);
 }
 
-// Batch upload utility
+// Batch upload utility, with direct Files fallback for all images.
 export async function batchUploadLocalImages(dir: string) {
   const files = fs.readdirSync(dir).filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f));
   for (const fname of files) {
     const filePath = path.resolve(dir, fname);
     try {
       console.log(`[Batch] Processing file: ${fname}`);
-      const urlOrObj = await stagedUploadShopifyFile(SHOP, TOKEN, filePath, true);
-      if (typeof urlOrObj === 'string') {
-        console.log(`[UPLOAD] ${fname} → ${urlOrObj}`);
+      const cdnUrl = await stagedUploadShopifyFile(SHOP, TOKEN, filePath);
+      if (cdnUrl) {
+        console.log(`[UPLOAD] ${fname} → ${cdnUrl}`);
       } else {
-        if (urlOrObj.previewReady === false) {
-          console.log(`[UPLOAD] ${fname} UPLOADED (preview pending), MediaImage ID: ${urlOrObj.id}. Resource URL: ${urlOrObj.resourceUrl}`);
-        } else {
-          console.log(`[UPLOAD] ${fname} → (result)`, urlOrObj);
-        }
+        console.warn(`[UPLOAD] ${fname} → No CDN url found`);
       }
     } catch (err) {
       console.error(`[FAIL] ${fname}: ${err}`);
     }
   }
 }
-// Pour exécuter : batchUploadLocalImages('./products_images');
+// Pour exécuter : batchUploadLocalImages('./products_images');
