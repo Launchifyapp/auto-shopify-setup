@@ -128,7 +128,7 @@ async function attachImageToProduct(   shop: string,   token: string,   productI
 }
 
 // Attachement d'image à une variante Shopify
-async function attachImageToVariant(shop, token, variantId, imageUrl, altText = "") {
+async function attachImageToVariant(   shop: string,   token: string,   variantId: string,   imageUrl: string,   altText: string = "" ) {
   console.log(`[Shopify] Attaching image to variantId=${variantId}: imageUrl=${imageUrl ?? "null"}, altText="${altText}"`);
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
