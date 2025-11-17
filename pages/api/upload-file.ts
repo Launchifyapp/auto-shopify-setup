@@ -44,7 +44,9 @@ async function pollShopifyImageCDNUrl(
           }
         `,
         variables: { id: mediaImageId }
-      })
+      }),
+      // Node18+/undici: duplex obligatoire si body POST
+      duplex: "half"
     });
     const bodyText = await res.text();
     let json: any = null;
@@ -95,6 +97,7 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
         ]
       }
     }),
+    duplex: "half"
   });
   const stagedJson = await stagedRes.json() as any;
   console.log("stagedUploadsCreate:", JSON.stringify(stagedJson));
@@ -127,7 +130,8 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
   const s3Res = await fetch(target.url, {
     method: "POST",
     body: encoder.encode(),
-    headers: encoder.headers
+    headers: encoder.headers,
+    duplex: "half"
   });
   const s3Text = await s3Res.text();
   console.log("S3 upload response:", s3Res.status, s3Text);
@@ -169,6 +173,7 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
         ]
       }
     }),
+    duplex: "half"
   });
   const fileCreateJson = await fileCreateRes.json() as any;
   console.log("fileCreate:", JSON.stringify(fileCreateJson));
