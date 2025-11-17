@@ -5,65 +5,6 @@ import fs from "fs";
 import { stagedUploadShopifyFile } from "./batchUploadUniversal";
 import { fetch } from "undici";
 
-/**
- * Polls Shopify GraphQL API for a MediaImage preview URL until it's available or times out.
- */
-export async function pollShopifyImageCDNUrl(
-  shop: string,
-  token: string,
-  mediaImageId: string,
-  intervalMs = 3000,
-  maxTries = 20
-): Promise<string | null> {
-  for (let attempt = 1; attempt <= maxTries; attempt++) {
-    console.log(`[Shopify] Poll try=${attempt}/${maxTries} for MediaImage id=${mediaImageId}`);
-    const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": token
-      },
-      body: JSON.stringify({
-        query: `
-          query GetMediaImageCDN($id: ID!) {
-            file(id: $id) {
-              ... on MediaImage {
-                id
-                preview {
-                  image {
-                    url
-                  }
-                }
-              }
-            }
-          }
-        `,
-        variables: { id: mediaImageId }
-      })
-    });
-    const bodyText = await res.text();
-    let json: any = null;
-    try {
-      json = JSON.parse(bodyText);
-    } catch {
-      console.error(`[Shopify] Polling ERROR: Failed to parse JSON! ${bodyText}`);
-      throw new Error(`Shopify polling failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
-    }
-    const url = json?.data?.file?.preview?.image?.url ?? null;
-    if (url) {
-      console.log(`[Shopify] CDN image url is READY: ${url}`);
-      return url;
-    } else {
-      console.log(`[Shopify] polling: still no CDN url for id=${mediaImageId}`);
-    }
-    if (attempt < maxTries) {
-      await new Promise(res => setTimeout(res, intervalMs));
-    }
-  }
-  console.warn(`[Shopify] Polling finished: CDN image url is STILL null for MediaImage id=${mediaImageId} after ${maxTries} tries`);
-  return null;
-}
-
 /** Détecter le séparateur ; ou , pour CSV Shopify FR/EN */
 function guessCsvDelimiter(csvText: string): ";" | "," {
   const firstLine = csvText.split("\n")[0];
@@ -71,7 +12,7 @@ function guessCsvDelimiter(csvText: string): ";" | "," {
 }
 
 /**
- * Fallback: recherche une image dans Files Shopify par filename, retourne l'URL CDN si trouvée.
+ * Fallback : cherche l'image dans Files Shopify par filename et retourne l'URL CDN si trouvée.
  */
 async function searchShopifyFileByFilename(shop: string, token: string, filename: string): Promise<string | null> {
   console.log(`[Shopify] Fallback: search file by filename in Shopify Files: ${filename}`);
@@ -107,8 +48,8 @@ async function searchShopifyFileByFilename(shop: string, token: string, filename
 }
 
 /**
- * Upload universel : directe par URL (GraphQL fileCreate) si le domaine est accepté, sinon staged upload Shopify (stagedUploadsCreate + S3 + fileCreate).
- * Fallback filename: tente de retrouver l'image dans Files si Shopify tarde à générer la CDN.
+ * Upload universel: directe par URL (GraphQL fileCreate) si le domaine est accepté, sinon staged upload Shopify (stagedUploadsCreate + S3 + fileCreate).
+ * Utilise le fallback filename direct: retrouve l'image dans Files et utilise la CDN, plus de polling MediaImage ID.
  */
 async function uploadImageToShopifyUniversal(shop: string, token: string, imageUrl: string, filename: string): Promise<string | null> {
   if (imageUrl.startsWith("https://cdn.shopify.com")) return imageUrl;
@@ -149,25 +90,9 @@ async function uploadImageToShopifyUniversal(shop: string, token: string, imageU
     console.error(`[Shopify] fileCreate ERROR: ${fileCreateBodyText}`);
     throw new Error(`fileCreate failed: Non-JSON response (${fileCreateRes.status}) | Body: ${fileCreateBodyText}`);
   }
-  const fileObj = fileCreateJson?.data?.fileCreate?.files?.[0];
-  let shopifyImageUrl = fileObj?.preview?.image?.url ?? null;
-
-  console.log(`[Shopify] Image upload: fileCreate returned id=${fileObj?.id}, fileStatus=${fileObj?.fileStatus}, preview.image.url=${fileObj?.preview?.image?.url ?? "null"}`);
-
-  if (shopifyImageUrl) return shopifyImageUrl;
-  if (fileObj?.fileStatus === "UPLOADED" && fileObj.id) {
-    // Poll sur l'id MediaImage
-    console.log(`[Shopify] Polling for CDN image url: MediaImage id=${fileObj.id}`);
-    shopifyImageUrl = await pollShopifyImageCDNUrl(shop, token, fileObj.id);
-    if (shopifyImageUrl) return shopifyImageUrl;
-    console.warn(`[Shopify] CDN url not available after polling MediaImage id (trying fallback by filename)`);
-    // Fallback: cherche dans Files par filename si CDN non trouvée
-    shopifyImageUrl = await searchShopifyFileByFilename(shop, token, filename);
-    if (shopifyImageUrl) return shopifyImageUrl;
-  }
   if (fileCreateJson.data?.fileCreate?.userErrors?.length) {
     console.error('[Shopify] fileCreate userErrors:', JSON.stringify(fileCreateJson.data.fileCreate.userErrors));
-    // Domaine bloqué : staged upload classique
+    // Domaine bloqué : staged upload classique
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) throw new Error("download image error");
     const buf = Buffer.from(await imgRes.arrayBuffer());
@@ -177,12 +102,12 @@ async function uploadImageToShopifyUniversal(shop: string, token: string, imageU
     let cdnUrl = await stagedUploadShopifyFile(shop, token, tempPath);
     if (!cdnUrl) {
       console.warn(`[Shopify] CDN url not available after staged upload for ${filename}`);
-      // Fallback: cherche dans Files par filename si CDN non trouvée
       cdnUrl = await searchShopifyFileByFilename(shop, token, filename);
     }
     return cdnUrl ?? null;
   }
-  throw new Error(`Shopify fileCreate failed | Response: ${fileCreateBodyText}`);
+  // **Utilisation DIRECTE du fallback Files CDN:**
+  return await searchShopifyFileByFilename(shop, token, filename);
 }
 
 async function attachImageToProduct(
@@ -294,7 +219,7 @@ async function attachImageToVariant(shop: string, token: string, variantId: stri
 }
 
 /**
- * Fonction principale : crée les produits à partir du CSV et attache les images (upload universel + fallback filename pour trouver la URL CDN Shopify).
+ * Fonction principale : crée les produits à partir du CSV et attache les images (upload universel + fallback filename pour trouver la URL CDN Shopify, plus aucun polling MediaImage ID).
  */
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
