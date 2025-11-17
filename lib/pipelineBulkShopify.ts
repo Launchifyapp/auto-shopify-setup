@@ -24,7 +24,7 @@ async function pollShopifyFileCDNByFilename(
   token: string,
   filename: string,
   intervalMs = 10000, // MODIF: attendre 10s entre essais, au lieu de 3s
-  maxTries = 40      // MODIF: jusqu'à 40 essais, au lieu de 20
+  maxTries = 2      // MODIF: jusqu'à 40 essais, au lieu de 20
 ): Promise<string | null> {
   for (let attempt = 1; attempt <= maxTries; attempt++) {
     console.log(`[Shopify] Files CDN polling try=${attempt}/${maxTries} for filename=${filename}`);
