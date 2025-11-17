@@ -39,7 +39,8 @@ export async function pollShopifyImageCDNUrl(
           }
         `,
         variables: { id: mediaImageId }
-      })
+      }),
+      duplex: "half"
     });
     const bodyText = await res.text();
     let json: any = null;
@@ -74,9 +75,7 @@ async function uploadImageToShopifyGuaranteedCDN(shop: string, token: string, im
 
   // Download local if needed
   let localPath = imageUrl;
-  if (!/^https?:\/\//.test(imageUrl)) {
-    localPath = imageUrl;
-  } else {
+  if (/^https?:\/\//.test(imageUrl)) {
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) throw new Error("download image error");
     const buf = Buffer.from(await imgRes.arrayBuffer());
@@ -92,10 +91,7 @@ async function uploadImageToShopifyGuaranteedCDN(shop: string, token: string, im
     if (typeof cdnUrl === "object" && cdnUrl.id) {
       cdnUrl = await pollShopifyImageCDNUrl(shop, token, cdnUrl.id);
     }
-    // Last fallback: try to poll using the last created MediaImage from admin Files
-    if (!cdnUrl) {
-      throw new Error("Unable to obtain CDN url for image after staged upload & polling.");
-    }
+    if (!cdnUrl) throw new Error("Unable to obtain CDN url for image after staged upload & polling.");
   }
 
   return cdnUrl;
@@ -153,6 +149,7 @@ async function attachImageToProductCDN(
         `,
         variables: { productId, media },
       }),
+      duplex: "half"
     }
   );
   const bodyText = await res.text();
@@ -262,6 +259,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             `,
             variables: { product },
           }),
+          duplex: "half"
         });
 
         const gqlBodyText = await gqlRes.text();
