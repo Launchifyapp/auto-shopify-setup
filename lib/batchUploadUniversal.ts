@@ -13,7 +13,7 @@ export async function pollShopifyFileCDNByFilename(
   token: string,
   filename: string,
   intervalMs = 10000, // attends 10s entre essais
-  maxTries = 40       // jusqu'à 40 essais (total ~ 7 min max)
+  maxTries = 2       // jusqu'à 40 essais (total ~ 7 min max)
 ): Promise<string | null> {
   for (let attempt = 1; attempt <= maxTries; attempt++) {
     console.log(`[Shopify] Files CDN polling try=${attempt}/${maxTries} for filename=${filename}`);
@@ -22,7 +22,7 @@ export async function pollShopifyFileCDNByFilename(
       console.log(`[Shopify] Files polling CDN url found for ${filename}: ${url}`);
       return url;
     }
-    if (attempt < maxTries) {
+    if (attempt < ) {
       await new Promise(res => setTimeout(res, intervalMs));
     }
   }
