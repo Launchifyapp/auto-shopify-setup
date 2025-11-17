@@ -2,7 +2,7 @@ import { parse } from "csv-parse/sync";
 import { Buffer } from "buffer";
 import path from "path";
 import fs from "fs";
-import { stagedUploadShopifyFile, searchShopifyFileByFilename } from "./batchUploadUniversal";
+import { stagedUploadShopifyFile, searchShopifyFileByFilename, pollShopifyFileCDNByFilename } from "./batchUploadUniversal";
 import { fetch } from "undici";
 
 /** Détecter le séparateur ; ou , pour CSV Shopify FR/EN */
@@ -191,12 +191,13 @@ export async function uploadImageToShopifyUniversal(
     let cdnUrl = await stagedUploadShopifyFile(shop, token, tempPath);
     if (!cdnUrl) {
       console.warn(`[Shopify] CDN url not available after staged upload for ${filename}`);
-      cdnUrl = await searchShopifyFileByFilename(shop, token, filename);
+      // FORCER LE POLLING ICI :
+      cdnUrl = await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
     }
     return cdnUrl ?? null;
   }
-  // Utilisation DIRECTE du fallback Files CDN
-  return await searchShopifyFileByFilename(shop, token, filename);
+  // FORCER LE POLLING ICI AUSSI :
+  return await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
 }
 
 /**
