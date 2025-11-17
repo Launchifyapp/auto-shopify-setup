@@ -22,7 +22,7 @@ export async function pollShopifyFileCDNByFilename(
       console.log(`[Shopify] Files polling CDN url found for ${filename}: ${url}`);
       return url;
     }
-    if (attempt < ) {
+    if (attempt < maxTries) {
       await new Promise(res => setTimeout(res, intervalMs));
     }
   }
