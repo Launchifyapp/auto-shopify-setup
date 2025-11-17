@@ -11,7 +11,7 @@ const TOKEN = process.env.SHOPIFY_ADMIN_TOKEN || "";
  * Shopify Files fallback: search CDN image by filename.
  * Direct lookup—no polling by MediaImage ID anymore!
  */
-async function searchShopifyFileByFilename(shop: string, token: string, filename: string): Promise<string | null> {
+export async function searchShopifyFileByFilename(shop: string, token: string, filename: string): Promise<string | null> {
   console.log(`[Shopify] Fallback: search file by filename in Shopify Files: ${filename}`);
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -46,7 +46,7 @@ async function searchShopifyFileByFilename(shop: string, token: string, filename
 }
 
 // Staged upload with resource: "IMAGE"
-async function getStagedUploadUrl(shop: string, token: string, filename: string, mimeType: string) {
+export async function getStagedUploadUrl(shop: string, token: string, filename: string, mimeType: string) {
   console.log(`[Shopify] StagedUpload: get staged URL for ${filename} (${mimeType})`);
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -82,7 +82,7 @@ async function getStagedUploadUrl(shop: string, token: string, filename: string,
   return json.data.stagedUploadsCreate.stagedTargets[0];
 }
 
-async function uploadToStagedUrl(stagedTarget: any, fileBuffer: Buffer, mimeType: string, filename: string) {
+export async function uploadToStagedUrl(stagedTarget: any, fileBuffer: Buffer, mimeType: string, filename: string) {
   console.log(`[Shopify] S3: uploading ${filename} (${mimeType})`);
   const formData = new FormData();
   for (const param of stagedTarget.parameters) formData.append(param.name, param.value);
@@ -106,7 +106,7 @@ async function uploadToStagedUrl(stagedTarget: any, fileBuffer: Buffer, mimeType
 /**
  * Upload image and get CDN url by direct Files fallback.
  */
-async function fileCreateFromStaged(shop: string, token: string, resourceUrl: string, filename: string, mimeType: string) {
+export async function fileCreateFromStaged(shop: string, token: string, resourceUrl: string, filename: string, mimeType: string) {
   console.log(`[Shopify] fileCreateFromStaged: ${filename}`);
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
