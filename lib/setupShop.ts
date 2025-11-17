@@ -410,11 +410,12 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             try {
               let cdnUrl = await uploadImageToShopifyUniversal(shop, token, variantImageUrl, variantImageUrl.split('/').pop() ?? 'variant.jpg');
               // cdnUrl peut être null si attente CDN = > fallback possible ici
-              if (!cdnUrl && typeof cdnUrl === "object" && cdnUrl.id) {
-                cdnUrl = await pollShopifyImageCDNUrl(shop, token, cdnUrl.id);
-              }
-              await attachImageToVariant(shop, token, v.id, cdnUrl, variantAltText);
-              console.log(`Image rattachée à variante: ${variantKey} → ${v.id}`);
+            // Remplacement de la condition avec typage correct et fallback propre
+if (!cdnUrl) {
+  console.warn(`CDN url not available for variante [${variantKey}]`);
+}
+await attachImageToVariant(shop, token, v.id, cdnUrl ?? "", variantAltText);
+console.log(`Image rattachée à variante: ${variantKey} → ${v.id}`);
             } catch (err) {
               console.error("Erreur upload/attach image variante", variantKey, err);
             }
