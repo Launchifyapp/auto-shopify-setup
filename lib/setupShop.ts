@@ -7,12 +7,6 @@ import { fetch } from "undici";
 
 /**
  * Polls Shopify GraphQL API for a MediaImage preview URL until it's available or times out.
- * @param shop - shop domain
- * @param token - Shopify Admin token
- * @param mediaImageId - MediaImage gid (e.g. "gid://shopify/MediaImage/1234567890")
- * @param intervalMs - poll interval (default 3s)
- * @param maxTries - max polls (default 20)
- * @returns {Promise<string|null>} - image CDN url or null
  */
 export async function pollShopifyImageCDNUrl(
   shop: string,
@@ -22,6 +16,7 @@ export async function pollShopifyImageCDNUrl(
   maxTries = 20
 ): Promise<string | null> {
   for (let attempt = 1; attempt <= maxTries; attempt++) {
+    console.log(`[Shopify] Poll try=${attempt}/${maxTries} for MediaImage id=${mediaImageId}`);
     const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
       method: "POST",
       headers: {
@@ -51,13 +46,15 @@ export async function pollShopifyImageCDNUrl(
     try {
       json = JSON.parse(bodyText);
     } catch {
+      console.error(`[Shopify] Polling ERROR: Failed to parse JSON! ${bodyText}`);
       throw new Error(`Shopify polling failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
     }
     const url = json?.data?.file?.preview?.image?.url ?? null;
-    console.log(`[Shopify] Poll try=${attempt}/${maxTries} for MediaImage id=${mediaImageId}: url=${url ?? "null"}`);
     if (url) {
       console.log(`[Shopify] CDN image url is READY: ${url}`);
       return url;
+    } else {
+      console.log(`[Shopify] polling: still no CDN url for id=${mediaImageId}`);
     }
     if (attempt < maxTries) {
       await new Promise(res => setTimeout(res, intervalMs));
@@ -77,6 +74,7 @@ function guessCsvDelimiter(csvText: string): ";" | "," {
  * Fallback: recherche une image dans Files Shopify par filename, retourne l'URL CDN si trouvée.
  */
 async function searchShopifyFileByFilename(shop: string, token: string, filename: string): Promise<string | null> {
+  console.log(`[Shopify] Fallback: search file by filename in Shopify Files: ${filename}`);
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -104,11 +102,12 @@ async function searchShopifyFileByFilename(shop: string, token: string, filename
     console.log(`[Shopify] Fallback CDN url from Files by filename (${filename}): ${url}`);
     return url;
   }
+  console.warn(`[Shopify] No CDN url found in Files by filename: ${filename}`);
   return null;
 }
 
 /**
- * Upload universel : directe par URL (GraphQL fileCreate) si le domaine est accepté, sinon staged upload Shopify (stagedUploadsCreate + S3 + fileCreate).
+ * Upload universel : directe par URL (GraphQL fileCreate) si le domaine est accepté, sinon staged upload Shopify (stagedUploadsCreate + S3 + fileCreate).
  * Fallback filename: tente de retrouver l'image dans Files si Shopify tarde à générer la CDN.
  */
 async function uploadImageToShopifyUniversal(shop: string, token: string, imageUrl: string, filename: string): Promise<string | null> {
@@ -118,6 +117,7 @@ async function uploadImageToShopifyUniversal(shop: string, token: string, imageU
     : filename.endsWith('.webp') ? "image/webp"
     : "image/jpeg";
   // 1. Upload direct par URL via GraphQL
+  console.log(`[Shopify] uploadImageToShopifyUniversal: uploading/creating ${filename}`);
   const fileCreateRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -146,6 +146,7 @@ async function uploadImageToShopifyUniversal(shop: string, token: string, imageU
   try {
     fileCreateJson = JSON.parse(fileCreateBodyText);
   } catch {
+    console.error(`[Shopify] fileCreate ERROR: ${fileCreateBodyText}`);
     throw new Error(`fileCreate failed: Non-JSON response (${fileCreateRes.status}) | Body: ${fileCreateBodyText}`);
   }
   const fileObj = fileCreateJson?.data?.fileCreate?.files?.[0];
@@ -165,6 +166,7 @@ async function uploadImageToShopifyUniversal(shop: string, token: string, imageU
     if (shopifyImageUrl) return shopifyImageUrl;
   }
   if (fileCreateJson.data?.fileCreate?.userErrors?.length) {
+    console.error('[Shopify] fileCreate userErrors:', JSON.stringify(fileCreateJson.data.fileCreate.userErrors));
     // Domaine bloqué : staged upload classique
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) throw new Error("download image error");
@@ -239,6 +241,7 @@ async function attachImageToProduct(
   try {
     json = JSON.parse(bodyText);
   } catch {
+    console.error(`[Shopify] productCreateMedia ERROR: ${bodyText}`);
     throw new Error(
       `productCreateMedia failed: Non-JSON response (${res.status}) | Body: ${bodyText}`
     );
@@ -281,6 +284,7 @@ async function attachImageToVariant(shop: string, token: string, variantId: stri
   try {
     json = JSON.parse(bodyText);
   } catch {
+    console.error(`[Shopify] productVariantUpdate ERROR: ${bodyText}`);
     throw new Error(`productVariantUpdate failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
   }
   if (json.data?.productVariantUpdate?.userErrors?.length) {
@@ -294,10 +298,13 @@ async function attachImageToVariant(shop: string, token: string, variantId: stri
  */
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
+    console.log("[Shopify] setupShop: fetch CSV...");
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
     const delimiter = guessCsvDelimiter(csvText);
+    console.log(`[Shopify] setupShop: parsed delimiter=${delimiter}`);
+
     const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter });
 
     const productsByHandle: Record<string, any[]> = {};
@@ -351,6 +358,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       };
 
       try {
+        console.log(`[Shopify] Creating product: ${handleUnique}`);
         // Création du produit
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
@@ -384,6 +392,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         try {
           gqlJson = JSON.parse(gqlBodyText);
         } catch {
+          console.error(`[Shopify] productCreate ERROR: ${gqlBodyText}`);
           throw new Error(`productCreate failed: Non-JSON response (${gqlRes.status}) | Body: ${gqlBodyText}`);
         }
 
