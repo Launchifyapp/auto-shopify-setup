@@ -4,6 +4,67 @@ import path from "path";
 import fs from "fs";
 import { stagedUploadShopifyFile } from "./batchUploadUniversal";
 
+// --- AJOUT POLLING SHOPIFY IMAGE CDN ---
+import { fetch } from "undici";
+/**
+ * Polls Shopify GraphQL API for a MediaImage preview URL until it's available or times out.
+ * @param shop - shop domain
+ * @param token - Shopify Admin token
+ * @param mediaImageId - MediaImage gid (e.g. "gid://shopify/MediaImage/1234567890")
+ * @param intervalMs - poll interval (default 3s)
+ * @param maxTries - max polls (default 20)
+ * @returns {Promise<string|null>} - image CDN url or null
+ */
+export async function pollShopifyImageCDNUrl(
+  shop: string,
+  token: string,
+  mediaImageId: string,
+  intervalMs = 3000,
+  maxTries = 20
+): Promise<string | null> {
+  for (let attempt = 1; attempt <= maxTries; attempt++) {
+    const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": token
+      },
+      body: JSON.stringify({
+        query: `
+          query GetMediaImageCDN($id: ID!) {
+            file(id: $id) {
+              ... on MediaImage {
+                id
+                preview {
+                  image {
+                    url
+                  }
+                }
+              }
+            }
+          }
+        `,
+        variables: { id: mediaImageId }
+      })
+    });
+    const bodyText = await res.text();
+    let json: any = null;
+    try {
+      json = JSON.parse(bodyText);
+    } catch {
+      throw new Error(`Shopify polling failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
+    }
+    const url = json?.data?.file?.preview?.image?.url ?? null;
+    if (url) {
+      return url;
+    }
+    if (attempt < maxTries) {
+      await new Promise(res => setTimeout(res, intervalMs));
+    }
+  }
+  return null;
+}
+
 /** Détecter le séparateur ; ou , pour CSV Shopify FR/EN */
 function guessCsvDelimiter(csvText: string): ";" | "," {
   const firstLine = csvText.split("\n")[0];
@@ -50,8 +111,15 @@ async function uploadImageToShopifyUniversal(shop: string, token: string, imageU
   } catch {
     throw new Error(`fileCreate failed: Non-JSON response (${fileCreateRes.status}) | Body: ${fileCreateBodyText}`);
   }
-  const shopifyImageUrl = fileCreateJson?.data?.fileCreate?.files?.[0]?.preview?.image?.url;
+  const fileObj = fileCreateJson?.data?.fileCreate?.files?.[0];
+  let shopifyImageUrl = fileObj?.preview?.image?.url ?? null;
+
   if (shopifyImageUrl) return shopifyImageUrl;
+  if (fileObj?.fileStatus === "UPLOADED" && fileObj.id) {
+    // Polling si CDN pas dispo (MediaImage S3)
+    shopifyImageUrl = await pollShopifyImageCDNUrl(shop, token, fileObj.id);
+    if (shopifyImageUrl) return shopifyImageUrl;
+  }
   if (fileCreateJson.data?.fileCreate?.userErrors?.length) {
     // Domaine bloqué : staged upload
     const imgRes = await fetch(imageUrl);
@@ -60,7 +128,16 @@ async function uploadImageToShopifyUniversal(shop: string, token: string, imageU
     // Sauvegarde temporaire
     const tempPath = path.join("/tmp", filename.replace(/[^\w\.-]/g, "_"));
     fs.writeFileSync(tempPath, buf);
-    return await stagedUploadShopifyFile(shop, token, tempPath);
+    // stagedUploadShopifyFile peut aussi être patché pour polling
+    let cdnUrl = await stagedUploadShopifyFile(shop, token, tempPath);
+    // Si objet et pas string : URL pas encore prête, poller avec l'id
+    if (cdnUrl && typeof cdnUrl === 'object' && cdnUrl.id) {
+      cdnUrl = await pollShopifyImageCDNUrl(shop, token, cdnUrl.id);
+    }
+    if (typeof cdnUrl === 'string' && cdnUrl.startsWith('https://cdn.shopify.com')) {
+      return cdnUrl;
+    }
+    throw new Error(`Shopify staged upload failed | No CDN url | Response: ${JSON.stringify(fileCreateJson)}`);
   }
   throw new Error(`Shopify fileCreate failed | Response: ${fileCreateBodyText}`);
 }
@@ -68,7 +145,6 @@ async function uploadImageToShopifyUniversal(shop: string, token: string, imageU
 /**
  * Attache l'image à un produit Shopify via GraphQL productCreateMedia
  */
-// Modification de la fonction attachImageToProduct
 async function attachImageToProduct(
   shop: string,
   token: string,
@@ -301,7 +377,11 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         const imageAltText = main["Image Alt Text"] ?? "";
         if (productImageUrl && !productImageUrl.startsWith("https://cdn.shopify.com")) {
           try {
-            const cdnUrl = await uploadImageToShopifyUniversal(shop, token, productImageUrl, productImageUrl.split('/').pop() ?? 'image.jpg');
+            let cdnUrl = await uploadImageToShopifyUniversal(shop, token, productImageUrl, productImageUrl.split('/').pop() ?? 'image.jpg');
+            // cdnUrl peut être null si attente CDN = > fallback possible ici
+            if (!cdnUrl && typeof cdnUrl === "object" && cdnUrl.id) {
+              cdnUrl = await pollShopifyImageCDNUrl(shop, token, cdnUrl.id);
+            }
             await attachImageToProduct(shop, token, productId, cdnUrl, imageAltText);
             console.log(`Image rattachée au produit: ${handle} → ${productId}`);
           } catch (err) {
@@ -328,7 +408,11 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             let variantImageUrl = variantCsvRow["Variant Image"];
             let variantAltText = variantCsvRow["Image Alt Text"] ?? "";
             try {
-              const cdnUrl = await uploadImageToShopifyUniversal(shop, token, variantImageUrl, variantImageUrl.split('/').pop() ?? 'variant.jpg');
+              let cdnUrl = await uploadImageToShopifyUniversal(shop, token, variantImageUrl, variantImageUrl.split('/').pop() ?? 'variant.jpg');
+              // cdnUrl peut être null si attente CDN = > fallback possible ici
+              if (!cdnUrl && typeof cdnUrl === "object" && cdnUrl.id) {
+                cdnUrl = await pollShopifyImageCDNUrl(shop, token, cdnUrl.id);
+              }
               await attachImageToVariant(shop, token, v.id, cdnUrl, variantAltText);
               console.log(`Image rattachée à variante: ${variantKey} → ${v.id}`);
             } catch (err) {
