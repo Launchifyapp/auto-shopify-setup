@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { setupShop } from "@/lib/setupShop";
+import { setupShop } from "@/lib/setupShop"; // Assure que setupShop est exporté NOMMÉ dans lib/setupShop.ts
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
