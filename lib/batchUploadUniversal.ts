@@ -7,8 +7,8 @@ import path from "path";
 const SHOP = process.env.SHOPIFY_STORE || "monshop.myshopify.com";
 const TOKEN = process.env.SHOPIFY_ADMIN_TOKEN || "";
 
-// ⚡️ Ajoute une fonction polling pour obtenir l'URL CDN
-async function pollShopifyFileCDNByFilename(
+// ⚡️ Exported polling function for CDN URL
+export async function pollShopifyFileCDNByFilename(
   shop: string,
   token: string,
   filename: string,
