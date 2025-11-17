@@ -86,7 +86,7 @@ async function searchShopifyFileByFilename(shop: string, token: string, filename
     }),
     duplex: "half"
   });
-  const body = await res.json();
+  const body = await res.json() as any;
   const node = body?.data?.files?.edges?.[0]?.node;
   const url = node?.preview?.image?.url ?? null;
   if (url) {
