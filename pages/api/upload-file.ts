@@ -9,6 +9,13 @@ const SHOPIFY_STORE = process.env.SHOPIFY_STORE!;
 const SHOPIFY_ADMIN_TOKEN = process.env.SHOPIFY_ADMIN_TOKEN!;
 const SHOPIFY_GRAPHQL_ENDPOINT = `https://${SHOPIFY_STORE}/admin/api/2025-10/graphql.json`;
 
+/** Utilitaire pour ignorer les URLs invalides (nan, null, undefined, vides) */
+function validImageUrl(url?: string): boolean {
+  if (!url) return false;
+  const v = url.trim().toLowerCase();
+  return !!v && v !== "nan" && v !== "null" && v !== "undefined";
+}
+
 function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
@@ -55,6 +62,12 @@ async function searchShopifyFileByFilename(shop: string, token: string, filename
  */
 async function uploadOne({ url, filename, mimeType }: { url: string; filename: string; mimeType: string }) {
   url = normalizeImageUrl(url);
+
+  // IGNORE les valeurs invalides :
+  if (!validImageUrl(url) || !validImageUrl(filename)) {
+    console.warn(`[Upload] Skipping invalid image url or filename. url="${url}" filename="${filename}"`);
+    return { ok: false, error: "Invalid image url or filename", url, filename };
+  }
 
   console.log(`[Upload] API upload-file: filename=${filename}, mimeType=${mimeType}, url=${url}`);
 
@@ -199,9 +212,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const images = req.body.images || [req.body];
     if (!Array.isArray(images) || !images[0]?.url)
       return res.status(400).json({ ok: false, error: "missing images array" });
+
     const results = [];
     for (const img of images) {
       console.log(`[Shopify] processing image:`, img);
+      // Vérifie d'abord la validité AVANT uploadOne
+      if (!validImageUrl(img.url) || !validImageUrl(img.filename)) {
+        results.push({ ok: false, error: "Invalid image url or filename", url: img.url, filename: img.filename });
+        continue;
+      }
       results.push(await uploadOne(img));
     }
     console.log("[Shopify] upload results:", JSON.stringify(results));
