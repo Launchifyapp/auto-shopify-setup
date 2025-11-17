@@ -379,11 +379,11 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           try {
             let cdnUrl = await uploadImageToShopifyUniversal(shop, token, productImageUrl, productImageUrl.split('/').pop() ?? 'image.jpg');
             // cdnUrl peut être null si attente CDN = > fallback possible ici
-            if (!cdnUrl && typeof cdnUrl === "object" && cdnUrl.id) {
-              cdnUrl = await pollShopifyImageCDNUrl(shop, token, cdnUrl.id);
-            }
-            await attachImageToProduct(shop, token, productId, cdnUrl, imageAltText);
-            console.log(`Image rattachée au produit: ${handle} → ${productId}`);
+          if (!cdnUrl) {
+  console.warn(`CDN url not available for [${handle}] (productId: ${productId})`);
+}
+await attachImageToProduct(shop, token, productId, cdnUrl ?? "", imageAltText);
+console.log(`Image rattachée au produit: ${handle} → ${productId}`);
           } catch (err) {
             console.error("Erreur upload/attach image produit", handle, err);
           }
