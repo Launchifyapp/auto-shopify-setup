@@ -47,7 +47,8 @@ export async function pollShopifyImageCDNUrl(
           }
         `,
         variables: { id: mediaImageId }
-      })
+      }),
+      duplex: "half"
     });
     const bodyText = await res.text();
     let json: any = null;
@@ -86,7 +87,8 @@ async function getStagedUploadUrl(shop: string, token: string, filename: string,
       `,
       // IMPORTANT: Use resource: "IMAGE" for product images
       variables: { input: [{ filename, mimeType, resource: "IMAGE" }] }
-    })
+    }),
+    duplex: "half"
   });
 
   const bodyText = await res.text();
@@ -112,6 +114,7 @@ async function uploadToStagedUrl(stagedTarget: any, fileBuffer: Buffer, mimeType
     method: 'POST',
     body: encoder.encode(),
     headers: encoder.headers,
+    duplex: "half"
   });
   if (!res.ok) {
     const errText = await res.text();
@@ -146,7 +149,8 @@ async function fileCreateFromStaged(shop: string, token: string, resourceUrl: st
         }
       `,
       variables: { files: [{ originalSource: resourceUrl, alt: filename }] }
-    })
+    }),
+    duplex: "half"
   });
   const bodyText = await res.text();
   let json: any = null;
