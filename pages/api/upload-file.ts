@@ -22,6 +22,7 @@ async function pollShopifyImageCDNUrl(
   maxTries = 20
 ): Promise<string | null> {
   for (let attempt = 1; attempt <= maxTries; attempt++) {
+    console.log(`[Shopify] PollTry ${attempt}/${maxTries} for MediaImage id=${mediaImageId}`);
     const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
       method: "POST",
       headers: {
@@ -52,21 +53,27 @@ async function pollShopifyImageCDNUrl(
     try {
       json = JSON.parse(bodyText);
     } catch {
+      console.error(`[Shopify] Polling ERROR: Failed to parse JSON! ${bodyText}`);
       throw new Error(`Shopify polling failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
     }
     const url = json?.data?.file?.preview?.image?.url ?? null;
     if (url) {
+      console.log(`[Shopify] CDN image url READY for MediaImage id=${mediaImageId}: ${url}`);
       return url;
+    } else {
+      console.log(`[Shopify] poll step: no CDN url yet, MediaImage id=${mediaImageId}`);
     }
     if (attempt < maxTries) {
       await new Promise(res => setTimeout(res, intervalMs));
     }
   }
+  console.warn(`[Shopify] Polling finished: CDN image url is STILL null for MediaImage id=${mediaImageId} after ${maxTries} tries`);
   return null;
 }
 
-// Ajout : recherche d'image par nom de fichier dans Files Shopify
+// Recherche d'image par nom de fichier dans Files Shopify
 async function searchShopifyFileByFilename(shop: string, token: string, filename: string): Promise<string | null> {
+  console.log(`[Shopify] Fallback: search file by filename in Shopify Files: ${filename}`);
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -95,11 +102,14 @@ async function searchShopifyFileByFilename(shop: string, token: string, filename
     console.log(`[Shopify] Fallback CDN url from Files by filename (${filename}): ${url}`);
     return url;
   }
+  console.warn(`[Shopify] No CDN url found in Files by filename: ${filename}`);
   return null;
 }
 
 async function uploadOne({ url, filename, mimeType }: { url: string; filename: string; mimeType: string }) {
   url = normalizeImageUrl(url);
+
+  console.log(`[Upload] Start upload for filename=${filename}, mimeType=${mimeType}, url=${url}`);
 
   // 1. Step: Staged upload request
   const stagedRes = await fetch(SHOPIFY_GRAPHQL_ENDPOINT, {
@@ -132,7 +142,7 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
     duplex: "half"
   });
   const stagedJson = await stagedRes.json() as any;
-  console.log("stagedUploadsCreate:", JSON.stringify(stagedJson));
+  console.log("[Upload] stagedUploadsCreate return:", JSON.stringify(stagedJson));
   if (
     !stagedJson ||
     !stagedJson.data ||
@@ -140,20 +150,27 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
     !Array.isArray(stagedJson.data.stagedUploadsCreate.stagedTargets) ||
     !stagedJson.data.stagedUploadsCreate.stagedTargets.length
   ) {
+    console.error("[Upload] stagedUploadsCreate ERROR:", stagedJson);
     return { ok: false, error: "staged error", stagedJson };
   }
 
   const target = stagedJson.data.stagedUploadsCreate.stagedTargets[0];
   if (!target || !target.resourceUrl) {
+    console.error("[Upload] stagedUploadsCreate NO resourceUrl", target);
     return { ok: false, error: "no resourceUrl", target };
   }
 
-  // 2. Step: Download image from provided HTTP url
+  // 2. Download image from provided HTTP url
+  console.log("[Upload] Downloading image from url:", url);
   const imageRes = await fetch(url);
-  if (!imageRes.ok) return { ok: false, error: "source download failed", status: imageRes.status };
+  if (!imageRes.ok) {
+    console.error(`[Upload] Source download failed (${imageRes.status})`);
+    return { ok: false, error: "source download failed", status: imageRes.status };
+  }
   const imageBuf = Buffer.from(await imageRes.arrayBuffer());
 
-  // 3. Step: Send to S3 (using formdata-node + form-data-encoder + undici)
+  // 3. Send to S3
+  console.log("[Upload] Uploading image to S3.");
   const uploadForm = new FormData();
   for (const p of target.parameters) uploadForm.append(p.name, p.value);
   uploadForm.append("file", new File([imageBuf], filename, { type: mimeType }));
@@ -166,11 +183,14 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
     duplex: "half"
   });
   const s3Text = await s3Res.text();
-  console.log("S3 upload response:", s3Res.status, s3Text);
-  if (!s3Res.ok)
+  console.log("[Upload] S3 upload response:", s3Res.status, s3Text);
+  if (!s3Res.ok) {
+    console.error(`[Upload] S3 upload error: ${s3Res.status} | ${s3Text}`);
     return { ok: false, error: "S3 upload error", details: s3Text };
+  }
 
-  // 4. Step: Shopify mutation to create file from resourceUrl
+  // 4. Shopify mutation to create file from resourceUrl
+  console.log("[Upload] Creating Shopify file from staged resourceUrl");
   const fileCreateRes = await fetch(SHOPIFY_GRAPHQL_ENDPOINT, {
     method: "POST",
     headers: {
@@ -208,7 +228,7 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
     duplex: "half"
   });
   const fileCreateJson = await fileCreateRes.json() as any;
-  console.log("fileCreate:", JSON.stringify(fileCreateJson));
+  console.log("[Upload] fileCreate return:", JSON.stringify(fileCreateJson));
   let fileObj = fileCreateJson?.data?.fileCreate?.files?.[0];
   let imageUrl = fileObj?.preview?.image?.url ?? null;
 
@@ -220,17 +240,19 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
       console.log(`[Shopify] CDN url ready: ${imageUrl}`);
     } else {
       console.warn(`[Shopify] CDN url still not ready after polling for id: ${fileObj.id}`);
-      // Fallback par recherche du filename dans Files Shopify
+      // Fallback par filename
       imageUrl = await searchShopifyFileByFilename(SHOPIFY_STORE, SHOPIFY_ADMIN_TOKEN, filename);
       if (!imageUrl) {
         console.error(`[Shopify] CDN url not found by polling nor filename for: ${filename}`);
       }
     }
   }
+  console.log(`[Upload] End upload filename=${filename}, imageUrl=${imageUrl}`);
   return { ok: true, result: fileCreateJson, imageUrl };
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  console.log("[Shopify] upload-file handler called", req.method, req.body);
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
   try {
     // Accept either 1 object or {images: array} in req.body
@@ -239,8 +261,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ ok: false, error: "missing images array" });
     const results = [];
     for (const img of images) {
+      console.log(`[Shopify] processing image:`, img);
       results.push(await uploadOne(img));
     }
+    console.log("[Shopify] upload results:", JSON.stringify(results));
     res.status(200).json({ ok: true, uploads: results });
   } catch (error: any) {
     console.error("API 500 error:", error);
