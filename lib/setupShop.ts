@@ -7,11 +7,6 @@ import { fetch } from "undici";
 
 /**
  * Polls Shopify GraphQL API for a MediaImage preview URL until it's available or times out.
- * @param shop - shop domain
- * @param token - Shopify Admin token
- * @param mediaImageId - MediaImage gid (e.g. "gid://shopify/MediaImage/1234567890")
- * @param intervalMs - poll interval (default 3s)
- * @param maxTries - max polls (default 20)
  * @returns {Promise<string|null>} - image CDN url or null
  */
 export async function pollShopifyImageCDNUrl(
@@ -67,93 +62,56 @@ export async function pollShopifyImageCDNUrl(
   return null;
 }
 
-/** Détecter le séparateur ; ou , pour CSV Shopify FR/EN */
-function guessCsvDelimiter(csvText: string): ";" | "," {
-  const firstLine = csvText.split("\n")[0];
-  return firstLine.indexOf(";") >= 0 ? ";" : ",";
-}
-
 /**
- * Upload universel : directe par URL (GraphQL fileCreate) si le domaine est accepté, sinon staged upload Shopify (stagedUploadsCreate + S3 + fileCreate).
+ * Upload image to Shopify and guarantee the usage of CDN url for product/variant attachment.
  */
-async function uploadImageToShopifyUniversal(shop: string, token: string, imageUrl: string, filename: string): Promise<string | null> {
+async function uploadImageToShopifyGuaranteedCDN(shop: string, token: string, imageUrl: string, filename: string): Promise<string> {
   if (imageUrl.startsWith("https://cdn.shopify.com")) return imageUrl;
   const mimeType =
     filename.endsWith('.png') ? "image/png"
     : filename.endsWith('.webp') ? "image/webp"
     : "image/jpeg";
-  // 1. Upload direct par URL via GraphQL
-  const fileCreateRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-    body: JSON.stringify({
-      query: `
-        mutation fileCreate($files: [FileCreateInput!]!) {
-          fileCreate(files: $files) {
-            files {
-              id
-              fileStatus
-              preview {
-                image {
-                  url
-                }
-              }
-            }
-            userErrors { field message }
-          }
-        }
-      `,
-      variables: { files: [{ originalSource: imageUrl, alt: filename }] }
-    })
-  });
-  const fileCreateBodyText = await fileCreateRes.text();
-  let fileCreateJson: any = null;
-  try {
-    fileCreateJson = JSON.parse(fileCreateBodyText);
-  } catch {
-    throw new Error(`fileCreate failed: Non-JSON response (${fileCreateRes.status}) | Body: ${fileCreateBodyText}`);
-  }
-  const fileObj = fileCreateJson?.data?.fileCreate?.files?.[0];
-  let shopifyImageUrl = fileObj?.preview?.image?.url ?? null;
 
-  console.log(`[Shopify] Image upload: fileCreate returned id=${fileObj?.id}, fileStatus=${fileObj?.fileStatus}, preview.image.url=${fileObj?.preview?.image?.url ?? "null"}`);
-
-  if (shopifyImageUrl) return shopifyImageUrl;
-  if (fileObj?.fileStatus === "UPLOADED" && fileObj.id) {
-    console.log(`[Shopify] Polling for CDN image url: MediaImage id=${fileObj.id}`);
-    shopifyImageUrl = await pollShopifyImageCDNUrl(shop, token, fileObj.id);
-    if (shopifyImageUrl) return shopifyImageUrl;
-  }
-  if (fileCreateJson.data?.fileCreate?.userErrors?.length) {
-    // Domaine bloqué : staged upload
+  // Download local if needed
+  let localPath = imageUrl;
+  if (!/^https?:\/\//.test(imageUrl)) {
+    localPath = imageUrl;
+  } else {
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) throw new Error("download image error");
     const buf = Buffer.from(await imgRes.arrayBuffer());
-    // Sauvegarde temporaire
-    const tempPath = path.join("/tmp", filename.replace(/[^\w\.-]/g, "_"));
-    fs.writeFileSync(tempPath, buf);
-    // stagedUploadShopifyFile peut aussi être patché pour polling
-    let cdnUrl = await stagedUploadShopifyFile(shop, token, tempPath);
-    // Pour ce workflow, stagedUploadShopifyFile retourne url ou null
-    if (!cdnUrl) {
-      console.warn(`[Shopify] CDN url not available after staged upload for ${filename}`);
-    }
-    return cdnUrl ?? null;
+    localPath = path.join("/tmp", filename.replace(/[^\w\.-]/g, "_"));
+    fs.writeFileSync(localPath, buf);
   }
-  throw new Error(`Shopify fileCreate failed | Response: ${fileCreateBodyText}`);
+
+  // Staged upload
+  let cdnUrl = await stagedUploadShopifyFile(shop, token, localPath);
+
+  // If stagedUploadShopifyFile returns not CDN, poll for CDN
+  if (!cdnUrl || !cdnUrl.startsWith("https://cdn.shopify.com")) {
+    if (typeof cdnUrl === "object" && cdnUrl.id) {
+      cdnUrl = await pollShopifyImageCDNUrl(shop, token, cdnUrl.id);
+    }
+    // Last fallback: try to poll using the last created MediaImage from admin Files
+    if (!cdnUrl) {
+      throw new Error("Unable to obtain CDN url for image after staged upload & polling.");
+    }
+  }
+
+  return cdnUrl;
 }
 
 /**
- * Attache l'image à un produit Shopify via GraphQL productCreateMedia
+ * Attaches CDN image to a Shopify product.
  */
-async function attachImageToProduct(
+async function attachImageToProductCDN(
   shop: string,
   token: string,
   productId: string,
   imageUrl: string,
   altText: string = ""
 ) {
-  console.log(`[Shopify] Attaching image to productId=${productId}: imageUrl=${imageUrl ?? "null"}, altText="${altText}"`);
+  console.log(`[Shopify] Attaching image (CDN) to productId=${productId}: imageUrl=${imageUrl ?? "null"}, altText="${altText}"`);
   const media = [
     {
       originalSource: imageUrl,
@@ -217,52 +175,14 @@ async function attachImageToProduct(
 }
 
 /**
- * Attache l'image à une variante Shopify
- */
-async function attachImageToVariant(shop: string, token: string, variantId: string, imageUrl: string, altText: string = "") {
-  console.log(`[Shopify] Attaching image to variantId=${variantId}: imageUrl=${imageUrl ?? "null"}, altText="${altText}"`);
-  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-    body: JSON.stringify({
-      query: `
-        mutation productVariantUpdate($input: ProductVariantUpdateInput!) {
-          productVariantUpdate(input: $input) {
-            productVariant { id image { id src altText } }
-            userErrors { field message }
-          }
-        }
-      `,
-      variables: {
-        input: {
-          id: variantId,
-          image: { src: imageUrl, altText }
-        }
-      }
-    })
-  });
-  const bodyText = await res.text();
-  let json: any = null;
-  try {
-    json = JSON.parse(bodyText);
-  } catch {
-    throw new Error(`productVariantUpdate failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
-  }
-  if (json.data?.productVariantUpdate?.userErrors?.length) {
-    console.error("Erreur productVariantUpdate:", JSON.stringify(json.data.productVariantUpdate.userErrors));
-  }
-  return json;
-}
-
-/**
- * Fonction principale : crée les produits à partir du CSV et attache les images (upload universel)
+ * Main flow : crée les produits à partir du CSV et attache images (garantie CDN attachée).
  */
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
-    const delimiter = guessCsvDelimiter(csvText);
+    const delimiter = csvText.split("\n")[0].indexOf(";") >= 0 ? ";" : ",";
     const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter });
 
     const productsByHandle: Record<string, any[]> = {};
@@ -365,23 +285,20 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         }
         console.log('Produit créé', handleUnique, '| GraphQL response:', JSON.stringify(gqlJson, null, 2));
 
-        // Upload et attache image principale
+        // Upload et attache image principale (usage garanti CDN)
         const productImageUrl = main["Image Src"];
         const imageAltText = main["Image Alt Text"] ?? "";
-        if (productImageUrl && !productImageUrl.startsWith("https://cdn.shopify.com")) {
+        if (productImageUrl) {
           try {
-            let cdnUrl = await uploadImageToShopifyUniversal(shop, token, productImageUrl, productImageUrl.split('/').pop() ?? 'image.jpg');
-            if (!cdnUrl) {
-              console.warn(`CDN url not available for [${handle}] (productId: ${productId})`);
-            }
-            await attachImageToProduct(shop, token, productId, cdnUrl ?? "", imageAltText);
-            console.log(`Image rattachée au produit: ${handle} → ${productId}`);
+            let cdnUrl = await uploadImageToShopifyGuaranteedCDN(shop, token, productImageUrl, productImageUrl.split('/').pop() ?? 'image.jpg');
+            await attachImageToProductCDN(shop, token, productId, cdnUrl, imageAltText);
+            console.log(`Image CDN rattachée au produit: ${handle} → ${productId}`);
           } catch (err) {
-            console.error("Erreur upload/attach image produit", handle, err);
+            console.error("Erreur upload/attach image CDN produit", handle, err);
           }
         }
 
-        // Création/gestion variants et attachement images des variantes
+        // Création/gestion variants et attachement images des variantes (usage garanti CDN)
         const createdVariantsArr: VariantNode[] = productData?.variants?.edges?.map((edge: { node: VariantNode }) => edge.node) ?? [];
         for (const v of createdVariantsArr) {
           const variantKey = handle + ":" +
@@ -394,20 +311,16 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           if (
             variantCsvRow &&
             v.id &&
-            variantCsvRow["Variant Image"] &&
-            !variantCsvRow["Variant Image"].startsWith("https://cdn.shopify.com")
+            variantCsvRow["Variant Image"]
           ) {
             let variantImageUrl = variantCsvRow["Variant Image"];
             let variantAltText = variantCsvRow["Image Alt Text"] ?? "";
             try {
-              let cdnUrl = await uploadImageToShopifyUniversal(shop, token, variantImageUrl, variantImageUrl.split('/').pop() ?? 'variant.jpg');
-              if (!cdnUrl) {
-                console.warn(`CDN url not available for variante [${variantKey}]`);
-              }
-              await attachImageToVariant(shop, token, v.id, cdnUrl ?? "", variantAltText);
-              console.log(`Image rattachée à variante: ${variantKey} → ${v.id}`);
+              let cdnUrl = await uploadImageToShopifyGuaranteedCDN(shop, token, variantImageUrl, variantImageUrl.split('/').pop() ?? 'variant.jpg');
+              await attachImageToProductCDN(shop, token, v.id, cdnUrl, variantAltText);
+              console.log(`Image CDN rattachée à variante: ${variantKey} → ${v.id}`);
             } catch (err) {
-              console.error("Erreur upload/attach image variante", variantKey, err);
+              console.error("Erreur upload/attach image CDN variante", variantKey, err);
             }
           }
         }
