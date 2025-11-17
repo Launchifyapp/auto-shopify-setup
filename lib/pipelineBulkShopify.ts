@@ -11,6 +11,13 @@ function guessCsvDelimiter(csvText: string): ";" | "," {
   return firstLine.indexOf(";") >= 0 ? ";" : ",";
 }
 
+// Vérifie la validité d'une URL d'image (ignore "nan", "null", "undefined", vide)
+function validImageUrl(url?: string): boolean {
+  if (!url) return false;
+  const val = url.trim().toLowerCase();
+  return !!val && val !== "nan" && val !== "null" && val !== "undefined";
+}
+
 // Fallback polling sur Files/filename directement (pour la CDN)
 async function pollShopifyFileCDNByFilename(
   shop: string,
@@ -35,7 +42,11 @@ async function pollShopifyFileCDNByFilename(
 }
 
 // Requête GraphQL pour chercher les CDN Shopify Files par filename
-async function searchShopifyFileByFilename(shop: string, token: string, filename: string): Promise<string | null> {
+async function searchShopifyFileByFilename(
+  shop: string,
+  token: string,
+  filename: string
+): Promise<string | null> {
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -67,7 +78,13 @@ async function searchShopifyFileByFilename(shop: string, token: string, filename
 }
 
 // Attachement d'image à un produit Shopify
-async function attachImageToProduct(   shop: string,   token: string,   productId: string,   imageUrl: string,   altText: string = "" ) {
+async function attachImageToProduct(
+  shop: string,
+  token: string,
+  productId: string,
+  imageUrl: string,
+  altText: string = ""
+) {
   console.log(`[Shopify] Attaching image to productId=${productId}: imageUrl=${imageUrl ?? "null"}, altText="${altText}"`);
   const media = [
     {
@@ -128,7 +145,13 @@ async function attachImageToProduct(   shop: string,   token: string,   productI
 }
 
 // Attachement d'image à une variante Shopify
-async function attachImageToVariant(   shop: string,   token: string,   variantId: string,   imageUrl: string,   altText: string = "" ) {
+async function attachImageToVariant(
+  shop: string,
+  token: string,
+  variantId: string,
+  imageUrl: string,
+  altText: string = ""
+) {
   console.log(`[Shopify] Attaching image to variantId=${variantId}: imageUrl=${imageUrl ?? "null"}, altText="${altText}"`);
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -183,7 +206,8 @@ export async function pipelineBulkShopify({ shop, token }: { shop: string; token
 
   // 2. Construction queue, EXTRACT INFOS & filenames/images du CSV
   for (const row of records) {
-    if (row["Image Src"]) {
+    // Pour image produit
+    if (validImageUrl(row["Image Src"])) {
       uploadQueue.push({
         src: row["Image Src"],
         filename: (row["Image Src"].split('/').pop() || "image.jpg").trim(),
@@ -193,8 +217,8 @@ export async function pipelineBulkShopify({ shop, token }: { shop: string; token
         productId: null, // à remplir plus tard
       });
     }
-    // Ajout des variantes
-    if (row["Variant Image"]) {
+    // Pour image de variante
+    if (validImageUrl(row["Variant Image"])) {
       uploadQueue.push({
         src: row["Variant Image"],
         filename: (row["Variant Image"].split('/').pop() || "variant.jpg").trim(),
@@ -222,10 +246,8 @@ export async function pipelineBulkShopify({ shop, token }: { shop: string; token
     }
   }
 
-  // 4. Création des produits/variants en BATCH (si besoin, peut être adapté si tu crées avant l'upload)
-  // TU DOIS extraire les productId & variantId générés, ex via une mutation ou depuis Shopify API
-  // Ici, à adapter à ton workflow !
-  // Ex : linkQueue.push({...uploadQueue infos, productId: ...})
+  // 4. Création des produits/variants en BATCH (à intégrer à ton workflow: productId/variantId)
+  // Adapté à ton workflow existant!
 
   // 5. BULK LINK: pour chaque image, polling + attachement
   for (const img of uploadQueue) {
