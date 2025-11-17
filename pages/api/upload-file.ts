@@ -14,10 +14,10 @@ function normalizeImageUrl(url: string): string {
 }
 
 /**
- * Direct fallback: lookup CDN image in Shopify Files by filename (no polling) 
+ * Direct fallback: lookup CDN image in Shopify Files by filename (no polling, for API usage)
  */
 async function searchShopifyFileByFilename(shop: string, token: string, filename: string): Promise<string | null> {
-  console.log(`[Shopify] Fallback: search file by filename in Shopify Files: ${filename}`);
+  console.log(`[Shopify] [API] Fallback: search file by filename in Shopify Files: ${filename}`);
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -43,20 +43,20 @@ async function searchShopifyFileByFilename(shop: string, token: string, filename
   const node = body?.data?.files?.edges?.[0]?.node;
   const url = node?.preview?.image?.url ?? null;
   if (url) {
-    console.log(`[Shopify] Fallback CDN url from Files by filename (${filename}): ${url}`);
+    console.log(`[Shopify] [API] Fallback CDN url from Files by filename (${filename}): ${url}`);
     return url;
   }
-  console.warn(`[Shopify] No CDN url found in Files by filename: ${filename}`);
+  console.warn(`[Shopify] [API] No CDN url found in Files by filename: ${filename}`);
   return null;
 }
 
 /**
- * Upload image: staged upload S3 + create file, get CDN direct from Files fallback.
+ * Upload image: staged upload S3 + create file, get CDN direct from Files fallback (no polling, stateless API)
  */
 async function uploadOne({ url, filename, mimeType }: { url: string; filename: string; mimeType: string }) {
   url = normalizeImageUrl(url);
 
-  console.log(`[Upload] Start upload for filename=${filename}, mimeType=${mimeType}, url=${url}`);
+  console.log(`[Upload] API upload-file: filename=${filename}, mimeType=${mimeType}, url=${url}`);
 
   // 1. Step: Staged upload request
   const stagedRes = await fetch(SHOPIFY_GRAPHQL_ENDPOINT, {
@@ -181,12 +181,16 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
     return { ok: false, error: "fileCreate userErrors", details: fileCreateJson.data.fileCreate.userErrors };
   }
 
-  // Direct fallback: Files by filename
+  // Direct fallback: Files by filename (no polling, API stateless)
   const imageUrl = await searchShopifyFileByFilename(SHOPIFY_STORE, SHOPIFY_ADMIN_TOKEN, filename);
+
   console.log(`[Upload] End upload filename=${filename}, imageUrl=${imageUrl}`);
   return { ok: true, result: fileCreateJson, imageUrl };
 }
 
+/**
+ * API route for single image uploads (for admin use, not pipeline). Bulk orchestration uses lib/pipelineBulkShopify.ts!
+ */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   console.log("[Shopify] upload-file handler called", req.method, req.body);
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
