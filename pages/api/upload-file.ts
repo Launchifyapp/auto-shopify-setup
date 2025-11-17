@@ -13,6 +13,57 @@ function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
 
+// --- Ajout : polling de l'URL CDN Shopify ---
+async function pollShopifyImageCDNUrl(
+  shop: string,
+  token: string,
+  mediaImageId: string,
+  intervalMs = 3000,
+  maxTries = 20
+): Promise<string | null> {
+  for (let attempt = 1; attempt <= maxTries; attempt++) {
+    const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": token
+      },
+      body: JSON.stringify({
+        query: `
+          query GetMediaImageCDN($id: ID!) {
+            file(id: $id) {
+              ... on MediaImage {
+                id
+                preview {
+                  image {
+                    url
+                  }
+                }
+              }
+            }
+          }
+        `,
+        variables: { id: mediaImageId }
+      })
+    });
+    const bodyText = await res.text();
+    let json: any = null;
+    try {
+      json = JSON.parse(bodyText);
+    } catch {
+      throw new Error(`Shopify polling failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
+    }
+    const url = json?.data?.file?.preview?.image?.url ?? null;
+    if (url) {
+      return url;
+    }
+    if (attempt < maxTries) {
+      await new Promise(res => setTimeout(res, intervalMs));
+    }
+  }
+  return null;
+}
+
 async function uploadOne({ url, filename, mimeType }: { url: string; filename: string; mimeType: string }) {
   url = normalizeImageUrl(url);
 
@@ -121,7 +172,19 @@ async function uploadOne({ url, filename, mimeType }: { url: string; filename: s
   });
   const fileCreateJson = await fileCreateRes.json() as any;
   console.log("fileCreate:", JSON.stringify(fileCreateJson));
-  let imageUrl = fileCreateJson?.data?.fileCreate?.files?.[0]?.preview?.image?.url ?? null;
+  let fileObj = fileCreateJson?.data?.fileCreate?.files?.[0];
+  let imageUrl = fileObj?.preview?.image?.url ?? null;
+  
+  // --- Ajout ici : Polling si l'URL CDN n'est pas disponible mais que l'image est UPLOADED ---
+  if (!imageUrl && fileObj?.fileStatus === "UPLOADED" && fileObj?.id) {
+    console.log(`[Shopify] Polling for CDN url for MediaImage id: ${fileObj.id}`);
+    imageUrl = await pollShopifyImageCDNUrl(SHOPIFY_STORE, SHOPIFY_ADMIN_TOKEN, fileObj.id);
+    if (imageUrl) {
+      console.log(`[Shopify] CDN url ready: ${imageUrl}`);
+    } else {
+      console.warn(`[Shopify] CDN url still not ready after polling for id: ${fileObj.id}`);
+    }
+  }
   return { ok: true, result: fileCreateJson, imageUrl };
 }
 
