@@ -1,12 +1,15 @@
-            }
-            await attachImageToProduct(shop, token, productId, cdnUrl ?? "", imageAltText);
-            console.log(`Image rattachée au produit: ${handle} → ${productId}`);
+        const imageAltText = main["Image Alt Text"] ?? "";
+        if (productImageUrl) {
+          try {
+            let cdnUrl = await uploadImageToShopifyGuaranteedCDN(shop, token, productImageUrl, productImageUrl.split('/').pop() ?? 'image.jpg');
+            await attachImageToProductCDN(shop, token, productId, cdnUrl, imageAltText);
+            console.log(`Image CDN rattachée au produit: ${handle} → ${productId}`);
           } catch (err) {
-            console.error("Erreur upload/attach image produit", handle, err);
+            console.error("Erreur upload/attach image CDN produit", handle, err);
           }
         }
 
-        // Création/gestion variants et attachement images des variantes
+        // Création/gestion variants et attachement images des variantes (usage garanti CDN)
         const createdVariantsArr: VariantNode[] = productData?.variants?.edges?.map((edge: { node: VariantNode }) => edge.node) ?? [];
         for (const v of createdVariantsArr) {
           const variantKey = handle + ":" +
@@ -19,20 +22,16 @@
           if (
             variantCsvRow &&
             v.id &&
-            variantCsvRow["Variant Image"] &&
-            !variantCsvRow["Variant Image"].startsWith("https://cdn.shopify.com")
+            variantCsvRow["Variant Image"]
           ) {
             let variantImageUrl = variantCsvRow["Variant Image"];
             let variantAltText = variantCsvRow["Image Alt Text"] ?? "";
             try {
-              let cdnUrl = await uploadImageToShopifyUniversal(shop, token, variantImageUrl, variantImageUrl.split('/').pop() ?? 'variant.jpg');
-              if (!cdnUrl) {
-                console.warn(`CDN url not available for variante [${variantKey}]`);
-              }
-              await attachImageToVariant(shop, token, v.id, cdnUrl ?? "", variantAltText);
-              console.log(`Image rattachée à variante: ${variantKey} → ${v.id}`);
+              let cdnUrl = await uploadImageToShopifyGuaranteedCDN(shop, token, variantImageUrl, variantImageUrl.split('/').pop() ?? 'variant.jpg');
+              await attachImageToProductCDN(shop, token, v.id, cdnUrl, variantAltText);
+              console.log(`Image CDN rattachée à variante: ${variantKey} → ${v.id}`);
             } catch (err) {
-              console.error("Erreur upload/attach image variante", variantKey, err);
+              console.error("Erreur upload/attach image CDN variante", variantKey, err);
             }
           }
         }
