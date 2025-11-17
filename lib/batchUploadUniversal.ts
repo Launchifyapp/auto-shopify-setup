@@ -7,6 +7,29 @@ import path from "path";
 const SHOP = process.env.SHOPIFY_STORE || "monshop.myshopify.com";
 const TOKEN = process.env.SHOPIFY_ADMIN_TOKEN || "";
 
+// ⚡️ Ajoute une fonction polling pour obtenir l'URL CDN
+async function pollShopifyFileCDNByFilename(
+  shop: string,
+  token: string,
+  filename: string,
+  intervalMs = 10000, // attends 10s entre essais
+  maxTries = 40       // jusqu'à 40 essais (total ~ 7 min max)
+): Promise<string | null> {
+  for (let attempt = 1; attempt <= maxTries; attempt++) {
+    console.log(`[Shopify] Files CDN polling try=${attempt}/${maxTries} for filename=${filename}`);
+    const url = await searchShopifyFileByFilename(shop, token, filename);
+    if (url) {
+      console.log(`[Shopify] Files polling CDN url found for ${filename}: ${url}`);
+      return url;
+    }
+    if (attempt < maxTries) {
+      await new Promise(res => setTimeout(res, intervalMs));
+    }
+  }
+  console.warn(`[Shopify] Files CDN polling finished: STILL not found for ${filename} after ${maxTries} tries`);
+  return null;
+}
+
 /**
  * Shopify Files fallback: search CDN image by filename.
  * Direct lookup—no polling by MediaImage ID anymore!
@@ -104,7 +127,7 @@ export async function uploadToStagedUrl(stagedTarget: any, fileBuffer: Buffer, m
 }
 
 /**
- * Upload image and get CDN url by direct Files fallback.
+ * Upload image and get CDN url by polling Files fallback.
  */
 export async function fileCreateFromStaged(shop: string, token: string, resourceUrl: string, filename: string, mimeType: string) {
   console.log(`[Shopify] fileCreateFromStaged: ${filename}`);
@@ -147,8 +170,8 @@ export async function fileCreateFromStaged(shop: string, token: string, resource
     console.error('File create userErrors:', JSON.stringify(json.data.fileCreate.userErrors));
     throw new Error('File create userErrors: ' + JSON.stringify(json.data.fileCreate.userErrors));
   }
-  // Direct Files fallback, no polling!
-  return await searchShopifyFileByFilename(shop, token, filename);
+  // Utilise le polling pour attendre le CDN URL
+  return await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
 }
 
 export async function stagedUploadShopifyFile(shop: string, token: string, filePath: string) {
