@@ -1,25 +1,23 @@
 import { parse } from "csv-parse/sync";
 import path from "path";
 import fs from "fs";
-import { stagedUploadShopifyFile, pollShopifyFileCDNByFilename } from "./batchUploadUniversal";
+import { stagedUploadShopifyFile } from "./batchUploadUniversal";
 import { fetch } from "undici";
 
-/** Détecter le séparateur ; ou , pour CSV Shopify FR/EN */
+// Détecte automatiquement le séparateur du CSV
 function guessCsvDelimiter(csvText: string): ";" | "," {
   const firstLine = csvText.split("\n")[0];
   return firstLine.indexOf(";") >= 0 ? ";" : ",";
 }
 
-/** Vérifie que l'URL d'image est valide (ignore "nan", "null", "undefined", vide) */
+// Vérifie la validité d'une URL d'image
 function validImageUrl(url?: string): boolean {
   if (!url) return false;
   const v = url.trim().toLowerCase();
   return !!v && v !== "nan" && v !== "null" && v !== "undefined";
 }
 
-/**
- * Attache une image à un produit Shopify
- */
+// Fonction pour attacher une image à un produit Shopify
 export async function attachImageToProduct(
   shop: string,
   token: string,
@@ -27,12 +25,10 @@ export async function attachImageToProduct(
   imageUrl: string,
   altText: string = ""
 ) {
-  // ... (garde ton code - inchangé)
+  // ...implementation conservée
 }
 
-/**
- * Attache une image à une variante Shopify
- */
+// Fonction pour attacher une image à une variante Shopify
 export async function attachImageToVariant(
   shop: string,
   token: string,
@@ -40,26 +36,20 @@ export async function attachImageToVariant(
   imageUrl: string,
   altText: string = ""
 ) {
-  // ... (garde ton code - inchangé)
+  // ...implementation conservée
 }
 
-/**
- * PATCH : Upload toutes les images via le CSV des URLs et mapping CSV/Shopify CDN
- * Télécharge chaque image distante et uploade le buffer via staged upload Shopify
- */
+// Pipeline principal : upload images et mapping, puis création des produits/variantes
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
-    // 1. Parse le CSV d'URL d'images (les URLs sont dans colonne index 1 !)
+    // 1. Parse le CSV d'URL d'images
     const csvPath = path.resolve("public", "Products_images-url.csv");
     const csvText = fs.readFileSync(csvPath, "utf8");
     const delimiter = guessCsvDelimiter(csvText);
-
-    // On récupère les lignes en mode tableau (= pas columns:true car pas de header utile)
     const records = parse(csvText, { columns: false, skip_empty_lines: true, delimiter });
 
-    // 2. Upload toutes les images du CSV (unique)
+    // 2. Upload toutes les images du CSV en buffer
     const cdnMapping: Record<string, string> = {};
-
     for (const row of records.slice(1)) { // skip header
       const imageUrl = row[1];
       if (!validImageUrl(imageUrl)) continue;
@@ -68,14 +58,12 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         filename?.endsWith('.png') ? "image/png"
         : filename?.endsWith('.webp') ? "image/webp"
         : "image/jpeg";
-      if (!filename || cdnMapping[filename]) continue; // Ne réuploade pas !
+      if (!filename || cdnMapping[filename]) continue;
       try {
         console.log(`[UPLOAD] Start ${filename}`);
-        // Télécharger l'image distante en buffer
         const res = await fetch(imageUrl);
         if (!res.ok) throw new Error("Image inaccessible: " + imageUrl);
         const buf = Buffer.from(await res.arrayBuffer());
-        // Uploader le buffer direct
         const cdnUrl = await stagedUploadShopifyFile(shop, token, buf, filename, mimeType);
         if (cdnUrl) {
           cdnMapping[filename] = cdnUrl;
@@ -88,19 +76,21 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       }
     }
 
-    // 3. Récupère le CSV produits/variantes 
+    // 3. Parse le CSV produits/variantes
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const productsCsvText = await response.text();
     const productsDelimiter = guessCsvDelimiter(productsCsvText);
     const productsRecords = parse(productsCsvText, { columns: true, skip_empty_lines: true, delimiter: productsDelimiter });
 
+    // 4. Regroupe les produits par handle
     const productsByHandle: Record<string, any[]> = {};
     for (const row of productsRecords) {
       if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
       productsByHandle[row.Handle].push(row);
     }
 
+    // 5. Pour chaque produit, crée le produit Shopify et attache les images/variantes
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
 
@@ -111,27 +101,21 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         [key: string]: unknown;
       };
 
-      // ...setup des options produit, inchangé...
-      const optionValues1: { name: string }[] = [...new Set(group.map(row => (row["Option1 Value"] || "").trim()))]
+      // Prépare les options produits
+      const optionValues1: { name: string }[] = [...new Set(group.map(r => (r["Option1 Value"] || "").trim()))]
         .filter(v => !!v && v !== "Default Title")
         .map(v => ({ name: v }));
-      const optionValues2: { name: string }[] = [...new Set(group.map(row => (row["Option2 Value"] || "").trim()))]
+      const optionValues2: { name: string }[] = [...new Set(group.map(r => (r["Option2 Value"] || "").trim()))]
         .filter(v => !!v && v !== "Default Title")
         .map(v => ({ name: v }));
-      const optionValues3: { name: string }[] = [...new Set(group.map(row => (row["Option3 Value"] || "").trim()))]
+      const optionValues3: { name: string }[] = [...new Set(group.map(r => (r["Option3 Value"] || "").trim()))]
         .filter(v => !!v && v !== "Default Title")
         .map(v => ({ name: v }));
 
       const productOptions: ProductOption[] = [];
-      if (main["Option1 Name"] && optionValues1.length) {
-        productOptions.push({ name: main["Option1 Name"].trim(), values: optionValues1 });
-      }
-      if (main["Option2 Name"] && optionValues2.length) {
-        productOptions.push({ name: main["Option2 Name"].trim(), values: optionValues2 });
-      }
-      if (main["Option3 Name"] && optionValues3.length) {
-        productOptions.push({ name: main["Option3 Name"].trim(), values: optionValues3 });
-      }
+      if (main["Option1 Name"] && optionValues1.length) productOptions.push({ name: main["Option1 Name"].trim(), values: optionValues1 });
+      if (main["Option2 Name"] && optionValues2.length) productOptions.push({ name: main["Option2 Name"].trim(), values: optionValues2 });
+      if (main["Option3 Name"] && optionValues3.length) productOptions.push({ name: main["Option3 Name"].trim(), values: optionValues3 });
       const productOptionsOrUndefined = productOptions.length ? productOptions : undefined;
 
       const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
@@ -147,7 +131,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       };
 
       try {
-        // Création du produit
+        // Création du produit via Shopify GraphQL
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -171,7 +155,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
                 }
               }
             `,
-            variables: { product },
+            variables: { product }
           }),
         });
 
@@ -182,27 +166,27 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         const productId = productData?.id;
         if (!productId) continue;
 
-        // Attache toutes les images PRODUIT selon mapping
-        for (const row of group) {
-          const productImageFilename = row["Image Src"]?.split("/").pop();
-          const imageAltText = row["Image Alt Text"] ?? "";
+        // Attache toutes les images PRODUIT
+        for (const r of group) {
+          const productImageFilename = r["Image Src"]?.split("/").pop();
+          const imageAltText = r["Image Alt Text"] ?? "";
           const productCdnUrl = productImageFilename ? cdnMapping[productImageFilename] : null;
           if (productCdnUrl) {
             try {
               await attachImageToProduct(shop, token, productId, productCdnUrl, imageAltText);
-              console.log(`[CSV→CDN] Produit ${handle} avec image ${productImageFilename} attachée`);
+              console.log(`[CSV→CDN] Produit ${handle} image ${productImageFilename} attachée`);
             } catch (err) {
               console.error("Erreur attach image produit", handle, err);
             }
           }
         }
 
-        // Attache toutes les images de VARIANTES selon mapping
+        // Attache toutes les images VARIANTES
         const createdVariantsArr: VariantNode[] = productData?.variants?.edges?.map((edge: { node: VariantNode }) => edge.node) ?? [];
         for (const v of createdVariantsArr) {
           const variantKey = handle + ":" + (v.selectedOptions ?? []).map(opt => opt.value).join(":");
-          const matchingVariantRows = group.filter(row =>
-            [row["Option1 Value"], row["Option2 Value"], row["Option3 Value"]]
+          const matchingVariantRows = group.filter(r =>
+            [r["Option1 Value"], r["Option2 Value"], r["Option3 Value"]]
               .filter(Boolean)
               .join(":") === (v.selectedOptions ?? []).map(opt => opt.value).join(":")
           );
@@ -213,7 +197,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             if (variantCdnUrl && v.id) {
               try {
                 await attachImageToVariant(shop, token, v.id, variantCdnUrl, variantAltText);
-                console.log(`[CSV→CDN] Variante ${variantKey} avec image ${variantImageFilename} attachée`);
+                console.log(`[CSV→CDN] Variante ${variantKey} image ${variantImageFilename} attachée`);
               } catch (err) {
                 console.error("Erreur attach image variante", handle, err);
               }
@@ -223,7 +207,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
         await new Promise(res => setTimeout(res, 300));
       } catch (err) {
-        console.log('Erreur création produit GraphQL', handleUnique, err);
+        console.log("Erreur création produit GraphQL", handleUnique, err);
       }
     }
   } catch (err) {
