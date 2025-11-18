@@ -1,8 +1,13 @@
+/**
+ * Pipeline Shopify : batch upload images → création des produits/variantes → linkage images
+ * Usage attendu : pipelineBulkShopifyBatch({ shop, token })
+ */
+
 import { parse } from "csv-parse/sync";
 import { Buffer } from "buffer";
 import path from "path";
 import fs from "fs";
-import { stagedUploadShopifyFile } from "./batchUploadUniversal"; // Doit utiliser le fallback direct, pas de polling ID
+import { uploadImageToShopifyUniversal, attachImageToProduct, attachImageToVariant } from "./setupShop";
 import { fetch } from "undici";
 
 // Utilitaire pour CSV ; ou ,
@@ -11,187 +16,19 @@ function guessCsvDelimiter(csvText: string): ";" | "," {
   return firstLine.indexOf(";") >= 0 ? ";" : ",";
 }
 
-// Vérifie la validité d'une URL d'image (ignore "nan", "null", "undefined", vide)
+// Validation URL image
 function validImageUrl(url?: string): boolean {
   if (!url) return false;
   const val = url.trim().toLowerCase();
   return !!val && val !== "nan" && val !== "null" && val !== "undefined";
 }
 
-// Fallback polling sur Files/filename directement (pour la CDN)
-async function pollShopifyFileCDNByFilename(
-  shop: string,
-  token: string,
-  filename: string,
-  intervalMs = 10000, // MODIF: attendre 10s entre essais, au lieu de 3s
-  maxTries = 2      // MODIF: jusqu'à 40 essais, au lieu de 20
-): Promise<string | null> {
-  for (let attempt = 1; attempt <= maxTries; attempt++) {
-    console.log(`[Shopify] Files CDN polling try=${attempt}/${maxTries} for filename=${filename}`);
-    const url = await searchShopifyFileByFilename(shop, token, filename);
-    if (url) {
-      console.log(`[Shopify] Files polling CDN url found for ${filename}: ${url}`);
-      return url;
-    }
-    if (attempt < maxTries) {
-      await new Promise(res => setTimeout(res, intervalMs));
-    }
-  }
-  console.warn(`[Shopify] Files CDN polling finished: STILL not found for ${filename} after ${maxTries} tries`);
-  return null;
-}
-
-// Requête GraphQL pour chercher les CDN Shopify Files par filename
-async function searchShopifyFileByFilename(
-  shop: string,
-  token: string,
-  filename: string
-): Promise<string | null> {
-  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-    body: JSON.stringify({
-      query: `
-        query getFiles($filename: String!) {
-          files(first: 10, query: $filename) {
-            edges {
-              node {
-                ... on MediaImage {
-                  preview { image { url } }
-                }
-              }
-            }
-          }
-        }
-      `,
-      variables: { filename }
-    })
-  });
-  const body = await res.json() as any;
-  const node = body?.data?.files?.edges?.[0]?.node;
-  const url = node?.preview?.image?.url ?? null;
-  if (url) {
-    console.log(`[Shopify] Files CDN url from Files by filename (${filename}): ${url}`);
-    return url;
-  }
-  return null;
-}
-
-// Attachement d'image à un produit Shopify
-async function attachImageToProduct(
-  shop: string,
-  token: string,
-  productId: string,
-  imageUrl: string,
-  altText: string = ""
-) {
-  console.log(`[Shopify] Attaching image to productId=${productId}: imageUrl=${imageUrl ?? "null"}, altText="${altText}"`);
-  const media = [
-    {
-      originalSource: imageUrl,
-      mediaContentType: "IMAGE",
-      alt: altText,
-    },
-  ];
-  const res = await fetch(
-    `https://${shop}/admin/api/2025-10/graphql.json`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": token,
-      },
-      body: JSON.stringify({
-        query: `
-        mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-          productCreateMedia(productId: $productId, media: $media) {
-            media {
-              id
-              status
-              preview {
-                image {
-                  url
-                }
-              }
-              mediaErrors {
-                code
-                message
-              }
-            }
-            mediaUserErrors {
-              code
-              message
-            }
-          }
-        }
-        `,
-        variables: { productId, media },
-      }),
-    }
-  );
-  const bodyText = await res.text();
-  let json: any = null;
-  try {
-    json = JSON.parse(bodyText);
-  } catch {
-    throw new Error(`productCreateMedia failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
-  }
-  const mediaObj = json?.data?.productCreateMedia?.media?.[0];
-  console.log(`[Shopify] productCreateMedia response: status=${mediaObj?.status}, url=${mediaObj?.preview?.image?.url ?? "null"}, mediaErrors=${JSON.stringify(mediaObj?.mediaErrors)}`);
-  if (json.data?.productCreateMedia?.mediaUserErrors?.length) {
-    console.error(`[Shopify] mediaUserErrors:`, JSON.stringify(json.data.productCreateMedia.mediaUserErrors));
-  }
-  return json;
-}
-
-// Attachement d'image à une variante Shopify
-async function attachImageToVariant(
-  shop: string,
-  token: string,
-  variantId: string,
-  imageUrl: string,
-  altText: string = ""
-) {
-  console.log(`[Shopify] Attaching image to variantId=${variantId}: imageUrl=${imageUrl ?? "null"}, altText="${altText}"`);
-  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-    body: JSON.stringify({
-      query: `
-        mutation productVariantUpdate($input: ProductVariantUpdateInput!) {
-          productVariantUpdate(input: $input) {
-            productVariant { id image { id src altText } }
-            userErrors { field message }
-          }
-        }
-      `,
-      variables: {
-        input: {
-          id: variantId,
-          image: { src: imageUrl, altText }
-        }
-      }
-    })
-  });
-  const bodyText = await res.text();
-  let json: any = null;
-  try {
-    json = JSON.parse(bodyText);
-  } catch {
-    throw new Error(`productVariantUpdate failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
-  }
-  if (json.data?.productVariantUpdate?.userErrors?.length) {
-    console.error("Erreur productVariantUpdate:", JSON.stringify(json.data.productVariantUpdate.userErrors));
-  }
-  return json;
-}
-
 /**
- * Pipeline principal: BULK UPLOAD puis BULK LINK des images du CSV vers Shopify
+ * Pipeline batch upload images → produits
  */
-export async function pipelineBulkShopify({ shop, token }: { shop: string; token: string }) {
+export async function pipelineBulkShopifyBatch({ shop, token }: { shop: string; token: string }) {
   // 1. Lire CSV
-  console.log("[Shopify] pipelineBulkShopify: Fetch CSV...");
+  console.log("[Shopify] pipelineBulkShopifyBatch: Fetch CSV...");
   const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
   const response = await fetch(csvUrl);
   const csvText = await response.text();
@@ -200,74 +37,213 @@ export async function pipelineBulkShopify({ shop, token }: { shop: string; token
 
   const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter });
 
-  // Structure intermédiaire à traiter par batch
-  const uploadQueue: any[] = [];
-  const linkQueue: any[] = [];
-
-  // 2. Construction queue, EXTRACT INFOS & filenames/images du CSV
+  /** 2. Extraire toutes les images du CSV en batch unique **/
+  const imagesMap = new Map<string, { url: string, filename: string, type: "product"|"variant", handle: string, altText: string }>();
   for (const row of records) {
-    // Pour image produit
     if (validImageUrl(row["Image Src"])) {
-      uploadQueue.push({
-        src: row["Image Src"],
-        filename: (row["Image Src"].split('/').pop() || "image.jpg").trim(),
-        altText: row["Image Alt Text"] || "",
-        handle: row.Handle,
+      const fname = row["Image Src"].split('/').pop() || "image.jpg";
+      imagesMap.set(fname, {
+        url: row["Image Src"],
+        filename: fname,
         type: "product",
-        productId: null, // à remplir plus tard
-      });
-    }
-    // Pour image de variante
-    if (validImageUrl(row["Variant Image"])) {
-      uploadQueue.push({
-        src: row["Variant Image"],
-        filename: (row["Variant Image"].split('/').pop() || "variant.jpg").trim(),
-        altText: row["Image Alt Text"] || "",
         handle: row.Handle,
+        altText: row["Image Alt Text"] || ""
+      });
+    }
+    if (validImageUrl(row["Variant Image"])) {
+      const fnameVar = row["Variant Image"].split('/').pop() || "variant.jpg";
+      imagesMap.set(fnameVar, {
+        url: row["Variant Image"],
+        filename: fnameVar,
         type: "variant",
-        variantKey: [row["Option1 Value"], row["Option2 Value"], row["Option3 Value"]].filter(Boolean).join(":"),
-        variantId: null, // à remplir plus tard
+        handle: row.Handle,
+        altText: row["Image Alt Text"] || ""
       });
     }
   }
 
-  // 3. BULK UPLOAD toutes les images (produits et variantes)
-  for (const file of uploadQueue) {
+  /** 3. Batch upload toutes les images en amont, stockage CDN url **/
+
+  const cdnUrlByFilename: Record<string, string> = {};
+  for (const [fname, img] of imagesMap.entries()) {
+    if (img.url.startsWith("https://cdn.shopify.com")) {
+      cdnUrlByFilename[fname] = img.url;
+      continue;
+    }
     try {
-      if (file.src.startsWith("https://cdn.shopify.com")) {
-        console.log(`[Shopify] SKIP already CDN: ${file.filename}`);
-        continue;
+      const cdnUrl = await uploadImageToShopifyUniversal(shop, token, img.url, img.filename);
+      if (cdnUrl) {
+        cdnUrlByFilename[fname] = cdnUrl;
+      } else {
+        console.warn(`Batch upload: No CDN url for image ${fname}`);
       }
-      // Upload image file
-      await stagedUploadShopifyFile(shop, token, file.src); // pas besoin de CDN ici
-      console.log(`[Shopify] UPLOADED filename=${file.filename}`);
     } catch (err) {
-      console.error(`[Shopify] FAIL upload for ${file.filename}:`, err);
+      console.error(`[BATCH UPLOAD FAIL] ${fname}:`, err);
     }
   }
 
-  // 4. Création des produits/variants en BATCH (à intégrer à ton workflow: productId/variantId)
-  // Adapté à ton workflow existant!
+  /** 4. Création des produits + variantes **/
+  // Regroupe chaque handle avec toutes ses lignes CSV
+  const productsByHandle: Record<string, any[]> = {};
+  for (const row of records) {
+    if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
+    productsByHandle[row.Handle].push(row);
+  }
 
-  // 5. BULK LINK: pour chaque image, polling + attachement
-  for (const img of uploadQueue) {
+  for (const [handle, group] of Object.entries(productsByHandle)) {
+    const main = group[0];
+
+    type ProductOption = { name: string, values: { name: string }[] };
+    type VariantNode = {
+      id?: string;
+      selectedOptions?: { name: string, value: string }[];
+      [key: string]: unknown;
+    };
+
+    // Valeurs d’options produites (1/2/3)
+    const optionValues1: { name: string }[] = [...new Set(group.map(row => (row["Option1 Value"] || "").trim()))]
+      .filter(v => !!v && v !== "Default Title")
+      .map(v => ({ name: v }));
+    const optionValues2: { name: string }[] = [...new Set(group.map(row => (row["Option2 Value"] || "").trim()))]
+      .filter(v => !!v && v !== "Default Title")
+      .map(v => ({ name: v }));
+    const optionValues3: { name: string }[] = [...new Set(group.map(row => (row["Option3 Value"] || "").trim()))]
+      .filter(v => !!v && v !== "Default Title")
+      .map(v => ({ name: v }));
+
+    const productOptions: ProductOption[] = [];
+    if (main["Option1 Name"] && optionValues1.length) {
+      productOptions.push({ name: main["Option1 Name"].trim(), values: optionValues1 });
+    }
+    if (main["Option2 Name"] && optionValues2.length) {
+      productOptions.push({ name: main["Option2 Name"].trim(), values: optionValues2 });
+    }
+    if (main["Option3 Name"] && optionValues3.length) {
+      productOptions.push({ name: main["Option3 Name"].trim(), values: optionValues3 });
+    }
+    const productOptionsOrUndefined = productOptions.length ? productOptions : undefined;
+
+    const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
+
+    const product: any = {
+      title: main.Title,
+      descriptionHtml: main["Body (HTML)"] || "",
+      handle: handleUnique,
+      vendor: main.Vendor,
+      productType: main.Type,
+      tags: main.Tags?.split(",").map((t: string) => t.trim()),
+      productOptions: productOptionsOrUndefined,
+    };
+
     try {
-      const cdnUrl = await pollShopifyFileCDNByFilename(shop, token, img.filename, 10000, 40); // MODIF: attendre + longtemps pour le CDN
-      if (!cdnUrl) {
-        console.warn(`[Shopify] NOT FOUND: CDN for filename=${img.filename}`);
+      console.log(`[Shopify] Creating product: ${handleUnique}`);
+      // Création du produit
+      const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": token,
+        },
+        body: JSON.stringify({
+          query: `
+            mutation productCreate($product: ProductCreateInput!) {
+              productCreate(product: $product) {
+                product {
+                  id
+                  title
+                  handle
+                  variants(first: 50) {
+                    edges { node { id sku title selectedOptions { name value } } }
+                  }
+                  options { id name position optionValues { id name hasVariants } }
+                }
+                userErrors { field message }
+              }
+            }
+          `,
+          variables: { product },
+        }),
+      });
+
+      const gqlBodyText = await gqlRes.text();
+      let gqlJson: any = null;
+      try {
+        gqlJson = JSON.parse(gqlBodyText);
+      } catch {
+        console.error(`[Shopify] productCreate ERROR: ${gqlBodyText}`);
+        throw new Error(`productCreate failed: Non-JSON response (${gqlRes.status}) | Body: ${gqlBodyText}`);
+      }
+
+      const productData = gqlJson?.data?.productCreate?.product;
+      const productId = productData?.id;
+      const userErrors = gqlJson?.data?.productCreate?.userErrors ?? [];
+      if (!productId) {
+        console.error(
+          "Aucun productId généré.",
+          "userErrors:", userErrors.length > 0 ? userErrors : "Aucune erreur Shopify.",
+          "Réponse brute:", JSON.stringify(gqlJson, null, 2)
+        );
         continue;
       }
-      if (img.type === "product" && img.productId) {
-        await attachImageToProduct(shop, token, img.productId, cdnUrl, img.altText);
-        console.log(`[Shopify] ✓ Linked Product image ${img.filename} to ID ${img.productId}`);
+      console.log('Produit créé', handleUnique, '| GraphQL response:', JSON.stringify(gqlJson, null, 2));
+
+      /** 5. Attache les images produits pré-uploadées (via CDN) **/
+      for (const row of group) {
+        const productImageUrl = row["Image Src"];
+        const imageAltText = row["Image Alt Text"] ?? "";
+        if (validImageUrl(productImageUrl)) {
+          try {
+            const filename = productImageUrl.split('/').pop() ?? 'image.jpg';
+            // Cherche l’URL CDN conservée lors du batch
+            const cdnUrl = cdnUrlByFilename[filename];
+            if (!cdnUrl) {
+              console.warn(`Image non uploadée : ${filename}`);
+              continue;
+            }
+            await attachImageToProduct(shop, token, productId, cdnUrl, imageAltText);
+            console.log(`Image rattachée au produit: ${handle} (row) → ${productId}`);
+          } catch (err) {
+            console.error("Erreur attachement image produit", handle, err);
+          }
+        }
       }
-      if (img.type === "variant" && img.variantId) {
-        await attachImageToVariant(shop, token, img.variantId, cdnUrl, img.altText);
-        console.log(`[Shopify] ✓ Linked Variant image ${img.filename} to ID ${img.variantId}`);
+
+      /** 6. Attache les images variantes pré-uploadées (via CDN) **/
+      const createdVariantsArr: VariantNode[] = productData?.variants?.edges?.map((edge: { node: VariantNode }) => edge.node) ?? [];
+      for (const v of createdVariantsArr) {
+        const keyVariant = (v.selectedOptions ?? []).map(opt => opt.value).join(":");
+        const matchingRows = group.filter(row =>
+          [row["Option1 Value"], row["Option2 Value"], row["Option3 Value"]]
+              .filter(Boolean)
+              .join(":") === keyVariant
+        );
+        for (const variantCsvRow of matchingRows) {
+          const variantImageUrl = variantCsvRow?.["Variant Image"];
+          const variantAltText = variantCsvRow?.["Image Alt Text"] ?? "";
+          if (
+            v.id &&
+            validImageUrl(variantImageUrl)
+          ) {
+            try {
+              const filename = variantImageUrl.split('/').pop() ?? 'variant.jpg';
+              const cdnUrl = cdnUrlByFilename[filename];
+              if (!cdnUrl) {
+                console.warn(`Image variante non uploadée : ${filename}`);
+                continue;
+              }
+              await attachImageToVariant(shop, token, v.id, cdnUrl, variantAltText);
+              console.log(`Image rattachée à variante: ${keyVariant} → ${v.id}`);
+            } catch (err) {
+              console.error("Erreur attachement image variante", keyVariant, err);
+            }
+          }
+        }
       }
+      await new Promise(res => setTimeout(res, 300));
     } catch (err) {
-      console.error(`[Shopify] FAIL link for ${img.filename}:`, err);
+      console.log('Erreur création produit GraphQL', handleUnique, err);
     }
   }
-  console.log("[Shopify] pipelineBulkShopify: DONE.");
+
+  console.log("[Shopify] pipelineBulkShopifyBatch: DONE.");
 }
