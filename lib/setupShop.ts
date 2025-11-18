@@ -45,7 +45,7 @@ export async function attachImageToVariant(
 
 /**
  * PATCH : Upload toutes les images via le CSV des URLs et mapping CSV/Shopify CDN
- * Télécharge chaque image distante, uploade le buffer via staged upload Shopify
+ * Télécharge chaque image distante et uploade le buffer via staged upload Shopify
  */
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
@@ -65,17 +65,17 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       if (!validImageUrl(imageUrl)) continue;
       const filename = imageUrl.split("/").pop();
       const mimeType =
-        filename.endsWith('.png') ? "image/png"
-        : filename.endsWith('.webp') ? "image/webp"
+        filename?.endsWith('.png') ? "image/png"
+        : filename?.endsWith('.webp') ? "image/webp"
         : "image/jpeg";
       if (!filename || cdnMapping[filename]) continue; // Ne réuploade pas !
       try {
         console.log(`[UPLOAD] Start ${filename}`);
-        // 1. Télécharger l'image distante en buffer
+        // Télécharger l'image distante en buffer
         const res = await fetch(imageUrl);
         if (!res.ok) throw new Error("Image inaccessible: " + imageUrl);
         const buf = Buffer.from(await res.arrayBuffer());
-        // 2. Uploader le buffer directement via stagedUploadShopifyFile
+        // Uploader le buffer direct
         const cdnUrl = await stagedUploadShopifyFile(shop, token, buf, filename, mimeType);
         if (cdnUrl) {
           cdnMapping[filename] = cdnUrl;
@@ -177,7 +177,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
         const gqlBodyText = await gqlRes.text();
         let gqlJson: any = null;
-        try { gqlJson = JSON.parse(gqlBodyText); } catch { }
+        try { gqlJson = JSON.parse(gqlBodyText); } catch {}
         const productData = gqlJson?.data?.productCreate?.product;
         const productId = productData?.id;
         if (!productId) continue;
