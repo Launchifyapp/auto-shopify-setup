@@ -194,7 +194,7 @@ export async function uploadImageToShopifyUniversal(
     return cdnUrl ?? null;
   }
   // Toujours polling CDN pour fallback
-  return await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
+  return await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 2);
 }
 
 /**
