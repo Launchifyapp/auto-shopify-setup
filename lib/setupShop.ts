@@ -93,10 +93,10 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
     // Regroupe les produits par handle
     const productsByHandle: Record<string, any[]> = {};
-    records.forEach(row => {
-      if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
-      productsByHandle[row.Handle].push(row);
-    });
+ records.forEach((row: any) => {
+  if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
+  productsByHandle[row.Handle].push(row);
+});
 
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
