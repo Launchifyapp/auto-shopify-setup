@@ -106,18 +106,30 @@ export async function getStagedUploadUrl(shop: string, token: string, filename: 
 }
 
 export async function uploadToStagedUrl(stagedTarget: any, fileBuffer: Buffer, mimeType: string, filename: string) {
+  // Blocs de debug
   console.log(`[Shopify] S3: uploading ${filename} (${mimeType})`);
+  console.log(`[Shopify] S3: stagedTarget.url = ${stagedTarget.url}`);
+  console.log(`[Shopify] S3: stagedTarget.parameters =`, stagedTarget.parameters);
+
+  // FormData : tous les params donnés EXACTEMENT par Shopify
   const formData = new FormData();
-  for (const param of stagedTarget.parameters) formData.append(param.name, param.value);
+  for (const param of stagedTarget.parameters) {
+    formData.append(param.name, param.value);
+  }
+  // Le fichier, nom/mimeType/ordre correct
   formData.append('file', new File([fileBuffer], filename, { type: mimeType }));
 
+  // Encodage multipart
   const encoder = new FormDataEncoder(formData);
+
+  // POST multipart, headers du encoder
   const res = await fetch(stagedTarget.url, {
     method: 'POST',
     body: encoder.encode(),
     headers: encoder.headers,
     duplex: "half"
   });
+
   if (!res.ok) {
     const errText = await res.text();
     console.error(`[Shopify] S3 upload failed for ${filename}: ${errText}`);
