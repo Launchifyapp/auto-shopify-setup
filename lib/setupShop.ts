@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fetch } from "undici";
 import { stagedUploadShopifyFile, pollShopifyFileCDNByFilename, attachImageToProduct, attachImageToVariant } from "./batchUploadUniversal";
-import { parse } from "csv-parse"; // compatible Next.js/Vercel CSV parser
+import { parse } from "csv-parse/sync"; // <-- CORRECT pour type:module & csv-parse >=5.x
 
 // Vérifie la validité d'une URL
 function validImageUrl(url?: string): boolean {
@@ -18,13 +18,13 @@ function validImageUrl(url?: string): boolean {
 // UTILITAIRE DE PARSING CSV ROBUSTE
 function parseCsvShopify(csvText: string): any[] {
   return parse(csvText, {
-    delimiter: ";",
-    columns: true,
+    delimiter: ";",    // ton CSV: point-virgule
+    columns: true,     // output: array of objects
     skip_empty_lines: true,
     relax_column_count: true,
     quote: '"',
     trim: true
-  });
+  }); // type: any[]
 }
 
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
@@ -37,7 +37,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     // ---- PARSE ROBUST ----
     const records = parseCsvShopify(csvText);
 
-    // Regroupement par handle
+    // Regroupe par handle
     const productsByHandle: Record<string, any[]> = {};
     for (const row of records) {
       if (!row.Handle || !row.Handle.trim()) continue;
@@ -45,7 +45,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       productsByHandle[row.Handle].push(row);
     }
 
-    // Upload toutes les images produits et variantes qui sont valides
+    // Upload toutes les images produits et variantes validées
     const imagesToUpload: { url: string; filename: string }[] = [];
     for (const row of records) {
       if (validImageUrl(row["Image Src"])) {
@@ -78,10 +78,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
     // Création produits + linkage images
     for (const [handle, group] of Object.entries(productsByHandle)) {
-      // Prend le premier vrai produit
       const main = group.find(row => row.Title && row.Title.trim());
 
-      // Validation des champs obligatoires
       if (!main || !main.Title || main.Title.trim() === "" || !main.Handle || !main.Vendor) {
         console.warn(`Skip product creation: Missing mandatory fields for handle=${main && main.Handle}`);
         continue;
@@ -107,7 +105,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         values: allOptionValues[name]
       }));
 
-      // Variants - chaque ligne du handle est un variant potentiel
+      // Variants
       const variants = group.map(row => {
         const optionsArr = optionNames.map(opt => row[`${opt} Value`] || "").filter(Boolean);
         return {
