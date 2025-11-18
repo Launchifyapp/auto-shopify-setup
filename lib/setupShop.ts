@@ -1,9 +1,185 @@
-import { parse } from "csv-parse/sync";
-import { Buffer } from "buffer";
+ import { parse } from "csv-parse/sync";
 import path from "path";
 import fs from "fs";
-import { uploadImageToShopifyUniversal, attachImageToProduct, attachImageToVariant } from "./batchUploadUniversal";
 import { fetch } from "undici";
+
+// Assure que toutes ces fonctions soient bien exportées pour import
+export async function attachImageToProduct(
+  shop: string,
+  token: string,
+  productId: string,
+  imageUrl: string,
+  altText: string = ""
+) {
+  // Attache une image existante (déjà sur le CDN) à un produit
+  const media = [
+    {
+      originalSource: imageUrl,
+      mediaContentType: "IMAGE",
+      alt: altText,
+    },
+  ];
+  const res = await fetch(
+    `https://${shop}/admin/api/2025-10/graphql.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": token,
+      },
+      body: JSON.stringify({
+        query: `
+        mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+          productCreateMedia(productId: $productId, media: $media) {
+            media {
+              id
+              status
+              preview {
+                image {
+                  url
+                }
+              }
+              mediaErrors {
+                code
+                message
+              }
+            }
+            mediaUserErrors {
+              code
+              message
+            }
+          }
+        }
+        `,
+        variables: { productId, media },
+      }),
+    }
+  );
+  const bodyText = await res.text();
+  let json: any = null;
+  try {
+    json = JSON.parse(bodyText);
+  } catch {
+    throw new Error(`productCreateMedia failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
+  }
+  const mediaObj = json?.data?.productCreateMedia?.media?.[0];
+  if (json.data?.productCreateMedia?.mediaUserErrors?.length) {
+    console.error(`[Shopify] mediaUserErrors:`, JSON.stringify(json.data.productCreateMedia.mediaUserErrors));
+  }
+  return json;
+}
+
+export async function attachImageToVariant(
+  shop: string,
+  token: string,
+  variantId: string,
+  imageUrl: string,
+  altText: string = ""
+) {
+  // Attache une image existante (déjà sur le CDN) à une variante
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        mutation productVariantUpdate($input: ProductVariantUpdateInput!) {
+          productVariantUpdate(input: $input) {
+            productVariant { id image { id src altText } }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: {
+        input: {
+          id: variantId,
+          image: { src: imageUrl, altText }
+        }
+      }
+    })
+  });
+  const bodyText = await res.text();
+  let json: any = null;
+  try {
+    json = JSON.parse(bodyText);
+  } catch {
+    throw new Error(`productVariantUpdate failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
+  }
+  if (json.data?.productVariantUpdate?.userErrors?.length) {
+    console.error("Erreur productVariantUpdate:", JSON.stringify(json.data.productVariantUpdate.userErrors));
+  }
+  return json;
+}
+
+export async function uploadImageToShopifyUniversal(
+  shop: string,
+  token: string,
+  imageUrl: string,
+  filename: string
+): Promise<string | null> {
+  if (imageUrl.startsWith("https://cdn.shopify.com")) return imageUrl;
+  const mimeType =
+    filename.endsWith('.png') ? "image/png"
+    : filename.endsWith('.webp') ? "image/webp"
+    : "image/jpeg";
+  try {
+    console.log(`[Shopify] uploadImageToShopifyUniversal: uploading/creating ${filename}`);
+    const fileCreateRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+      body: JSON.stringify({
+        query: `
+          mutation fileCreate($files: [FileCreateInput!]!) {
+            fileCreate(files: $files) {
+              files {
+                id
+                fileStatus
+                preview {
+                  image {
+                    url
+                  }
+                }
+              }
+              userErrors { field message }
+            }
+          }
+        `,
+        variables: { files: [{ originalSource: imageUrl, alt: filename }] }
+      })
+    });
+    const fileCreateBodyText = await fileCreateRes.text();
+    let fileCreateJson: any = null;
+    try {
+      fileCreateJson = JSON.parse(fileCreateBodyText);
+    } catch {
+      console.error(`[Shopify] fileCreate ERROR: ${fileCreateBodyText}`);
+      throw new Error(`fileCreate failed: Non-JSON response (${fileCreateRes.status}) | Body: ${fileCreateBodyText}`);
+    }
+    if (fileCreateJson.data?.fileCreate?.userErrors?.length) {
+      console.error('[Shopify] fileCreate userErrors:', JSON.stringify(fileCreateJson.data.fileCreate.userErrors));
+      // Domaine bloqué : staged upload classique
+      const imgRes = await fetch(imageUrl);
+      if (!imgRes.ok) throw new Error("download image error");
+      const buf = Buffer.from(await imgRes.arrayBuffer());
+      const tempPath = path.join("/tmp", filename.replace(/[^\w\.-]/g, "_"));
+      fs.writeFileSync(tempPath, buf);
+
+      // On appelle la logique batchUploadUniversal pour staged upload
+      const { stagedUploadShopifyFile, pollShopifyFileCDNByFilename } = await import("./batchUploadUniversal");
+      let cdnUrl = await stagedUploadShopifyFile(shop, token, tempPath);
+      if (!cdnUrl) {
+        console.warn(`[Shopify] CDN url not available after staged upload for ${filename}`);
+        cdnUrl = await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
+      }
+      return cdnUrl ?? null;
+    }
+    // Toujours polling CDN pour fallback
+    const { pollShopifyFileCDNByFilename } = await import("./batchUploadUniversal");
+    return await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
+  } catch (err) {
+    console.error("[Shopify] ERROR uploadImageToShopifyUniversal", err);
+    return null;
+  }
+}
 
 /** Détecter le séparateur ; ou , pour CSV Shopify FR/EN */
 function guessCsvDelimiter(csvText: string): ";" | "," {
@@ -19,7 +195,7 @@ function validImageUrl(url?: string): boolean {
 }
 
 /**
- * Pipeline optimisé : batch upload images -> produits -> linkage images
+ * Pipeline optimisé : batch upload des images en amont, produits, linkage rapide images
  */
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
@@ -32,7 +208,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
     const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter });
 
-    /** 1. Extraction batch de toutes les images à uploader AVANT la création produit */
+    /** 1. Extraction batch images */
     const imagesMap = new Map<string, { url: string, filename: string, type: "product"|"variant", handle: string, altText: string }>();
     for (const row of records) {
       if (validImageUrl(row["Image Src"])) {
@@ -57,7 +233,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       }
     }
 
-    /** 2. Batch upload images -> on conserve leur URL CDN pour linkage ensuite */
+    /** 2. Batch upload toutes les images avant toute création produit/variante */
     const cdnUrlByFilename: Record<string, string> = {};
     for (const [fname, img] of imagesMap.entries()) {
       if (img.url.startsWith("https://cdn.shopify.com")) {
@@ -76,7 +252,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       }
     }
 
-    /** 3. Création des produits/variantes puis linkage image -> très rapide ! */
+    /** 3. Création des produits/variantes, linkage images ultra rapide car CDN déjà uploadé ! */
     // Regroupe chaque handle avec toutes ses lignes CSV
     const productsByHandle: Record<string, any[]> = {};
     for (const row of records) {
@@ -187,7 +363,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           if (validImageUrl(productImageUrl)) {
             try {
               const filename = productImageUrl.split('/').pop() ?? 'image.jpg';
-              // Fait le linkage CDN (déjà batché)
               const cdnUrl = cdnUrlByFilename[filename];
               if (!cdnUrl) {
                 console.warn(`Image produit non uploadée : ${filename}`);
