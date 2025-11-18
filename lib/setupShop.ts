@@ -1,5 +1,4 @@
-import { parse } from "csv-parse/sync";
-import { Buffer } from "buffer";
+ import { parse } from "csv-parse/sync";
 import path from "path";
 import fs from "fs";
 import { stagedUploadShopifyFile, pollShopifyFileCDNByFilename } from "./batchUploadUniversal";
@@ -69,38 +68,45 @@ export async function uploadImageToShopifyUniversal(
 }
 
 /**
- * PATCH : Upload toutes les images du dossier, puis mapping CSV/Shopify CDN
+ * PATCH : Upload toutes les images via le CSV des URLs et mapping CSV/Shopify CDN
  */
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
-    // 1. Upload toutes les images locales une seule fois !
-    const imgFiles = fs.readdirSync('public/products_images').filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f));
-    const cdnMapping: Record<string, string> = {};
-
-    for (const fname of imgFiles) {
-      try {
-        const localPath = path.resolve('public/products_images', fname);
-        const cdnUrl = await stagedUploadShopifyFile(shop, token, localPath);
-        if (cdnUrl) {
-          cdnMapping[fname] = cdnUrl;
-          console.log(`[UPLOAD] ${fname} → ${cdnUrl}`);
-        } else {
-          console.warn(`[UPLOAD] ${fname} → No CDN url found`);
-        }
-      } catch (err) {
-        console.error(`[FAIL upload] ${fname}:`, err);
-      }
-    }
-
-    // 2. Parse et traite le CSV
-    const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
-    const response = await fetch(csvUrl);
-    const csvText = await response.text();
+    // 1. Parse le CSV d'URL d'images
+    const csvPath = path.resolve("public", "Products_images-url.csv");
+    const csvText = fs.readFileSync(csvPath, "utf8");
     const delimiter = guessCsvDelimiter(csvText);
     const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter });
 
-    const productsByHandle: Record<string, any[]> = {};
+    // 2. Upload toutes les images du CSV (unique)
+    const cdnMapping: Record<string, string> = {};
     for (const row of records) {
+      const imageUrl = row["Image Src"];
+      if (!validImageUrl(imageUrl)) continue;
+      const filename = imageUrl.split("/").pop();
+      if (!filename || cdnMapping[filename]) continue; // Ne réuploade pas !
+      try {
+        const cdnUrl = await stagedUploadShopifyFile(shop, token, imageUrl);
+        if (cdnUrl) {
+          cdnMapping[filename] = cdnUrl;
+          console.log(`[UPLOAD] ${filename} → ${cdnUrl}`);
+        } else {
+          console.warn(`[UPLOAD] ${filename} → No CDN url found`);
+        }
+      } catch (err) {
+        console.error(`[FAIL upload] ${filename}:`, err);
+      }
+    }
+
+    // 3. Récupère le CSV produits/variantes 
+    const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
+    const response = await fetch(csvUrl);
+    const productsCsvText = await response.text();
+    const productsDelimiter = guessCsvDelimiter(productsCsvText);
+    const productsRecords = parse(productsCsvText, { columns: true, skip_empty_lines: true, delimiter: productsDelimiter });
+
+    const productsByHandle: Record<string, any[]> = {};
+    for (const row of productsRecords) {
       if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
       productsByHandle[row.Handle].push(row);
     }
@@ -181,7 +187,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
         const gqlBodyText = await gqlRes.text();
         let gqlJson: any = null;
-        try { gqlJson = JSON.parse(gqlBodyText); } catch { /* ... */ }
+        try { gqlJson = JSON.parse(gqlBodyText); } catch { }
         const productData = gqlJson?.data?.productCreate?.product;
         const productId = productData?.id;
         if (!productId) continue;
