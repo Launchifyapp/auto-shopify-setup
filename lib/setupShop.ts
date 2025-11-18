@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fetch } from "undici";
 import { stagedUploadShopifyFile, pollShopifyFileCDNByFilename, attachImageToProduct, attachImageToVariant } from "./batchUploadUniversal";
-import parse from "csv-parse/lib/sync"; // <--- Ajout du vrai parseur
+import { parse } from "csv-parse"; // compatible Next.js/Vercel CSV parser
 
 // Vérifie la validité d'une URL
 function validImageUrl(url?: string): boolean {
@@ -130,8 +130,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         vendor: main.Vendor,
         productType: main["Type"] || main["Product Category"] || "",
         tags: cleanTags(main.Tags ?? main["Product Category"] ?? "").join(","),
-        options: options,
-        variants: variants
+        options,
+        variants
       };
 
       try {
