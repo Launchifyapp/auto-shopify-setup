@@ -9,15 +9,13 @@ function guessCsvDelimiter(csvText: string): ";" | "," {
   return firstLine.indexOf(";") >= 0 ? ";" : ",";
 }
 
-// Vérifie l'URL d'image
+// Vérifie la validité d'une URL
 function validImageUrl(url?: string): boolean {
   if (!url) return false;
   const v = url.trim().toLowerCase();
-  // Add stricter check: must be a valid http/https url
   return !!v && v !== "nan" && v !== "null" && v !== "undefined" && /^https?:\/\/\S+$/i.test(v);
 }
 
-// Pipeline principal d'installation Shopify
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     console.log("[Shopify] setupShop: fetch CSV...");
@@ -27,30 +25,24 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     const delimiter = guessCsvDelimiter(csvText);
     console.log(`[Shopify] setupShop: detected delimiter=${delimiter}`);
 
-    // Parse le CSV
+    // Parse CSV
+    const headerLine = csvText.split("\n")[0];
+    const headers = headerLine.split(delimiter);
     const records = csvText.split("\n").slice(1).filter(l => l.trim() !== "").map(line => {
       const fields = line.split(delimiter);
-      // Adapte ici pour le format de ton CSV
-      return {
-        "Handle": fields[0],
-        "Title": fields[1],
-        "Vendor": fields[2],
-        "Type": fields[3],
-        "Tags": fields[4],
-        "Body (HTML)": fields[5],
-        "Image Src": fields[6],
-        "Image Alt Text": fields[7],
-        "Option1 Name": fields[8],
-        "Option1 Value": fields[9],
-        "Option2 Name": fields[10],
-        "Option2 Value": fields[11],
-        "Option3 Name": fields[12],
-        "Option3 Value": fields[13],
-        "Variant Image": fields[14]
-      };
+      const rec: any = {};
+      headers.forEach((h, idx) => rec[h.trim()] = (fields[idx] || "").trim());
+      return rec;
     });
 
-    // Upload toutes les images (produits/variantes)
+    // Regroupe par handle
+    const productsByHandle: Record<string, any[]> = {};
+    for (const row of records) {
+      if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
+      productsByHandle[row.Handle].push(row);
+    }
+
+    // Upload toutes les images produits et variantes qui sont valides
     const imagesToUpload: { url: string; filename: string }[] = [];
     for (const row of records) {
       if (validImageUrl(row["Image Src"])) {
@@ -66,9 +58,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         });
       }
     }
-
     for (const img of imagesToUpload) {
-      // Check validity before fetch
       if (!validImageUrl(img.url) || !validImageUrl(img.filename)) {
         console.warn(`[setupShop BatchUpload SKIP] url invalid: "${img.url}" filename="${img.filename}"`);
         continue;
@@ -83,29 +73,28 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       }
     }
 
-    // Regroupe chaque handle avec toutes ses lignes CSV pour traitement produits
-    const productsByHandle: Record<string, any[]> = {};
-    for (const row of records) {
-      if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
-      productsByHandle[row.Handle].push(row);
-    }
-
     // Création produits + linkage images
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
 
-      const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
+      // Validation des champs obligatoires
+      if (!main.Title || main.Title.trim() === "" || !main.Handle || !main.Vendor) {
+        console.warn(`Skip product creation: Missing mandatory fields for handle=${main.Handle}`);
+        continue;
+      }
+
+      const handleUnique = main.Handle + "-" + Math.random().toString(16).slice(2, 7);
       const product: any = {
         title: main.Title,
         descriptionHtml: main["Body (HTML)"] || "",
         handle: handleUnique,
         vendor: main.Vendor,
-        productType: main.Type,
-        tags: main.Tags?.split(",").map((t: string) => t.trim()),
+        productType: main["Type"] || main["Product Category"] || "",
+        tags: (main.Tags ?? main["Product Category"] ?? "").split(",").map((t: string) => t.trim()).filter(Boolean),
       };
 
       try {
-        // GraphQL mutation création produit
+        // Creation produit
         const gqlRes = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -144,7 +133,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           continue;
         }
 
-        // Link images de produit
+        // Link images produit
         for (const row of group) {
           const productImageUrl = row["Image Src"];
           const imageAltText = row["Image Alt Text"] ?? "";
@@ -165,7 +154,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // Variants linkage pour images (optionnel, si tu as les données)
+        // Link images variantes
         const createdVariantsArr: any[] = productData?.variants?.edges?.map((edge: { node: any }) => edge.node) ?? [];
         for (const v of createdVariantsArr) {
           const variantKey = (v.selectedOptions ?? []).map((opt: any) => opt.value).join(":");
@@ -193,7 +182,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             }
           }
         }
-        await new Promise(res => setTimeout(res, 200)); // Prevent Shopify rate-limits
+        await new Promise(res => setTimeout(res, 200)); // Rate-limit Shopify
       } catch (err) {
         console.log('Erreur création produit GraphQL', handleUnique, err);
       }
