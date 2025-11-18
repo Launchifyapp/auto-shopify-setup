@@ -151,7 +151,7 @@ export async function searchShopifyFileByFilename(
 }
 
 /**
- * Step 5: Attach file to product as product media
+ * Step 5a: Attach file to product as product media
  */
 export async function attachImageToProduct(
   shop: string,
@@ -186,6 +186,40 @@ export async function attachImageToProduct(
   });
   const data = await res.json() as any;
   return data.data?.productCreateMedia?.media?.[0];
+}
+
+/**
+ * Step 5b: Attach image to product variant (used for variant-specific images)
+ */
+export async function attachImageToVariant(
+  shop: string,
+  token: string,
+  variantId: string,
+  imageUrl: string,
+  altText: string = ""
+): Promise<any> {
+  const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        mutation productVariantUpdate($input: ProductVariantUpdateInput!) {
+          productVariantUpdate(input: $input) {
+            productVariant { id image { id src altText } }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: {
+        input: {
+          id: variantId,
+          image: { src: imageUrl, altText }
+        }
+      }
+    })
+  });
+  const json = await res.json() as any;
+  return json?.data?.productVariantUpdate?.productVariant;
 }
 
 /**
