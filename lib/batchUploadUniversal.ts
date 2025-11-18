@@ -4,9 +4,6 @@ import { fetch } from "undici";
 import fs from "fs";
 import path from "path";
 
-/**
- * Step 1: Get staged upload URL for product media (Shopify's S3/Google Cloud Storage)
- */
 export async function getMediaStagedUpload(
   shop: string,
   token: string,
@@ -44,9 +41,6 @@ export async function getMediaStagedUpload(
   return target;
 }
 
-/**
- * Step 2: Upload image to staged S3/Google Cloud Storage endpoint
- */
 export async function uploadStagedMedia(
   stagedTarget: any,
   fileBuffer: Buffer,
@@ -71,9 +65,6 @@ export async function uploadStagedMedia(
   return stagedTarget.resourceUrl;
 }
 
-/**
- * Step 3: Register the uploaded file with Shopify "fileCreate" mutation
- */
 export async function shopifyFileCreate(
   shop: string,
   token: string,
@@ -103,9 +94,6 @@ export async function shopifyFileCreate(
   return fileNode;
 }
 
-/**
- * Step 4: Poll for CDN URL (file available for product media)
- */
 export async function pollShopifyFileCDNByFilename(
   shop: string,
   token: string,
@@ -150,9 +138,6 @@ export async function searchShopifyFileByFilename(
   return node?.preview?.image?.url ?? null;
 }
 
-/**
- * Step 5a: Attach file to product as product media
- */
 export async function attachImageToProduct(
   shop: string,
   token: string,
@@ -188,9 +173,6 @@ export async function attachImageToProduct(
   return data.data?.productCreateMedia?.media?.[0];
 }
 
-/**
- * Step 5b: Attach image to product variant (used for variant-specific images)
- */
 export async function attachImageToVariant(
   shop: string,
   token: string,
@@ -222,9 +204,6 @@ export async function attachImageToVariant(
   return json?.data?.productVariantUpdate?.productVariant;
 }
 
-/**
- * Step 6: Wrapper for previous pipeline compatibility – upload staged media from file path
- */
 export async function stagedUploadShopifyFile(
   shop: string,
   token: string,
