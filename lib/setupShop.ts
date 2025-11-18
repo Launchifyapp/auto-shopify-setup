@@ -1,4 +1,3 @@
-lib/setupShop.ts
 import { parse } from "csv-parse/sync";
 import { Buffer } from "buffer";
 import path from "path";
