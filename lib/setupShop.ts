@@ -2,7 +2,7 @@ import { parse } from "csv-parse/sync";
 import path from "path";
 import fs from "fs";
 import { fetch } from "undici";
-import { stagedUploadShopifyFile, pollShopifyFileCDNByFilename, attachImageToProduct, attachImageToVariant } from "./batchUploadUniversal";
+import { stagedUploadShopifyFile, pollShopifyFileCDNByFilename } from "./batchUploadUniversal";
 
 /** Détecte le séparateur CSV ; ou , */
 function guessCsvDelimiter(csvText: string): ";" | "," {
@@ -20,7 +20,6 @@ function validImageUrl(url?: string): boolean {
 /** Upload une image vers Shopify, sans attendre le polling CDN */
 export async function batchUploadImageToShopify(shop: string, token: string, url: string, filename: string) {
   if (url.startsWith("https://cdn.shopify.com")) return;
-  // On télécharge le fichier et on le passe au stagedUploadShopifyFile
   try {
     const imgRes = await fetch(url);
     if (!imgRes.ok) throw new Error("Erreur téléchargement image " + url);
@@ -28,10 +27,97 @@ export async function batchUploadImageToShopify(shop: string, token: string, url
     const tempPath = path.join("/tmp", filename.replace(/[^\w\.-]/g, "_"));
     fs.writeFileSync(tempPath, buf);
     await stagedUploadShopifyFile(shop, token, tempPath);
-    // Attention : pas de polling ici!
+    // No polling here!
   } catch (err) {
     console.error(`[setupShop BatchUpload FAIL] ${filename}:`, err);
   }
+}
+
+/** Attache une image au produit via mutation GraphQL */
+export async function attachImageToProduct(
+  shop: string,
+  token: string,
+  productId: string,
+  imageUrl: string,
+  altText: string = ""
+) {
+  const media = [{
+    originalSource: imageUrl,
+    mediaContentType: "IMAGE",
+    alt: altText,
+  }];
+  const res = await fetch(
+    `https://${shop}/admin/api/2025-10/graphql.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": token,
+      },
+      body: JSON.stringify({
+        query: `
+        mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+          productCreateMedia(productId: $productId, media: $media) {
+            media {
+              id
+              status
+              preview { image { url } }
+              mediaErrors { code message }
+            }
+            mediaUserErrors { code message }
+          }
+        }
+        `,
+        variables: { productId, media },
+      }),
+    }
+  );
+  const bodyText = await res.text();
+  let json: any = null;
+  try {
+    json = JSON.parse(bodyText);
+  } catch {
+    throw new Error(`productCreateMedia failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
+  }
+  return json;
+}
+
+/** Attache une image à une variante */
+export async function attachImageToVariant(
+  shop: string,
+  token: string,
+  variantId: string,
+  imageUrl: string,
+  altText: string = ""
+) {
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        mutation productVariantUpdate($input: ProductVariantUpdateInput!) {
+          productVariantUpdate(input: $input) {
+            productVariant { id image { id src altText } }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: {
+        input: {
+          id: variantId,
+          image: { src: imageUrl, altText }
+        }
+      }
+    })
+  });
+  const bodyText = await res.text();
+  let json: any = null;
+  try {
+    json = JSON.parse(bodyText);
+  } catch {
+    throw new Error(`productVariantUpdate failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
+  }
+  return json;
 }
 
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
@@ -65,14 +151,14 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       await batchUploadImageToShopify(shop, token, img.url, img.filename);
     }
 
-    // 2. Regroupe chaque handle avec toutes ses lignes CSV pour les produits et variantes
+    // 2. Regroupe chaque handle avec toutes ses lignes CSV
     const productsByHandle: Record<string, any[]> = {};
     for (const row of records) {
       if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
       productsByHandle[row.Handle].push(row);
     }
 
-    // 3. Crée les produits, puis attache images/BATCH CDN à chaud (poll juste avant le linkage)
+    // 3. Création produits, puis attachement images/prod/variante (poll CDN à chaud)
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
 
@@ -167,7 +253,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           continue;
         }
 
-        // Images produit : on poll pour chaque lors de l'attachement !
+        // Images produit : poll CDN au linkage
         for (const row of group) {
           const productImageUrl = row["Image Src"];
           const imageAltText = row["Image Alt Text"] ?? "";
@@ -188,7 +274,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // Lien images variantes
+        // Lien images variantes : poll CDN au linkage
         const createdVariantsArr: VariantNode[] = productData?.variants?.edges?.map((edge: { node: VariantNode }) => edge.node) ?? [];
         for (const v of createdVariantsArr) {
           const variantKey = (v.selectedOptions ?? []).map(opt => opt.value).join(":");
