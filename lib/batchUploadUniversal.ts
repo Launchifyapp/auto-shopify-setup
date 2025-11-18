@@ -7,12 +7,12 @@ import path from "path";
 const SHOP = process.env.SHOPIFY_STORE || "monshop.myshopify.com";
 const TOKEN = process.env.SHOPIFY_ADMIN_TOKEN || "";
 
-// ⚡️ Exported polling function for CDN URL
+// ⚡️ Poll CDN URL for a file by filename (with retries)
 export async function pollShopifyFileCDNByFilename(
   shop: string,
   token: string,
   filename: string,
-  intervalMs = 10000, // attends 10s entre essais
+  intervalMs = 10000,
   maxTries = 40
 ): Promise<string | null> {
   for (let attempt = 1; attempt <= maxTries; attempt++) {
@@ -30,11 +30,12 @@ export async function pollShopifyFileCDNByFilename(
   return null;
 }
 
-/**
- * Shopify Files fallback: search CDN image by filename.
- * Direct lookup—no polling by MediaImage ID anymore!
- */
-export async function searchShopifyFileByFilename(shop: string, token: string, filename: string): Promise<string | null> {
+// Search CDN image in Shopify Files by filename
+export async function searchShopifyFileByFilename(
+  shop: string,
+  token: string,
+  filename: string
+): Promise<string | null> {
   console.log(`[Shopify] Fallback: search file by filename in Shopify Files: ${filename}`);
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -68,8 +69,13 @@ export async function searchShopifyFileByFilename(shop: string, token: string, f
   return null;
 }
 
-// Staged upload with resource: "IMAGE"
-export async function getStagedUploadUrl(shop: string, token: string, filename: string, mimeType: string) {
+// Get S3 staged upload URL from Shopify (resource: IMAGE)
+export async function getStagedUploadUrl(
+  shop: string,
+  token: string,
+  filename: string,
+  mimeType: string
+) {
   console.log(`[Shopify] StagedUpload: get staged URL for ${filename} (${mimeType})`);
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -105,31 +111,27 @@ export async function getStagedUploadUrl(shop: string, token: string, filename: 
   return json.data.stagedUploadsCreate.stagedTargets[0];
 }
 
+// Upload image buffer to staged S3/GCS URL via FormData multipart (critical signature step)
 export async function uploadToStagedUrl(stagedTarget: any, fileBuffer: Buffer, mimeType: string, filename: string) {
-  // Blocs de debug
   console.log(`[Shopify] S3: uploading ${filename} (${mimeType})`);
   console.log(`[Shopify] S3: stagedTarget.url = ${stagedTarget.url}`);
   console.log(`[Shopify] S3: stagedTarget.parameters =`, stagedTarget.parameters);
 
-  // FormData : tous les params donnés EXACTEMENT par Shopify
+  // Must keep EXACT order and name of each parameter!
   const formData = new FormData();
   for (const param of stagedTarget.parameters) {
     formData.append(param.name, param.value);
   }
-  // Le fichier, nom/mimeType/ordre correct
+  // file must be last and named "file"
   formData.append('file', new File([fileBuffer], filename, { type: mimeType }));
 
-  // Encodage multipart
   const encoder = new FormDataEncoder(formData);
-
-  // POST multipart, headers du encoder
   const res = await fetch(stagedTarget.url, {
     method: 'POST',
     body: encoder.encode(),
     headers: encoder.headers,
     duplex: "half"
   });
-
   if (!res.ok) {
     const errText = await res.text();
     console.error(`[Shopify] S3 upload failed for ${filename}: ${errText}`);
@@ -138,10 +140,14 @@ export async function uploadToStagedUrl(stagedTarget: any, fileBuffer: Buffer, m
   return stagedTarget.resourceUrl;
 }
 
-/**
- * Upload image and get CDN url by polling Files fallback.
- */
-export async function fileCreateFromStaged(shop: string, token: string, resourceUrl: string, filename: string, mimeType: string) {
+// Call GraphQL fileCreate after S3 upload and poll for CDN
+export async function fileCreateFromStaged(
+  shop: string,
+  token: string,
+  resourceUrl: string,
+  filename: string,
+  mimeType: string
+) {
   console.log(`[Shopify] fileCreateFromStaged: ${filename}`);
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -182,10 +188,11 @@ export async function fileCreateFromStaged(shop: string, token: string, resource
     console.error('File create userErrors:', JSON.stringify(json.data.fileCreate.userErrors));
     throw new Error('File create userErrors: ' + JSON.stringify(json.data.fileCreate.userErrors));
   }
-  // Utilise le polling pour attendre le CDN URL
+  // Poll for CDN url as soon as fileCreate succeeds (usually very quick after all batch uploads)
   return await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
 }
 
+// Entry point: staged upload for local file!
 export async function stagedUploadShopifyFile(shop: string, token: string, filePath: string) {
   const filename = path.basename(filePath);
   const mimeType =
@@ -198,3 +205,23 @@ export async function stagedUploadShopifyFile(shop: string, token: string, fileP
   const resourceUrl = await uploadToStagedUrl(stagedTarget, fileBuffer, mimeType, filename);
   return await fileCreateFromStaged(shop, token, resourceUrl, filename, mimeType);
 }
+
+// Utilitaire batch upload d'un dossier local (attention: n'utilise pas pour les URLs du CSV)
+export async function batchUploadLocalImages(dir: string) {
+  const files = fs.readdirSync(dir).filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f));
+  for (const fname of files) {
+    const filePath = path.resolve(dir, fname);
+    try {
+      console.log(`[Batch] Processing file: ${fname}`);
+      const cdnUrl = await stagedUploadShopifyFile(SHOP, TOKEN, filePath);
+      if (cdnUrl) {
+        console.log(`[UPLOAD] ${fname} → ${cdnUrl}`);
+      } else {
+        console.warn(`[UPLOAD] ${fname} → No CDN url found`);
+      }
+    } catch (err) {
+      console.error(`[FAIL] ${fname}: ${err}`);
+    }
+  }
+}
+// Pour exécuter : batchUploadLocalImages('./products_images');
