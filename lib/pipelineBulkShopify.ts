@@ -1,8 +1,7 @@
 import { parse } from "csv-parse/sync";
-import { Buffer } from "buffer";
 import path from "path";
 import fs from "fs";
-import { stagedUploadShopifyFile } from "./batchUploadUniversal"; // Doit utiliser le fallback direct, pas de polling ID
+import { stagedUploadShopifyFile } from "./batchUploadUniversal";
 import { fetch } from "undici";
 
 // Utilitaire pour CSV ; ou ,
