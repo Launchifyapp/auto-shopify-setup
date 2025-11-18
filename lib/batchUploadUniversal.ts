@@ -174,17 +174,40 @@ export async function fileCreateFromStaged(shop: string, token: string, resource
   return await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
 }
 
-export async function stagedUploadShopifyFile(shop: string, token: string, filePath: string) {
-  const filename = path.basename(filePath);
-  const mimeType =
-    filename.endsWith('.png') ? "image/png"
-    : filename.endsWith('.webp') ? "image/webp"
-    : "image/jpeg";
-  console.log(`[Shopify] stagedUploadShopifyFile: ${filePath}`);
-  const stagedTarget = await getStagedUploadUrl(shop, token, filename, mimeType);
-  const fileBuffer = fs.readFileSync(filePath);
-  const resourceUrl = await uploadToStagedUrl(stagedTarget, fileBuffer, mimeType, filename);
-  return await fileCreateFromStaged(shop, token, resourceUrl, filename, mimeType);
+/**
+ * Nouvel upload universel : accepte Buffer OU chemin local !
+ */
+export async function stagedUploadShopifyFile(
+  shop: string,
+  token: string,
+  file: Buffer | string,
+  filename?: string,
+  mimeType?: string
+): Promise<string | null> {
+  // Si file est un path, garde le comportement actuel
+  let fileBuffer: Buffer;
+  let realFilename = filename;
+  let realMimeType = mimeType;
+
+  if (typeof file === "string") {
+    // filePath local
+    realFilename = path.basename(file);
+    fileBuffer = fs.readFileSync(file);
+    realMimeType =
+      realFilename.endsWith('.png') ? "image/png"
+      : realFilename.endsWith('.webp') ? "image/webp"
+      : "image/jpeg";
+  } else {
+    // Buffer HTTP
+    fileBuffer = file;
+    if (!realFilename) throw new Error("filename required for Buffer upload");
+    if (!realMimeType) throw new Error("mimeType required for Buffer upload");
+  }
+
+  console.log(`[Shopify] stagedUploadShopifyFile: ${realFilename}`);
+  const stagedTarget = await getStagedUploadUrl(shop, token, realFilename, realMimeType);
+  const resourceUrl = await uploadToStagedUrl(stagedTarget, fileBuffer, realMimeType, realFilename);
+  return await fileCreateFromStaged(shop, token, resourceUrl, realFilename, realMimeType);
 }
 
 // Batch upload utility, with direct Files fallback for all images.
