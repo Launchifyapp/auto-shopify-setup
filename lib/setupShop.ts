@@ -70,6 +70,7 @@ export async function uploadImageToShopifyUniversal(
 /**
  * PATCH : Upload toutes les images via le CSV des URLs et mapping CSV/Shopify CDN
  * Version adaptée à ton fichier CSV ; les URLs sont en colonne 1 (index 1) sans vrai nom de colonne.
+ * Correction : téléchargement de l'image distante avant upload (pour éviter ENOENT)
  */
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
@@ -77,11 +78,13 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     const csvPath = path.resolve("public", "Products_images-url.csv");
     const csvText = fs.readFileSync(csvPath, "utf8");
     const delimiter = guessCsvDelimiter(csvText);
+
     // On récupère les lignes en mode tableau (= pas columns:true car pas de header utile)
     const records = parse(csvText, { columns: false, skip_empty_lines: true, delimiter });
 
     // 2. Upload toutes les images du CSV (unique)
     const cdnMapping: Record<string, string> = {};
+
     for (const row of records.slice(1)) { // skip header
       const imageUrl = row[1];
       if (!validImageUrl(imageUrl)) continue;
@@ -89,13 +92,22 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       if (!filename || cdnMapping[filename]) continue; // Ne réuploade pas !
       try {
         console.log(`[UPLOAD] Start ${filename}`);
-        const cdnUrl = await stagedUploadShopifyFile(shop, token, imageUrl);
+        // Correction : télécharger l'image distante avant upload !
+        const res = await fetch(imageUrl);
+        if (!res.ok) throw new Error("Image inaccessible: " + imageUrl);
+        const buf = Buffer.from(await res.arrayBuffer());
+        const tmp = path.join("/tmp", filename.replace(/[^\w.-]/g, "_"));
+        fs.writeFileSync(tmp, buf);
+        // upload du fichier local temporaire
+        const cdnUrl = await stagedUploadShopifyFile(shop, token, tmp);
         if (cdnUrl) {
           cdnMapping[filename] = cdnUrl;
           console.log(`[UPLOAD] ${filename} → ${cdnUrl}`);
         } else {
           console.warn(`[UPLOAD] ${filename} → No CDN url found`);
         }
+        // effacer le fichier tmp local (optionnel)
+        try { fs.unlinkSync(tmp); } catch {}
       } catch (err) {
         console.error(`[FAIL upload] ${filename}:`, err);
       }
