@@ -13,7 +13,11 @@ function guessCsvDelimiter(csvText: string): ";" | "," {
 function validImageUrl(url?: string): boolean {
   if (!url) return false;
   const v = url.trim().toLowerCase();
-  return !!v && v !== "nan" && v !== "null" && v !== "undefined" && /^https?:\/\/\S+$/i.test(v);
+  return !!v &&
+    v !== "nan" &&
+    v !== "null" &&
+    v !== "undefined" &&
+    /^https?:\/\/\S+$/i.test(v);
 }
 
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
@@ -59,7 +63,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       }
     }
     for (const img of imagesToUpload) {
-      if (!validImageUrl(img.url) || !validImageUrl(img.filename)) {
+      // Validation stricte: valide uniquement l'URL, puis vérifie que le filename a bien une extension image
+      if (!validImageUrl(img.url) || !img.filename || !/\.(jpe?g|png|webp)$/i.test(img.filename)) {
         console.warn(`[setupShop BatchUpload SKIP] url invalid: "${img.url}" filename="${img.filename}"`);
         continue;
       }
