@@ -4,7 +4,9 @@ import { fetch } from "undici";
 import fs from "fs";
 import path from "path";
 
-// 1. Get staged upload URL for product media
+/**
+ * Step 1: Get staged upload URL for product media (Shopify's S3/Google Cloud Storage)
+ */
 export async function getMediaStagedUpload(
   shop: string,
   token: string,
@@ -42,7 +44,9 @@ export async function getMediaStagedUpload(
   return target;
 }
 
-// 2. Upload image to Google Cloud endpoint
+/**
+ * Step 2: Upload image to staged S3/Google Cloud Storage endpoint
+ */
 export async function uploadStagedMedia(
   stagedTarget: any,
   fileBuffer: Buffer,
@@ -67,7 +71,9 @@ export async function uploadStagedMedia(
   return stagedTarget.resourceUrl;
 }
 
-// 3. Register the uploaded file with Shopify's fileCreate mutation
+/**
+ * Step 3: Register the uploaded file with Shopify "fileCreate" mutation
+ */
 export async function shopifyFileCreate(
   shop: string,
   token: string,
@@ -97,7 +103,9 @@ export async function shopifyFileCreate(
   return fileNode;
 }
 
-// 4. Poll for CDN URL (file available for product media)
+/**
+ * Step 4: Poll for CDN URL (file available for product media)
+ */
 export async function pollShopifyFileCDNByFilename(
   shop: string,
   token: string,
@@ -142,7 +150,9 @@ export async function searchShopifyFileByFilename(
   return node?.preview?.image?.url ?? null;
 }
 
-// 5. Attach file to product as product media
+/**
+ * Step 5: Attach file to product as product media
+ */
 export async function attachImageToProduct(
   shop: string,
   token: string,
@@ -176,4 +186,23 @@ export async function attachImageToProduct(
   });
   const data = await res.json() as any;
   return data.data?.productCreateMedia?.media?.[0];
+}
+
+/**
+ * Step 6: Wrapper for previous pipeline compatibility – upload staged media from file path
+ */
+export async function stagedUploadShopifyFile(
+  shop: string,
+  token: string,
+  filePath: string
+): Promise<any> {
+  const filename = path.basename(filePath);
+  const mimeType =
+    filename.endsWith('.png') ? "image/png"
+    : filename.endsWith('.webp') ? "image/webp"
+    : "image/jpeg";
+  const stagedTarget = await getMediaStagedUpload(shop, token, filename, mimeType);
+  const fileBuffer = fs.readFileSync(filePath);
+  const resourceUrl = await uploadStagedMedia(stagedTarget, fileBuffer, mimeType, filename);
+  return await shopifyFileCreate(shop, token, resourceUrl, filename);
 }
