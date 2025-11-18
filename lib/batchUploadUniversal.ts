@@ -1,43 +1,97 @@
 import { FormData, File } from "formdata-node";
 import { FormDataEncoder } from "form-data-encoder";
 import { fetch } from "undici";
-import fs from "fs";
-import path from "path";
 
-const SHOP = process.env.SHOPIFY_STORE || "monshop.myshopify.com";
-const TOKEN = process.env.SHOPIFY_ADMIN_TOKEN || "";
+// 1. Get staged upload URL for product media
+export async function getMediaStagedUpload(shop, token, filename, mimeType="image/jpeg") {
+  const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token,
+    },
+    body: JSON.stringify({
+      query: `
+        mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+          stagedUploadsCreate(input: $input) {
+            stagedTargets {
+              url
+              resourceUrl
+              parameters { name value }
+            }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: { input: [
+        { filename, mimeType, resource: "IMAGE" }
+      ]}
+    })
+  });
 
-// ⚡️ Poll CDN URL for a file by filename (with retries)
-export async function pollShopifyFileCDNByFilename(
-  shop: string,
-  token: string,
-  filename: string,
-  intervalMs = 10000,
-  maxTries = 40
-): Promise<string | null> {
-  for (let attempt = 1; attempt <= maxTries; attempt++) {
-    console.log(`[Shopify] Files CDN polling try=${attempt}/${maxTries} for filename=${filename}`);
-    const url = await searchShopifyFileByFilename(shop, token, filename);
-    if (url) {
-      console.log(`[Shopify] Files polling CDN url found for ${filename}: ${url}`);
-      return url;
-    }
-    if (attempt < maxTries) {
-      await new Promise(res => setTimeout(res, intervalMs));
-    }
+  const data = await res.json();
+  const target = data?.data?.stagedUploadsCreate?.stagedTargets?.[0];
+  if (!target) throw new Error("No staged upload target returned");
+  return target;
+}
+
+// 2. Upload image to Google Cloud endpoint
+export async function uploadStagedMedia(stagedTarget, fileBuffer, mimeType, filename) {
+  const formData = new FormData();
+  for (const param of stagedTarget.parameters) formData.append(param.name, param.value);
+  formData.append("file", new File([fileBuffer], filename, {type: mimeType}));
+  const encoder = new FormDataEncoder(formData);
+
+  const res = await fetch(stagedTarget.url, {
+    method: "POST",
+    body: encoder.encode(),
+    headers: encoder.headers,
+    duplex: "half"
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`S3 upload failed: ${res.status} | ${errText}`);
   }
-  console.warn(`[Shopify] Files CDN polling finished: STILL not found for ${filename} after ${maxTries} tries`);
+  return stagedTarget.resourceUrl;
+}
+
+// 3. Register the uploaded file with Shopify's fileCreate mutation
+export async function shopifyFileCreate(shop, token, resourceUrl, filename) {
+  const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token,
+    },
+    body: JSON.stringify({
+      query: `
+        mutation fileCreate($files: [FileCreateInput!]!) {
+          fileCreate(files: $files) {
+            files { id fileStatus preview { image { url } } }
+            userErrors { field message }
+          }
+        }`,
+      variables: { files: [{ originalSource: resourceUrl, alt: filename }] }
+    })
+  });
+  const data = await res.json();
+  const fileNode = data.data?.fileCreate?.files?.[0];
+  if (!fileNode) throw new Error("File create failed");
+  return fileNode;
+}
+
+// 4. Poll for CDN URL (file available for product media)
+export async function pollShopifyFileCDNByFilename(shop, token, filename, intervalMs = 10000, maxTries = 40): Promise<string | null> {
+  for (let attempt = 1; attempt <= maxTries; attempt++) {
+    const url = await searchShopifyFileByFilename(shop, token, filename);
+    if (url) return url;
+    await new Promise(res => setTimeout(res, intervalMs));
+  }
   return null;
 }
 
-// Search CDN image in Shopify Files by filename
-export async function searchShopifyFileByFilename(
-  shop: string,
-  token: string,
-  filename: string
-): Promise<string | null> {
-  console.log(`[Shopify] Fallback: search file by filename in Shopify Files: ${filename}`);
-  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+export async function searchShopifyFileByFilename(shop: string, token: string, filename: string): Promise<string | null> {
+  const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
     body: JSON.stringify({
@@ -46,9 +100,7 @@ export async function searchShopifyFileByFilename(
           files(first: 10, query: $filename) {
             edges {
               node {
-                ... on MediaImage {
-                  preview { image { url } }
-                }
+                ... on MediaImage { preview { image { url } } }
               }
             }
           }
@@ -58,170 +110,37 @@ export async function searchShopifyFileByFilename(
     }),
     duplex: "half"
   });
-  const body = await res.json() as any;
+  const body = await res.json();
   const node = body?.data?.files?.edges?.[0]?.node;
-  const url = node?.preview?.image?.url ?? null;
-  if (url) {
-    console.log(`[Shopify] Files Fallback CDN url found for ${filename}: ${url}`);
-    return url;
-  }
-  console.warn(`[Shopify] No CDN url found in Files by filename: ${filename}`);
-  return null;
+  return node?.preview?.image?.url ?? null;
 }
 
-// Get S3 staged upload URL from Shopify (resource: IMAGE)
-export async function getStagedUploadUrl(
-  shop: string,
-  token: string,
-  filename: string,
-  mimeType: string
-) {
-  console.log(`[Shopify] StagedUpload: get staged URL for ${filename} (${mimeType})`);
-  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+// 5. Attach file to product as product media
+export async function attachImageToProduct(shop, token, productId, imageUrl, altText = "") {
+  const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
+      "X-Shopify-Access-Token": token,
     },
     body: JSON.stringify({
       query: `
-        mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
-          stagedUploadsCreate(input: $input) {
-            stagedTargets { url resourceUrl parameters { name value } }
-            userErrors { field message }
+        mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+          productCreateMedia(productId: $productId, media: $media) {
+            media { id status preview { image { url } } }
+            mediaUserErrors { code message }
           }
         }
       `,
-      variables: { input: [{ filename, mimeType, resource: "IMAGE" }] }
-    }),
-    duplex: "half"
-  });
-
-  const bodyText = await res.text();
-  let json: any = null;
-  try {
-    json = JSON.parse(bodyText);
-  } catch {
-    console.error(`[Shopify] stagedUploadsCreate ERROR: ${bodyText}`);
-    throw new Error(`stagedUploadsCreate failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
-  }
-  if (!json?.data?.stagedUploadsCreate?.stagedTargets?.[0]) {
-    throw new Error("stagedUploadsCreate returned no stagedTargets: " + JSON.stringify(json));
-  }
-  return json.data.stagedUploadsCreate.stagedTargets[0];
-}
-
-// Upload image buffer to staged S3/GCS URL via FormData multipart (critical signature step)
-export async function uploadToStagedUrl(stagedTarget: any, fileBuffer: Buffer, mimeType: string, filename: string) {
-  console.log(`[Shopify] S3: uploading ${filename} (${mimeType})`);
-  console.log(`[Shopify] S3: stagedTarget.url = ${stagedTarget.url}`);
-  console.log(`[Shopify] S3: stagedTarget.parameters =`, stagedTarget.parameters);
-
-  // Must keep EXACT order and name of each parameter!
-  const formData = new FormData();
-  for (const param of stagedTarget.parameters) {
-    formData.append(param.name, param.value);
-  }
-  // file must be last and named "file"
-  formData.append('file', new File([fileBuffer], filename, { type: mimeType }));
-
-  const encoder = new FormDataEncoder(formData);
-  const res = await fetch(stagedTarget.url, {
-    method: 'POST',
-    body: encoder.encode(),
-    headers: encoder.headers,
-    duplex: "half"
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    console.error(`[Shopify] S3 upload failed for ${filename}: ${errText}`);
-    throw new Error(`S3 upload failed: ${res.status} | ${errText}`);
-  }
-  return stagedTarget.resourceUrl;
-}
-
-// Call GraphQL fileCreate after S3 upload and poll for CDN
-export async function fileCreateFromStaged(
-  shop: string,
-  token: string,
-  resourceUrl: string,
-  filename: string,
-  mimeType: string
-) {
-  console.log(`[Shopify] fileCreateFromStaged: ${filename}`);
-  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
-    },
-    body: JSON.stringify({
-      query: `
-        mutation fileCreate($files: [FileCreateInput!]!) {
-          fileCreate(files: $files) {
-            files {
-              id
-              fileStatus
-              preview {
-                image {
-                  url
-                }
-              }
-            }
-            userErrors { field message }
-          }
+      variables: { productId, media: [
+        {
+          originalSource: imageUrl,
+          mediaContentType: "IMAGE",
+          alt: altText
         }
-      `,
-      variables: { files: [{ originalSource: resourceUrl, alt: filename }] }
-    }),
-    duplex: "half"
+      ]}
+    })
   });
-  const bodyText = await res.text();
-  let json: any = null;
-  try {
-    json = JSON.parse(bodyText);
-  } catch {
-    console.error(`[Shopify] fileCreate ERROR: ${bodyText}`);
-    throw new Error(`fileCreate failed: Non-JSON response (${res.status}) | Body: ${bodyText}`);
-  }
-  if (json.data?.fileCreate?.userErrors?.length) {
-    console.error('File create userErrors:', JSON.stringify(json.data.fileCreate.userErrors));
-    throw new Error('File create userErrors: ' + JSON.stringify(json.data.fileCreate.userErrors));
-  }
-  // Poll for CDN url as soon as fileCreate succeeds (usually very quick after all batch uploads)
-  return await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
+  const data = await res.json();
+  return data.data?.productCreateMedia?.media?.[0];
 }
-
-// Entry point: staged upload for local file!
-export async function stagedUploadShopifyFile(shop: string, token: string, filePath: string) {
-  const filename = path.basename(filePath);
-  const mimeType =
-    filename.endsWith('.png') ? "image/png"
-    : filename.endsWith('.webp') ? "image/webp"
-    : "image/jpeg";
-  console.log(`[Shopify] stagedUploadShopifyFile: ${filePath}`);
-  const stagedTarget = await getStagedUploadUrl(shop, token, filename, mimeType);
-  const fileBuffer = fs.readFileSync(filePath);
-  const resourceUrl = await uploadToStagedUrl(stagedTarget, fileBuffer, mimeType, filename);
-  return await fileCreateFromStaged(shop, token, resourceUrl, filename, mimeType);
-}
-
-// Utilitaire batch upload d'un dossier local (attention: n'utilise pas pour les URLs du CSV)
-export async function batchUploadLocalImages(dir: string) {
-  const files = fs.readdirSync(dir).filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f));
-  for (const fname of files) {
-    const filePath = path.resolve(dir, fname);
-    try {
-      console.log(`[Batch] Processing file: ${fname}`);
-      const cdnUrl = await stagedUploadShopifyFile(SHOP, TOKEN, filePath);
-      if (cdnUrl) {
-        console.log(`[UPLOAD] ${fname} → ${cdnUrl}`);
-      } else {
-        console.warn(`[UPLOAD] ${fname} → No CDN url found`);
-      }
-    } catch (err) {
-      console.error(`[FAIL] ${fname}: ${err}`);
-    }
-  }
-}
-// Pour exécuter : batchUploadLocalImages('./products_images');
