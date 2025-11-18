@@ -36,7 +36,7 @@ export async function getMediaStagedUpload(
     })
   });
 
-  const data = await res.json();
+  const data = await res.json() as any;
   const target = data?.data?.stagedUploadsCreate?.stagedTargets?.[0];
   if (!target) throw new Error("No staged upload target returned");
   return target;
@@ -91,7 +91,7 @@ export async function shopifyFileCreate(
       variables: { files: [{ originalSource: resourceUrl, alt: filename }] }
     })
   });
-  const data = await res.json();
+  const data = await res.json() as any;
   const fileNode = data.data?.fileCreate?.files?.[0];
   if (!fileNode) throw new Error("File create failed");
   return fileNode;
@@ -137,7 +137,7 @@ export async function searchShopifyFileByFilename(
     }),
     duplex: "half"
   });
-  const body = await res.json();
+  const body = await res.json() as any;
   const node = body?.data?.files?.edges?.[0]?.node;
   return node?.preview?.image?.url ?? null;
 }
@@ -174,6 +174,6 @@ export async function attachImageToProduct(
       ]}
     })
   });
-  const data = await res.json();
+  const data = await res.json() as any;
   return data.data?.productCreateMedia?.media?.[0];
 }
