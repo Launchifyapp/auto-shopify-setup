@@ -44,33 +44,8 @@ export async function attachImageToVariant(
 }
 
 /**
- * Upload universel et polling CDN
- */
-export async function uploadImageToShopifyUniversal(
-  shop: string,
-  token: string,
-  imageUrl: string,
-  filename: string
-): Promise<string | null> {
-  if (imageUrl.startsWith("https://cdn.shopify.com")) return imageUrl;
-  const mimeType =
-    filename.endsWith('.png') ? "image/png"
-    : filename.endsWith('.webp') ? "image/webp"
-    : "image/jpeg";
-  try {
-    const cdnUrl = await stagedUploadShopifyFile(shop, token, imageUrl);
-    if (cdnUrl) return cdnUrl;
-    return await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
-  } catch (err) {
-    console.error("[Shopify] ERROR uploadImageToShopifyUniversal", err);
-    return null;
-  }
-}
-
-/**
  * PATCH : Upload toutes les images via le CSV des URLs et mapping CSV/Shopify CDN
- * Version adaptée à ton fichier CSV ; les URLs sont en colonne 1 (index 1) sans vrai nom de colonne.
- * Correction : téléchargement de l'image distante avant upload (pour éviter ENOENT)
+ * Télécharge chaque image distante, uploade le buffer via staged upload Shopify
  */
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
@@ -89,25 +64,25 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       const imageUrl = row[1];
       if (!validImageUrl(imageUrl)) continue;
       const filename = imageUrl.split("/").pop();
+      const mimeType =
+        filename.endsWith('.png') ? "image/png"
+        : filename.endsWith('.webp') ? "image/webp"
+        : "image/jpeg";
       if (!filename || cdnMapping[filename]) continue; // Ne réuploade pas !
       try {
         console.log(`[UPLOAD] Start ${filename}`);
-        // Correction : télécharger l'image distante avant upload !
+        // 1. Télécharger l'image distante en buffer
         const res = await fetch(imageUrl);
         if (!res.ok) throw new Error("Image inaccessible: " + imageUrl);
         const buf = Buffer.from(await res.arrayBuffer());
-        const tmp = path.join("/tmp", filename.replace(/[^\w.-]/g, "_"));
-        fs.writeFileSync(tmp, buf);
-        // upload du fichier local temporaire
-        const cdnUrl = await stagedUploadShopifyFile(shop, token, tmp);
+        // 2. Uploader le buffer directement via stagedUploadShopifyFile
+        const cdnUrl = await stagedUploadShopifyFile(shop, token, buf, filename, mimeType);
         if (cdnUrl) {
           cdnMapping[filename] = cdnUrl;
           console.log(`[UPLOAD] ${filename} → ${cdnUrl}`);
         } else {
           console.warn(`[UPLOAD] ${filename} → No CDN url found`);
         }
-        // effacer le fichier tmp local (optionnel)
-        try { fs.unlinkSync(tmp); } catch {}
       } catch (err) {
         console.error(`[FAIL upload] ${filename}:`, err);
       }
