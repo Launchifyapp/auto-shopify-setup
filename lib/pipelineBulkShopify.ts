@@ -2,7 +2,8 @@ import { parse } from "csv-parse/sync";
 import path from "path";
 import fs from "fs";
 import { fetch } from "undici";
-import { stagedUploadShopifyFile, pollShopifyFileCDNByFilename, attachImageToProduct, attachImageToVariant } from "./batchUploadUniversal";
+import { stagedUploadShopifyFile, pollShopifyFileCDNByFilename } from "./batchUploadUniversal";
+import { attachImageToProduct, attachImageToVariant, batchUploadImageToShopify } from "./setupShop";
 
 /** CSV delimiter ; ou , */
 function guessCsvDelimiter(csvText: string): ";" | "," {
@@ -15,22 +16,6 @@ function validImageUrl(url?: string): boolean {
   if (!url) return false;
   const val = url.trim().toLowerCase();
   return !!val && val !== "nan" && val !== "null" && val !== "undefined";
-}
-
-/** Batch upload d'images sans polling CDN */
-export async function batchUploadImageToShopify(shop: string, token: string, url: string, filename: string) {
-  if (url.startsWith("https://cdn.shopify.com")) return;
-  try {
-    const imgRes = await fetch(url);
-    if (!imgRes.ok) throw new Error("Erreur téléchargement image " + url);
-    const buf = Buffer.from(await imgRes.arrayBuffer());
-    const tempPath = path.join("/tmp", filename.replace(/[^\w\.-]/g, "_"));
-    fs.writeFileSync(tempPath, buf);
-    await stagedUploadShopifyFile(shop, token, tempPath);
-    // No polling here!
-  } catch (err) {
-    console.error(`[pipelineBulkShopify BatchUpload FAIL] ${filename}:`, err);
-  }
 }
 
 /**
