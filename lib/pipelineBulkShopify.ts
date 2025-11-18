@@ -2,29 +2,26 @@ import { parse } from "csv-parse/sync";
 import { Buffer } from "buffer";
 import path from "path";
 import fs from "fs";
-import { stagedUploadShopifyFile } from "./batchUploadUniversal"; // Doit utiliser le fallback direct, pas de polling ID
+import { stagedUploadShopifyFile } from "./batchUploadUniversal";
 import { fetch } from "undici";
 
-// Utilitaire pour CSV ; ou ,
 function guessCsvDelimiter(csvText: string): ";" | "," {
   const firstLine = csvText.split("\n")[0];
   return firstLine.indexOf(";") >= 0 ? ";" : ",";
 }
 
-// Vérifie la validité d'une URL d'image (ignore "nan", "null", "undefined", vide)
 function validImageUrl(url?: string): boolean {
   if (!url) return false;
   const val = url.trim().toLowerCase();
   return !!val && val !== "nan" && val !== "null" && val !== "undefined";
 }
 
-// Fallback polling sur Files/filename directement (pour la CDN)
 async function pollShopifyFileCDNByFilename(
   shop: string,
   token: string,
   filename: string,
-  intervalMs = 10000, // MODIF: attendre 10s entre essais, au lieu de 3s
-  maxTries = 2      // MODIF: jusqu'à 40 essais, au lieu de 20
+  intervalMs = 10000,
+  maxTries = 2
 ): Promise<string | null> {
   for (let attempt = 1; attempt <= maxTries; attempt++) {
     console.log(`[Shopify] Files CDN polling try=${attempt}/${maxTries} for filename=${filename}`);
@@ -41,7 +38,6 @@ async function pollShopifyFileCDNByFilename(
   return null;
 }
 
-// Requête GraphQL pour chercher les CDN Shopify Files par filename
 async function searchShopifyFileByFilename(
   shop: string,
   token: string,
@@ -77,7 +73,6 @@ async function searchShopifyFileByFilename(
   return null;
 }
 
-// Attachement d'image à un produit Shopify
 async function attachImageToProduct(
   shop: string,
   token: string,
@@ -144,7 +139,6 @@ async function attachImageToProduct(
   return json;
 }
 
-// Attachement d'image à une variante Shopify
 async function attachImageToVariant(
   shop: string,
   token: string,
@@ -190,7 +184,6 @@ async function attachImageToVariant(
  * Pipeline principal: BULK UPLOAD puis BULK LINK des images du CSV vers Shopify
  */
 export async function pipelineBulkShopify({ shop, token }: { shop: string; token: string }) {
-  // 1. Lire CSV
   console.log("[Shopify] pipelineBulkShopify: Fetch CSV...");
   const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
   const response = await fetch(csvUrl);
@@ -214,7 +207,7 @@ export async function pipelineBulkShopify({ shop, token }: { shop: string; token
         altText: row["Image Alt Text"] || "",
         handle: row.Handle,
         type: "product",
-        productId: null, // à remplir plus tard
+        productId: null,
       });
     }
     // Pour image de variante
@@ -226,7 +219,7 @@ export async function pipelineBulkShopify({ shop, token }: { shop: string; token
         handle: row.Handle,
         type: "variant",
         variantKey: [row["Option1 Value"], row["Option2 Value"], row["Option3 Value"]].filter(Boolean).join(":"),
-        variantId: null, // à remplir plus tard
+        variantId: null,
       });
     }
   }
@@ -238,21 +231,23 @@ export async function pipelineBulkShopify({ shop, token }: { shop: string; token
         console.log(`[Shopify] SKIP already CDN: ${file.filename}`);
         continue;
       }
-      // Upload image file
-      await stagedUploadShopifyFile(shop, token, file.src); // pas besoin de CDN ici
+      // --- PATCH: TÉLÉCHARGER, ÉCRIRE buffer, UPLOAD via filePath ---
+      const imgRes = await fetch(file.src); // <- download HTTP
+      if (!imgRes.ok) throw new Error(`Image ${file.src} inaccessible`);
+      const buf = Buffer.from(await imgRes.arrayBuffer());
+      const tmpPath = path.join("/tmp", file.filename.replace(/[^\w.\-]/g, "_"));
+      fs.writeFileSync(tmpPath, buf); // <- write to disk
+      await stagedUploadShopifyFile(shop, token, tmpPath); // <- upload chemin local
       console.log(`[Shopify] UPLOADED filename=${file.filename}`);
     } catch (err) {
       console.error(`[Shopify] FAIL upload for ${file.filename}:`, err);
     }
   }
 
-  // 4. Création des produits/variants en BATCH (à intégrer à ton workflow: productId/variantId)
-  // Adapté à ton workflow existant!
-
   // 5. BULK LINK: pour chaque image, polling + attachement
   for (const img of uploadQueue) {
     try {
-      const cdnUrl = await pollShopifyFileCDNByFilename(shop, token, img.filename, 10000, 40); // MODIF: attendre + longtemps pour le CDN
+      const cdnUrl = await pollShopifyFileCDNByFilename(shop, token, img.filename, 10000, 40);
       if (!cdnUrl) {
         console.warn(`[Shopify] NOT FOUND: CDN for filename=${img.filename}`);
         continue;
