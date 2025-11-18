@@ -2,12 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fetch } from "undici";
 import { stagedUploadShopifyFile, pollShopifyFileCDNByFilename, attachImageToProduct, attachImageToVariant } from "./batchUploadUniversal";
-
-// Détecte le séparateur CSV ; ou ,
-function guessCsvDelimiter(csvText: string): ";" | "," {
-  const firstLine = csvText.split("\n")[0];
-  return firstLine.indexOf(";") >= 0 ? ";" : ",";
-}
+import parse from "csv-parse/lib/sync"; // <--- Ajout du vrai parseur
 
 // Vérifie la validité d'une URL
 function validImageUrl(url?: string): boolean {
@@ -20,29 +15,33 @@ function validImageUrl(url?: string): boolean {
     /^https?:\/\/\S+$/i.test(v);
 }
 
+// UTILITAIRE DE PARSING CSV ROBUSTE
+function parseCsvShopify(csvText: string): any[] {
+  return parse(csvText, {
+    delimiter: ";",
+    columns: true,
+    skip_empty_lines: true,
+    relax_column_count: true,
+    quote: '"',
+    trim: true
+  });
+}
+
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     console.log("[Shopify] setupShop: fetch CSV...");
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
-    const delimiter = guessCsvDelimiter(csvText);
-    console.log(`[Shopify] setupShop: detected delimiter=${delimiter}`);
 
-    // Parse CSV
-    const headerLine = csvText.split("\n")[0];
-    const headers = headerLine.split(delimiter);
-    const records = csvText.split("\n").slice(1).filter(l => l.trim() !== "").map(line => {
-      const fields = line.split(delimiter);
-      const rec: any = {};
-      headers.forEach((h, idx) => rec[h.trim()] = (fields[idx] || "").trim());
-      return rec;
-    });
+    // ---- PARSE ROBUST ----
+    const records = parseCsvShopify(csvText);
 
-    // Regroupe par handle
+    // Regroupement par handle
     const productsByHandle: Record<string, any[]> = {};
     for (const row of records) {
-      if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
+      if (!row.Handle || !row.Handle.trim()) continue;
+      productsByHandle[row.Handle] ??= [];
       productsByHandle[row.Handle].push(row);
     }
 
@@ -63,7 +62,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       }
     }
     for (const img of imagesToUpload) {
-      // Validation stricte: valide uniquement l'URL, puis vérifie que le filename a bien une extension image
       if (!validImageUrl(img.url) || !img.filename || !/\.(jpe?g|png|webp)$/i.test(img.filename)) {
         console.warn(`[setupShop BatchUpload SKIP] url invalid: "${img.url}" filename="${img.filename}"`);
         continue;
@@ -80,13 +78,49 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
     // Création produits + linkage images
     for (const [handle, group] of Object.entries(productsByHandle)) {
-      const main = group[0];
+      // Prend le premier vrai produit
+      const main = group.find(row => row.Title && row.Title.trim());
 
       // Validation des champs obligatoires
-      if (!main.Title || main.Title.trim() === "" || !main.Handle || !main.Vendor) {
-        console.warn(`Skip product creation: Missing mandatory fields for handle=${main.Handle}`);
+      if (!main || !main.Title || main.Title.trim() === "" || !main.Handle || !main.Vendor) {
+        console.warn(`Skip product creation: Missing mandatory fields for handle=${main && main.Handle}`);
         continue;
       }
+
+      // Mapping tags clean
+      function cleanTags(tags) {
+        if (!tags) return [];
+        return tags
+          .split(",")
+          .map(t => t.trim())
+          .filter(t => t && !t.startsWith("<") && !t.startsWith("&") && t !== "null" && t !== "undefined" && t !== "NaN");
+      }
+
+      // Options
+      const optionNames = ["Option1 Name", "Option2 Name", "Option3 Name"].map(opt => main[opt]?.trim()).filter(Boolean);
+      const allOptionValues = {};
+      for (const name of optionNames) {
+        allOptionValues[name] = Array.from(new Set(group.map(row => row[`${name} Value`]).filter(Boolean)));
+      }
+      const options = optionNames.map(name => ({
+        name,
+        values: allOptionValues[name]
+      }));
+
+      // Variants - chaque ligne du handle est un variant potentiel
+      const variants = group.map(row => {
+        const optionsArr = optionNames.map(opt => row[`${opt} Value`] || "").filter(Boolean);
+        return {
+          sku: row["Variant SKU"],
+          price: row["Variant Price"],
+          compareAtPrice: row["Variant Compare At Price"],
+          requiresShipping: row["Variant Requires Shipping"] === "True",
+          taxable: row["Variant Taxable"] === "True",
+          barcode: row["Variant Barcode"],
+          options: optionsArr,
+          image: row["Variant Image"]
+        };
+      });
 
       const handleUnique = main.Handle + "-" + Math.random().toString(16).slice(2, 7);
       const product: any = {
@@ -95,11 +129,13 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         handle: handleUnique,
         vendor: main.Vendor,
         productType: main["Type"] || main["Product Category"] || "",
-        tags: (main.Tags ?? main["Product Category"] ?? "").split(",").map((t: string) => t.trim()).filter(Boolean),
+        tags: cleanTags(main.Tags ?? main["Product Category"] ?? "").join(","),
+        options: options,
+        variants: variants
       };
 
       try {
-        // Creation produit
+        // Création produit avec variants
         const gqlRes = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -164,8 +200,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         for (const v of createdVariantsArr) {
           const variantKey = (v.selectedOptions ?? []).map((opt: any) => opt.value).join(":");
           const matchingRows = group.filter(row =>
-            [row["Option1 Value"], row["Option2 Value"], row["Option3 Value"]]
-              .filter(Boolean).join(":") === variantKey
+            optionNames.map(opt => row[`${opt} Value`] || "").filter(Boolean).join(":") === variantKey
           );
           for (const variantCsvRow of matchingRows) {
             const variantImageUrl = variantCsvRow?.["Variant Image"];
