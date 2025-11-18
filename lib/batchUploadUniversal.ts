@@ -13,7 +13,7 @@ export async function pollShopifyFileCDNByFilename(
   token: string,
   filename: string,
   intervalMs = 10000, // attends 10s entre essais
-  maxTries = 2       // jusqu'à 40 essais (total ~ 7 min max)
+  maxTries = 40
 ): Promise<string | null> {
   for (let attempt = 1; attempt <= maxTries; attempt++) {
     console.log(`[Shopify] Files CDN polling try=${attempt}/${maxTries} for filename=${filename}`);
@@ -186,23 +186,3 @@ export async function stagedUploadShopifyFile(shop: string, token: string, fileP
   const resourceUrl = await uploadToStagedUrl(stagedTarget, fileBuffer, mimeType, filename);
   return await fileCreateFromStaged(shop, token, resourceUrl, filename, mimeType);
 }
-
-// Batch upload utility, with direct Files fallback for all images.
-export async function batchUploadLocalImages(dir: string) {
-  const files = fs.readdirSync(dir).filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f));
-  for (const fname of files) {
-    const filePath = path.resolve(dir, fname);
-    try {
-      console.log(`[Batch] Processing file: ${fname}`);
-      const cdnUrl = await stagedUploadShopifyFile(SHOP, TOKEN, filePath);
-      if (cdnUrl) {
-        console.log(`[UPLOAD] ${fname} → ${cdnUrl}`);
-      } else {
-        console.warn(`[UPLOAD] ${fname} → No CDN url found`);
-      }
-    } catch (err) {
-      console.error(`[FAIL] ${fname}: ${err}`);
-    }
-  }
-}
-// Pour exécuter : batchUploadLocalImages('./products_images');
