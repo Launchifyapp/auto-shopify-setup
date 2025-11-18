@@ -332,35 +332,36 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
         // Création/gestion variants et attachement images des variantes
         const createdVariantsArr: VariantNode[] = productData?.variants?.edges?.map((edge: { node: VariantNode }) => edge.node) ?? [];
-        for (const v of createdVariantsArr) {
-          const variantKey = handle + ":" +
-            (v.selectedOptions ?? []).map(opt => opt.value).join(":");
-          const variantCsvRow = group.find(row =>
-            [row["Option1 Value"], row["Option2 Value"], row["Option3 Value"]]
-            .filter(Boolean)
-            .join(":") === (v.selectedOptions ?? []).map(opt => opt.value).join(":")
-          );
-          const variantImageUrl = variantCsvRow?.["Variant Image"];
-          const variantAltText = variantCsvRow?.["Image Alt Text"] ?? "";
-          if (
-            variantCsvRow &&
-            v.id &&
-            validImageUrl(variantImageUrl) &&
-            !variantImageUrl.startsWith("https://cdn.shopify.com")
-          ) {
-            try {
-              const filename = variantImageUrl.split('/').pop() ?? 'variant.jpg';
-              let cdnUrl = await uploadImageToShopifyUniversal(shop, token, variantImageUrl, filename);
-              if (!cdnUrl) {
-                console.warn(`CDN url not available for variante [${variantKey}]`);
-              }
-              await attachImageToVariant(shop, token, v.id, cdnUrl ?? "", variantAltText);
-              console.log(`Image rattachée à variante: ${variantKey} → ${v.id}`);
-            } catch (err) {
-              console.error("Erreur upload/attach image variante", variantKey, err);
-            }
-          }
+       for (const v of createdVariantsArr) {
+  const variantKey = handle + ":" + (v.selectedOptions ?? []).map(opt => opt.value).join(":");
+  // Change .find => .filter pour traiter toutes les variantes dans le CSV
+  const matchingVariantRows = group.filter(row =>
+    [row["Option1 Value"], row["Option2 Value"], row["Option3 Value"]]
+      .filter(Boolean)
+      .join(":") === (v.selectedOptions ?? []).map(opt => opt.value).join(":")
+  );
+  for (const variantCsvRow of matchingVariantRows) {
+    const variantImageUrl = variantCsvRow?.["Variant Image"];
+    const variantAltText = variantCsvRow?.["Image Alt Text"] ?? "";
+    if (
+      v.id &&
+      validImageUrl(variantImageUrl) &&
+      !variantImageUrl.startsWith("https://cdn.shopify.com")
+    ) {
+      try {
+        const filename = variantImageUrl.split('/').pop() ?? 'variant.jpg';
+        let cdnUrl = await uploadImageToShopifyUniversal(shop, token, variantImageUrl, filename);
+        if (!cdnUrl) {
+          console.warn(`CDN url not available for variante [${variantKey}]`);
         }
+        await attachImageToVariant(shop, token, v.id, cdnUrl ?? "", variantAltText);
+        console.log(`Image rattachée à variante: ${variantKey} → ${v.id}`);
+      } catch (err) {
+        console.error("Erreur upload/attach image variante", variantKey, err);
+      }
+    }
+  }
+}
         await new Promise(res => setTimeout(res, 300));
       } catch (err) {
         console.log('Erreur création produit GraphQL', handleUnique, err);
