@@ -189,11 +189,13 @@ export async function uploadImageToShopifyUniversal(
     let cdnUrl = await stagedUploadShopifyFile(shop, token, tempPath);
     if (!cdnUrl) {
       console.warn(`[Shopify] CDN url not available after staged upload for ${filename}`);
-      // FORCER LE POLLING
-      cdnUrl = await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 2);
-  
+      cdnUrl = await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
+    }
     return cdnUrl ?? null;
   }
+  // Toujours polling CDN pour fallback
+  return await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
+}
 
 /**
  * Fonction principale exportée pour l'API / le handler Next.js
