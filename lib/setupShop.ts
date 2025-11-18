@@ -60,7 +60,60 @@ export async function uploadImageToShopifyUniversal(
     filename.endsWith('.png') ? "image/png"
     : filename.endsWith('.webp') ? "image/webp"
     : "image/jpeg";
-  // ... (garde tel quel, conserve le polling !)
+  try {
+    console.log(`[Shopify] uploadImageToShopifyUniversal: uploading/creating ${filename}`);
+    const fileCreateRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+      body: JSON.stringify({
+        query: `
+          mutation fileCreate($files: [FileCreateInput!]!) {
+            fileCreate(files: $files) {
+              files {
+                id
+                fileStatus
+                preview {
+                  image {
+                    url
+                  }
+                }
+              }
+              userErrors { field message }
+            }
+          }
+        `,
+        variables: { files: [{ originalSource: imageUrl, alt: filename }] }
+      })
+    });
+    const fileCreateBodyText = await fileCreateRes.text();
+    let fileCreateJson: any = null;
+    try {
+      fileCreateJson = JSON.parse(fileCreateBodyText);
+    } catch {
+      console.error(`[Shopify] fileCreate ERROR: ${fileCreateBodyText}`);
+      throw new Error(`fileCreate failed: Non-JSON response (${fileCreateRes.status}) | Body: ${fileCreateBodyText}`);
+    }
+    if (fileCreateJson.data?.fileCreate?.userErrors?.length) {
+      console.error('[Shopify] fileCreate userErrors:', JSON.stringify(fileCreateJson.data.fileCreate.userErrors));
+      // Domaine bloqué : staged upload classique
+      const imgRes = await fetch(imageUrl);
+      if (!imgRes.ok) throw new Error("download image error");
+      const buf = Buffer.from(await imgRes.arrayBuffer());
+      const tempPath = path.join("/tmp", filename.replace(/[^\w\.-]/g, "_"));
+      fs.writeFileSync(tempPath, buf);
+      let cdnUrl = await stagedUploadShopifyFile(shop, token, tempPath);
+      if (!cdnUrl) {
+        console.warn(`[Shopify] CDN url not available after staged upload for ${filename}`);
+        cdnUrl = await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
+      }
+      return cdnUrl ?? null;
+    }
+    // Toujours polling CDN pour fallback
+    return await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
+  } catch (err) {
+    console.error("[Shopify] ERROR uploadImageToShopifyUniversal", err);
+    return null;
+  }
 }
 
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
