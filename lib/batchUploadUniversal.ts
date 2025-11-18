@@ -1,9 +1,16 @@
 import { FormData, File } from "formdata-node";
 import { FormDataEncoder } from "form-data-encoder";
 import { fetch } from "undici";
+import fs from "fs";
+import path from "path";
 
 // 1. Get staged upload URL for product media
-export async function getMediaStagedUpload(shop, token, filename, mimeType="image/jpeg") {
+export async function getMediaStagedUpload(
+  shop: string,
+  token: string,
+  filename: string,
+  mimeType: string = "image/jpeg"
+): Promise<any> {
   const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
     method: "POST",
     headers: {
@@ -36,7 +43,12 @@ export async function getMediaStagedUpload(shop, token, filename, mimeType="imag
 }
 
 // 2. Upload image to Google Cloud endpoint
-export async function uploadStagedMedia(stagedTarget, fileBuffer, mimeType, filename) {
+export async function uploadStagedMedia(
+  stagedTarget: any,
+  fileBuffer: Buffer,
+  mimeType: string,
+  filename: string
+): Promise<string> {
   const formData = new FormData();
   for (const param of stagedTarget.parameters) formData.append(param.name, param.value);
   formData.append("file", new File([fileBuffer], filename, {type: mimeType}));
@@ -56,7 +68,12 @@ export async function uploadStagedMedia(stagedTarget, fileBuffer, mimeType, file
 }
 
 // 3. Register the uploaded file with Shopify's fileCreate mutation
-export async function shopifyFileCreate(shop, token, resourceUrl, filename) {
+export async function shopifyFileCreate(
+  shop: string,
+  token: string,
+  resourceUrl: string,
+  filename: string
+): Promise<any> {
   const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
     method: "POST",
     headers: {
@@ -81,7 +98,13 @@ export async function shopifyFileCreate(shop, token, resourceUrl, filename) {
 }
 
 // 4. Poll for CDN URL (file available for product media)
-export async function pollShopifyFileCDNByFilename(shop, token, filename, intervalMs = 10000, maxTries = 40): Promise<string | null> {
+export async function pollShopifyFileCDNByFilename(
+  shop: string,
+  token: string,
+  filename: string,
+  intervalMs: number = 10000,
+  maxTries: number = 40
+): Promise<string | null> {
   for (let attempt = 1; attempt <= maxTries; attempt++) {
     const url = await searchShopifyFileByFilename(shop, token, filename);
     if (url) return url;
@@ -90,7 +113,11 @@ export async function pollShopifyFileCDNByFilename(shop, token, filename, interv
   return null;
 }
 
-export async function searchShopifyFileByFilename(shop: string, token: string, filename: string): Promise<string | null> {
+export async function searchShopifyFileByFilename(
+  shop: string,
+  token: string,
+  filename: string
+): Promise<string | null> {
   const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -116,7 +143,13 @@ export async function searchShopifyFileByFilename(shop: string, token: string, f
 }
 
 // 5. Attach file to product as product media
-export async function attachImageToProduct(shop, token, productId, imageUrl, altText = "") {
+export async function attachImageToProduct(
+  shop: string,
+  token: string,
+  productId: string,
+  imageUrl: string,
+  altText: string = ""
+): Promise<any> {
   const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
     method: "POST",
     headers: {
