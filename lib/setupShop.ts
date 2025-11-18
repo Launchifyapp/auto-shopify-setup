@@ -4,97 +4,137 @@ import fs from "fs";
 import { stagedUploadShopifyFile } from "./batchUploadUniversal";
 import { fetch } from "undici";
 
-// Helper: Detects delimiter ; or ,
-function guessCsvDelimiter(csvText) {
+/** Détecte automatiquement le séparateur du CSV ("," ou ";") */
+function guessCsvDelimiter(csvText: string): ";" | "," {
   const firstLine = csvText.split("\n")[0];
   return firstLine.includes(";") ? ";" : ",";
 }
 
-// Helper: Valid image URL
-function validImageUrl(url) {
+/** Vérifie la validité de l'URL d'image */
+function validImageUrl(url?: string): boolean {
   if (!url) return false;
   const v = url.trim().toLowerCase();
   return !!v && v !== "nan" && v !== "null" && v !== "undefined";
 }
 
-// Upload and return CDN Shopify URL, from HTTP image to staged upload (with fallback)
-async function uploadImageToShopify(shop, token, imageUrl, filename) {
-  if (imageUrl.startsWith("https://cdn.shopify.com")) return imageUrl;
-  const mimeType =
-    filename.endsWith(".png") ? "image/png" :
-    filename.endsWith(".webp") ? "image/webp" :
-    "image/jpeg";
-  try {
-    // Download remote image to buffer
-    const imgRes = await fetch(imageUrl);
-    if (!imgRes.ok) throw new Error("Image inaccessible: " + imageUrl);
-    const buf = Buffer.from(await imgRes.arrayBuffer());
-    // Write to temp file then do staged upload (for maximum compatibility)
-    const tempPath = path.join("/tmp", filename.replace(/[^\w.\-]/g, "_"));
-    fs.writeFileSync(tempPath, buf);
-    const cdnUrl = await stagedUploadShopifyFile(shop, token, tempPath);
-    return cdnUrl;
-  } catch (err) {
-    console.error("[Shopify] ERROR uploadImageToShopify", imageUrl, err);
-    return null;
-  }
+/** Attache une image à un produit Shopify */
+export async function attachImageToProduct(
+  shop: string,
+  token: string,
+  productId: string,
+  imageUrl: string,
+  altText: string = ""
+) {
+  const media = [
+    {
+      originalSource: imageUrl,
+      mediaContentType: "IMAGE",
+      alt: altText,
+    },
+  ];
+  await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token,
+    },
+    body: JSON.stringify({
+      query: `
+        mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+          productCreateMedia(productId: $productId, media: $media) {
+            media { id status preview { image { url } } }
+            mediaUserErrors { code message }
+          }
+        }
+      `,
+      variables: { productId, media },
+    }),
+  });
 }
 
-export async function ShopSetup({ shop, token }) {
+/** Attache une image à une variante Shopify */
+export async function attachImageToVariant(
+  shop: string,
+  token: string,
+  variantId: string,
+  imageUrl: string,
+  altText: string = ""
+) {
+  await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        mutation productVariantUpdate($input: ProductVariantUpdateInput!) {
+          productVariantUpdate(input: $input) {
+            productVariant { id image { id src altText } }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: {
+        input: {
+          id: variantId,
+          image: { src: imageUrl, altText },
+        },
+      },
+    }),
+  });
+}
+
+/** Fonction principale : créé les produits et upload/attache leurs images */
+export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
-    // 1. Fetch online CSV (products)
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
     const delimiter = guessCsvDelimiter(csvText);
-    console.log(`[Shopify] ShopSetup: parsed delimiter=${delimiter}`);
-
     const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter });
 
-    // 2. Group products by handle
-    const productsByHandle = {};
-    for (const row of records) {
+    // Regroupe les produits par handle
+    const productsByHandle: Record<string, any[]> = {};
+    records.forEach(row => {
       if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
       productsByHandle[row.Handle].push(row);
-    }
+    });
 
-    // 3. For each product, create it and attach images/variants
+    // Pour chaque produit, création + upload images produit/variante
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
 
-      // Build Shopify product options
-      const getOptionValues = opt =>
-        [...new Set(group.map(r => (r[opt] || "").trim()))]
+      // Prépare les options du produit Shopify
+      const makeOptions = (opt: string) =>
+        [...new Set(group.map(row => (row[opt] || "").trim()))]
           .filter(v => !!v && v !== "Default Title")
           .map(v => ({ name: v }));
 
-      const productOptions1 = getOptionValues("Option1 Value");
-      const productOptions2 = getOptionValues("Option2 Value");
-      const productOptions3 = getOptionValues("Option3 Value");
+      const optionValues1 = makeOptions("Option1 Value");
+      const optionValues2 = makeOptions("Option2 Value");
+      const optionValues3 = makeOptions("Option3 Value");
 
-      const productOptions = [];
-      if (main["Option1 Name"] && productOptions1.length)
-        productOptions.push({ name: main["Option1 Name"].trim(), values: productOptions1 });
-      if (main["Option2 Name"] && productOptions2.length)
-        productOptions.push({ name: main["Option2 Name"].trim(), values: productOptions2 });
-      if (main["Option3 Name"] && productOptions3.length)
-        productOptions.push({ name: main["Option3 Name"].trim(), values: productOptions3 });
+      const productOptions: { name: string; values: { name: string }[] }[] = [];
+      if (main["Option1 Name"] && optionValues1.length)
+        productOptions.push({ name: main["Option1 Name"].trim(), values: optionValues1 });
+      if (main["Option2 Name"] && optionValues2.length)
+        productOptions.push({ name: main["Option2 Name"].trim(), values: optionValues2 });
+      if (main["Option3 Name"] && optionValues3.length)
+        productOptions.push({ name: main["Option3 Name"].trim(), values: optionValues3 });
 
       const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
 
-      const productData = {
+      const productData: any = {
         title: main.Title,
         descriptionHtml: main["Body (HTML)"] || "",
         handle: handleUnique,
         vendor: main.Vendor,
         productType: main.Type,
-        tags: main.Tags ? main.Tags.split(",").map(t => t.trim()) : [],
+        tags: main.Tags ? main.Tags.split(",").map((t: string) => t.trim()) : [],
         productOptions: productOptions.length ? productOptions : undefined,
       };
 
-      // --- Create Product ---
-      let createdProductId = null;
-      let createdVariantsArr = [];
+      // Création produit Shopify
+      let productId: string | undefined;
+      let createdVariantsArr: any[] = [];
       try {
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
@@ -110,7 +150,7 @@ export async function ShopSetup({ shop, token }) {
                     id
                     title
                     handle
-                    variants(first: 50) { edges { node { id sku title selectedOptions { name value } } } }
+                    variants(first: 50) { edges { node { id selectedOptions { name value } } } }
                     options { id name position optionValues { id name hasVariants } }
                   }
                   userErrors { field message }
@@ -120,68 +160,47 @@ export async function ShopSetup({ shop, token }) {
             variables: { product: productData },
           }),
         });
-
-        const gqlBodyText = await gqlRes.text();
-        const gqlJson = JSON.parse(gqlBodyText);
+        const gqlJson = await gqlRes.json() as any;
         const product = gqlJson?.data?.productCreate?.product;
-        createdProductId = product?.id;
-        createdVariantsArr = product?.variants?.edges?.map(e => e.node) ?? [];
-        if (!createdProductId) {
-          console.error("Failed to create product for handle:", handleUnique, gqlBodyText);
+        productId = product?.id;
+        createdVariantsArr = product?.variants?.edges?.map((e: any) => e.node) ?? [];
+        if (!productId) {
+          console.error(`[Shopify] Product not created for handle: ${handleUnique}`);
           continue;
         }
-        console.log(`[Shopify] Created product: ${handleUnique} → ${createdProductId}`);
+        console.log(`[Shopify] Product created: ${handleUnique} → ${productId}`);
       } catch (err) {
-        console.error("Product creation error", handleUnique, err);
+        console.error("Error creating product:", handleUnique, err);
         continue;
       }
 
-      // --- Upload and Attach Product Images ---
+      // Upload et attache images produit
       for (const row of group) {
         const imageUrl = row["Image Src"];
-        const imageAltText = row["Image Alt Text"] || "";
+        const imageAltText = row["Image Alt Text"] ?? "";
         if (validImageUrl(imageUrl)) {
           const filename = imageUrl.split("/").pop();
           try {
-            const cdnUrl = await uploadImageToShopify(shop, token, imageUrl, filename);
+            // Download image to Buffer, write to tmp, upload to Shopify stagedFiles
+            const imgRes = await fetch(imageUrl);
+            if (!imgRes.ok) throw new Error("Image inaccessible: " + imageUrl);
+            const buf = Buffer.from(await imgRes.arrayBuffer());
+            const tempPath = path.join("/tmp", filename?.replace(/[^\w.\-]/g, "_") ?? "image.jpg");
+            fs.writeFileSync(tempPath, buf);
+            const cdnUrl = await stagedUploadShopifyFile(shop, token, tempPath);
             if (cdnUrl) {
-              // Attach image to product
-              await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "X-Shopify-Access-Token": token,
-                },
-                body: JSON.stringify({
-                  query: `
-                    mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-                      productCreateMedia(productId: $productId, media: $media) {
-                        media { id status preview { image { url } } }
-                        mediaUserErrors { code message }
-                      }
-                    }
-                  `,
-                  variables: {
-                    productId: createdProductId,
-                    media: [{
-                      originalSource: cdnUrl,
-                      mediaContentType: "IMAGE",
-                      alt: imageAltText
-                    }]
-                  }
-                }),
-              });
+              await attachImageToProduct(shop, token, productId, cdnUrl, imageAltText);
               console.log(`[Shopify] Product image attached: ${filename}`);
             }
           } catch (err) {
-            console.error("[Shopify] Image upload/attach failed", filename, err);
+            console.error("Image upload/attach failed", filename, err);
           }
         }
       }
 
-      // --- Upload and Attach Variant Images ---
+      // Upload et attache images variantes
       for (const v of createdVariantsArr) {
-        const variantKey = (v.selectedOptions || []).map(opt => opt.value).join(":");
+        const variantKey = (v.selectedOptions || []).map((opt: any) => opt.value).join(":");
         const matchingRows = group.filter(row =>
           [row["Option1 Value"], row["Option2 Value"], row["Option3 Value"]]
             .filter(Boolean)
@@ -189,40 +208,22 @@ export async function ShopSetup({ shop, token }) {
         );
         for (const variantCsvRow of matchingRows) {
           const variantImageUrl = variantCsvRow["Variant Image"];
-          const variantAltText = variantCsvRow["Image Alt Text"] || "";
+          const variantAltText = variantCsvRow["Image Alt Text"] ?? "";
           if (validImageUrl(variantImageUrl)) {
             const filename = variantImageUrl.split("/").pop();
             try {
-              const cdnUrl = await uploadImageToShopify(shop, token, variantImageUrl, filename);
-              if (cdnUrl) {
-                // Attach image to variant
-                await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    "X-Shopify-Access-Token": token,
-                  },
-                  body: JSON.stringify({
-                    query: `
-                      mutation productVariantUpdate($input: ProductVariantUpdateInput!) {
-                        productVariantUpdate(input: $input) {
-                          productVariant { id image { id src altText } }
-                          userErrors { field message }
-                        }
-                      }
-                    `,
-                    variables: {
-                      input: {
-                        id: v.id,
-                        image: { src: cdnUrl, altText: variantAltText }
-                      }
-                    }
-                  }),
-                });
+              const imgRes = await fetch(variantImageUrl);
+              if (!imgRes.ok) throw new Error("Image inaccessible: " + variantImageUrl);
+              const buf = Buffer.from(await imgRes.arrayBuffer());
+              const tempPath = path.join("/tmp", filename?.replace(/[^\w.\-]/g, "_") ?? "variant.jpg");
+              fs.writeFileSync(tempPath, buf);
+              const cdnUrl = await stagedUploadShopifyFile(shop, token, tempPath);
+              if (cdnUrl && v.id) {
+                await attachImageToVariant(shop, token, v.id, cdnUrl, variantAltText);
                 console.log(`[Shopify] Variant image attached: ${filename} → ${v.id}`);
               }
             } catch (err) {
-              console.error("[Shopify] Variant image upload/attach failed", filename, err);
+              console.error("Variant image upload/attach failed", filename, err);
             }
           }
         }
@@ -231,6 +232,9 @@ export async function ShopSetup({ shop, token }) {
       await new Promise(res => setTimeout(res, 300));
     }
   } catch (err) {
-    console.error("[Shopify] SetupShop ERROR:", err);
+    console.error("[Shopify] setupShop ERROR:", err);
   }
 }
+
+// FACULTATIF : export nommé pour Next.js API route
+export { setupShop }
