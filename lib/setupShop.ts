@@ -1,4 +1,4 @@
- import { parse } from "csv-parse/sync";
+import { parse } from "csv-parse/sync";
 import path from "path";
 import fs from "fs";
 import { stagedUploadShopifyFile, pollShopifyFileCDNByFilename } from "./batchUploadUniversal";
@@ -69,23 +69,26 @@ export async function uploadImageToShopifyUniversal(
 
 /**
  * PATCH : Upload toutes les images via le CSV des URLs et mapping CSV/Shopify CDN
+ * Version adaptée à ton fichier CSV ; les URLs sont en colonne 1 (index 1) sans vrai nom de colonne.
  */
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
-    // 1. Parse le CSV d'URL d'images
+    // 1. Parse le CSV d'URL d'images (les URLs sont dans colonne index 1 !)
     const csvPath = path.resolve("public", "Products_images-url.csv");
     const csvText = fs.readFileSync(csvPath, "utf8");
     const delimiter = guessCsvDelimiter(csvText);
-    const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter });
+    // On récupère les lignes en mode tableau (= pas columns:true car pas de header utile)
+    const records = parse(csvText, { columns: false, skip_empty_lines: true, delimiter });
 
     // 2. Upload toutes les images du CSV (unique)
     const cdnMapping: Record<string, string> = {};
-    for (const row of records) {
-      const imageUrl = row["Image Src"];
+    for (const row of records.slice(1)) { // skip header
+      const imageUrl = row[1];
       if (!validImageUrl(imageUrl)) continue;
       const filename = imageUrl.split("/").pop();
       if (!filename || cdnMapping[filename]) continue; // Ne réuploade pas !
       try {
+        console.log(`[UPLOAD] Start ${filename}`);
         const cdnUrl = await stagedUploadShopifyFile(shop, token, imageUrl);
         if (cdnUrl) {
           cdnMapping[filename] = cdnUrl;
