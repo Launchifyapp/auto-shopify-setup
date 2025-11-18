@@ -4,7 +4,7 @@ import fs from "fs";
 import { stagedUploadShopifyFile } from "./batchUploadUniversal";
 import { fetch } from "undici";
 
-/** Détecte automatiquement le séparateur du CSV ("," ou ";") */
+/** Détecte le séparateur du CSV ("," ou ";") */
 function guessCsvDelimiter(csvText: string): ";" | "," {
   const firstLine = csvText.split("\n")[0];
   return firstLine.includes(";") ? ";" : ",";
@@ -82,7 +82,7 @@ export async function attachImageToVariant(
   });
 }
 
-/** Fonction principale : créé les produits et upload/attache leurs images */
+/** Fonction principale: setup du shop - création produits, upload images, associations */
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
@@ -98,7 +98,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       productsByHandle[row.Handle].push(row);
     });
 
-    // Pour chaque produit, création + upload images produit/variante
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
 
@@ -235,6 +234,3 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     console.error("[Shopify] setupShop ERROR:", err);
   }
 }
-
-// FACULTATIF : export nommé pour Next.js API route
-export { setupShop }
