@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fetch } from "undici";
 import { stagedUploadShopifyFile, pollShopifyFileCDNByFilename, attachImageToProduct, attachImageToVariant } from "./batchUploadUniversal";
-import { parse } from "csv-parse/sync"; // <-- CORRECT pour type:module & csv-parse >=5.x
+import { parse } from "csv-parse/sync";
 
 // Vérifie la validité d'une URL
 function validImageUrl(url?: string): boolean {
@@ -25,6 +25,15 @@ function parseCsvShopify(csvText: string): any[] {
     quote: '"',
     trim: true
   }); // type: any[]
+}
+
+// Correction Next.js strict: typer la fonction cleanTags
+function cleanTags(tags: string | undefined): string[] {
+  if (!tags) return [];
+  return tags
+    .split(",")
+    .map(t => t.trim())
+    .filter(t => t && !t.startsWith("<") && !t.startsWith("&") && t !== "null" && t !== "undefined" && t !== "NaN");
 }
 
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
@@ -81,22 +90,13 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       const main = group.find(row => row.Title && row.Title.trim());
 
       if (!main || !main.Title || main.Title.trim() === "" || !main.Handle || !main.Vendor) {
-        console.warn(`Skip product creation: Missing mandatory fields for handle=${main && main.Handle}`);
+        console.warn(`Skip product creation: Missing mandatory fields for handle=${main?.Handle}`);
         continue;
-      }
-
-      // Mapping tags clean
-      function cleanTags(tags) {
-        if (!tags) return [];
-        return tags
-          .split(",")
-          .map(t => t.trim())
-          .filter(t => t && !t.startsWith("<") && !t.startsWith("&") && t !== "null" && t !== "undefined" && t !== "NaN");
       }
 
       // Options
       const optionNames = ["Option1 Name", "Option2 Name", "Option3 Name"].map(opt => main[opt]?.trim()).filter(Boolean);
-      const allOptionValues = {};
+      const allOptionValues: Record<string, string[]> = {};
       for (const name of optionNames) {
         allOptionValues[name] = Array.from(new Set(group.map(row => row[`${name} Value`]).filter(Boolean)));
       }
