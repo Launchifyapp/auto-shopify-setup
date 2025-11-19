@@ -143,8 +143,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             variables: { input: productCreateInput }
           }),
         });
-       const gqlJson = await gqlRes.json() as any;
-productId = gqlJson?.data?.productCreate?.product?.id;
+        const gqlJson = await gqlRes.json() as any;
+        productId = gqlJson?.data?.productCreate?.product?.id;
         if (!productId) {
           errors.push({ handle, details: gqlJson?.data?.productCreate?.userErrors || gqlJson.errors || "Unknown error" });
           console.error(`[${handle}] Aucun productId généré. UserErrors/shopify errors:`, gqlJson?.data?.productCreate?.userErrors || gqlJson.errors);
@@ -159,7 +159,7 @@ productId = gqlJson?.data?.productCreate?.product?.id;
           const productOptionsToCreate = optionNames.map((optName: string) => {
             // toutes les possible values pour cette colonne
             const values: string[] = Array.from(new Set(
-              group.map((row: any) => row[`Option${optionNames.indexOf(optName)+1} Value`]).filter(v => !!v)
+              group.map((row: any) => row[`Option${optionNames.indexOf(optName)+1} Value`]).filter((v: any) => !!v)
             ));
             return {
               name: optName,
@@ -182,7 +182,7 @@ productId = gqlJson?.data?.productCreate?.product?.id;
               variables: { productId, options: productOptionsToCreate }
             }),
           });
-          const optionsJson = await optionsRes.json();
+          const optionsJson = await optionsRes.json() as any;
           if (optionsJson?.data?.productOptionsCreate?.userErrors?.length) {
             errors.push({ handle, details: optionsJson?.data?.productOptionsCreate?.userErrors });
             console.error(`[${handle}] ERREUR optionsCreate`, optionsJson?.data?.productOptionsCreate?.userErrors);
@@ -194,7 +194,7 @@ productId = gqlJson?.data?.productCreate?.product?.id;
         // Mapping Shopify productVariantsBulkCreate: "options" is just an array of values in order
         const variantsPayload = group.map((row: any) => {
           // Les values dans l'ordre des optionNames
-          const values: string[] = optionNames.map((opt, idx) => row[`Option${idx+1} Value`] || "").filter(v => !!v);
+          const values: string[] = optionNames.map((opt, idx) => row[`Option${idx+1} Value`] || "").filter((v: any) => !!v);
           return {
             sku: row["Variant SKU"],
             price: row["Variant Price"] || main["Variant Price"] || "0",
@@ -231,7 +231,7 @@ productId = gqlJson?.data?.productCreate?.product?.id;
               variables: { productId, variants: variantsPayload }
             }),
           });
-          const bulkJson = await bulkRes.json();
+          const bulkJson = await bulkRes.json() as any;
           if (bulkJson?.data?.productVariantsBulkCreate?.userErrors?.length) {
             errors.push({ handle, details: bulkJson?.data?.productVariantsBulkCreate?.userErrors });
             console.error(`[${handle}] ERREUR variantsBulkCreate`, bulkJson?.data?.productVariantsBulkCreate?.userErrors);
