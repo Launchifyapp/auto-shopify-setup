@@ -140,7 +140,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             variables: { product: productPayload }
           }),
         });
-        const jsonResult = await result.json();
+        const jsonResult = await result.json() as any;
         const productId = jsonResult?.data?.productCreate?.product?.id;
         if (!productId) {
           errors.push({ handle, details: jsonResult?.data?.productCreate?.userErrors ?? jsonResult?.errors ?? "Unknown error" });
