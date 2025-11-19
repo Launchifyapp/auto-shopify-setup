@@ -41,7 +41,7 @@ function csvToStructuredProducts(csvText: string): any[] {
     const main = group.find((row: any) => row.Title && row.Title.trim()) || group[0];
 
     // productOptions structure for ProductInput
-    const productOptions = [];
+    const productOptions: { name: string, values: { name: string }[] }[] = [];
     for (let i = 1; i <= 3; i++) {
       const name = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
       if (name) {
