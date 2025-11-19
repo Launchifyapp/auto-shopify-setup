@@ -29,6 +29,7 @@ function parseCsvShopify(csvText: string): any[] {
   });
 }
 
+// Convertit le CSV natif Shopify vers structure exploitable
 function csvToStructuredProducts(csvText: string): any[] {
   const records = parseCsvShopify(csvText);
   const productsByHandle: Record<string, any[]> = {};
@@ -56,7 +57,6 @@ function csvToStructuredProducts(csvText: string): any[] {
       productType: main["Type"] || main["Product Category"] || "",
       tags: cleanTags(main.Tags ?? main["Product Category"] ?? "").join(","),
       status: "ACTIVE"
-      // PAS de variants/options ici !
     };
 
     products.push({
@@ -70,7 +70,7 @@ function csvToStructuredProducts(csvText: string): any[] {
   return products;
 }
 
-// MAIN FUNCTION compatible Shopify Admin GraphQL API
+// MAIN FUNCTION - compatible Shopify Admin GraphQL API
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     console.log("[Shopify] setupShop: fetch CSV...");
@@ -108,7 +108,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         productId = gqlJson?.data?.productCreate?.product?.id;
         if (!productId) {
           errors.push({ handle, details: gqlJson?.data?.productCreate?.userErrors || gqlJson.errors || "Unknown error" });
-          console.error(`[${handle}] Aucun productId généré. UserErrors/shopify errors:`, gqlJson?.data?.productCreate?.userErrors || gqlJson.errors);
+          console.error(`[${handle}] Aucun productId généré. UserErrors/shopify errors:`, JSON.stringify(gqlJson?.data?.productCreate?.userErrors || gqlJson.errors, null, 2));
           continue;
         }
         count++;
@@ -141,20 +141,33 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           const optionsJson = await optionsRes.json() as any;
           if (optionsJson?.data?.productOptionsCreate?.userErrors?.length) {
             errors.push({ handle, details: optionsJson?.data?.productOptionsCreate?.userErrors });
-            console.error(`[${handle}] ERREUR optionsCreate`, optionsJson?.data?.productOptionsCreate?.userErrors);
+            console.error(`[${handle}] ERREUR optionsCreate`, JSON.stringify(optionsJson?.data?.productOptionsCreate?.userErrors, null, 2));
             continue;
           }
         }
 
         // --- 5. CREATE VARIANTS ONE-BY-ONE ---
         for (const [vidx, row] of group.entries()) {
+          // LOGS DEBUG : CSV + mapping
+          console.log(`[${handle}] VARIANT INDEX=${vidx}`);
+          console.log(`[${handle}] Variant CSV row:`, JSON.stringify(row, null, 2));
+          console.log(`[${handle}] Option names:`, JSON.stringify(optionNames));
+          console.log(`[${handle}] Raw mapping:`,
+            optionNames.map((opt: string, i: number) => ({
+              name: opt,
+              value: (row[`Option${i+1} Value`] || "").trim()
+            }))
+          );
+
           const selectedOptions: { name: string; value: string }[] =
             optionNames.map((opt: string, i: number) => ({
               name: opt,
               value: (row[`Option${i+1} Value`] || "").trim()
             })).filter((optObj: { name: string; value: string }) => !!optObj.value);
 
+          console.log(`[${handle}] selectedOptions:`, JSON.stringify(selectedOptions));
           const sku = row["Variant SKU"] && String(row["Variant SKU"]).trim() ? String(row["Variant SKU"]).trim() : `SKU-${handle}-${vidx+1}`;
+          console.log(`[${handle}] Built SKU: ${sku}`);
 
           const variantInput = {
             productId,
@@ -166,6 +179,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             taxable: row["Variant Taxable"] === "True",
             selectedOptions
           };
+
+          console.log(`[${handle}] Shopify productVariantCreate input:`, JSON.stringify(variantInput, null, 2));
 
           const variantRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
             method: "POST",
@@ -184,9 +199,11 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           });
 
           const variantJson = await variantRes.json() as any;
+          console.log(`[${handle}] Shopify productVariantCreate response:`, JSON.stringify(variantJson, null, 2));
+
           if (variantJson?.data?.productVariantCreate?.userErrors?.length) {
             errors.push({ handle, details: variantJson?.data?.productVariantCreate?.userErrors });
-            console.error(`[${handle}] ERREUR productVariantCreate`, variantJson?.data?.productVariantCreate?.userErrors);
+            console.error(`[${handle}] ERREUR productVariantCreate`, JSON.stringify(variantJson?.data?.productVariantCreate?.userErrors, null, 2));
             continue;
           }
 
