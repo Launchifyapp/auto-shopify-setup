@@ -57,7 +57,7 @@ function csvToStructuredProducts(csvText: string): any[] {
       vendor: main.Vendor,
       productType: main["Type"] || main["Product Category"] || "",
       tags: cleanTags(main.Tags ?? main["Product Category"] ?? "").join(","),
-      status: main["Status"] || "ACTIVE" // Optionnel, tu peux le retirer si inutile
+      status: "ACTIVE" // Optionnel, tu peux le retirer si inutile
       // NO options/variants here!
     };
 
