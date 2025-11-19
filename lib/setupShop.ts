@@ -56,7 +56,8 @@ function csvToStructuredProducts(csvText: string): any[] {
       handle: main.Handle,
       vendor: main.Vendor,
       productType: main["Type"] || main["Product Category"] || "",
-      tags: cleanTags(main.Tags ?? main["Product Category"] ?? "").join(",")
+      tags: cleanTags(main.Tags ?? main["Product Category"] ?? "").join(","),
+      status: main["Status"] || "ACTIVE" // Optionnel, tu peux le retirer si inutile
       // NO options/variants here!
     };
 
@@ -72,14 +73,15 @@ function csvToStructuredProducts(csvText: string): any[] {
   return products;
 }
 
-// MAIN FUNCTION - compatible Shopify 2024+ API logic
+// MAIN FUNCTION - compatible Shopify 2025-10 API logic (mutation bulk)
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     console.log("[Shopify] setupShop: fetch CSV...");
-    // 1. get CSV
+    // 1. get CSV (assumes remote, change if needed)
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
+
     // 2. parse CSV
     const products = csvToStructuredProducts(csvText);
 
@@ -127,8 +129,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       try {
         // --- 4. M1: CRÉATION DU PRODUIT ---
         console.log(`[${handle}] Shopify productCreate payload:`, JSON.stringify(productCreateInput, null, 2));
-        // Utilise ProductInput (PAS ProductCreateInput)
-        const gqlRes = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
+        // Utilise ProductInput API 2025-10
+        const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
           body: JSON.stringify({
@@ -154,7 +156,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
         // --- 5. M2: AJOUT DES OPTIONS ---
         if (optionNames.length > 0) {
-          // Extraire les valeurs uniques pour chaque option :
           const productOptionsToCreate = optionNames.map((optName: string) => {
             const values: string[] = Array.from(new Set(
               group.map((row: any) => row[`Option${optionNames.indexOf(optName)+1} Value`]).filter((v: any) => !!v)
@@ -165,7 +166,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             };
           });
           console.log(`[${handle}] Shopify productOptionsCreate input:`, JSON.stringify(productOptionsToCreate, null, 2));
-          const optionsRes = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
+          const optionsRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
             body: JSON.stringify({
@@ -188,14 +189,13 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // --- 6. M3: CRÉATION BULK DES VARIANTS ---
+        // --- 6. M3: CRÉATION BULK DES VARIANTS (SHOPIFY 2025-10) ---
         const variantsPayload = group.map((row: any, idx: number) => {
-          // Pour le debug, on force un SKU si absent
+          // Forcer un SKU si absent pour chaque variant
           const sku = row["Variant SKU"] && String(row["Variant SKU"]).trim() ? String(row["Variant SKU"]).trim() : `SKU-${handleUnique}-${idx+1}`;
-          // Les values dans l'ordre des optionNames
           const values: string[] = optionNames.map((opt: any, i: number) => row[`Option${i+1} Value`] || "").filter((v: any) => !!v);
           return {
-            sku: sku,
+            sku,
             price: row["Variant Price"] || main["Variant Price"] || "0",
             compareAtPrice: row["Variant Compare At Price"] || main["Variant Compare At Price"],
             barcode: row["Variant Barcode"],
@@ -206,7 +206,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         });
         if (variantsPayload.length) {
           console.log(`[${handle}] Shopify productVariantsBulkCreate:`, JSON.stringify(variantsPayload, null, 2));
-          const bulkRes = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
+          const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
             body: JSON.stringify({
