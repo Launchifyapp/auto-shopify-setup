@@ -52,7 +52,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       productsByHandle[row.Handle].push(row);
     }
 
-    // Upload images produits et variantes
+    // Upload images produits et variantes d'abord pour disponibilité CDN immédiate
     const imagesToUpload: { url: string; filename: string }[] = [];
     for (const row of records) {
       if (validImageUrl(row["Image Src"])) {
@@ -77,14 +77,13 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         const imgBuffer = await fetch(img.url).then(res => res.arrayBuffer());
         const tempPath = path.join("/tmp", img.filename);
         fs.writeFileSync(tempPath, Buffer.from(imgBuffer));
-        // Upload image to Shopify files (staged upload)
         await stagedUploadShopifyFile(shop, token, tempPath);
       } catch (e) {
         console.error(`[setupShop BatchUpload FAIL] ${img.filename}:`, e);
       }
     }
 
-    // Création produit principal SANS variantes ni options, puis ajout des variantes
+    // Création des produits principaux puis de leurs variantes et associations images
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group.find(row => row.Title && row.Title.trim());
       if (!main || !main.Title || !main.Handle || !main.Vendor) {
@@ -92,7 +91,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         continue;
       }
 
-      // Les options (ex: Couleur, Taille) et variants (lignes par handle pour ce produit)
+      // Détection des noms d'options dynamiques : support 1, 2 ou 3 options !
       const optionNames = ["Option1 Name", "Option2 Name", "Option3 Name"]
         .map(opt => main[opt] && main[opt].trim())
         .filter(Boolean);
@@ -113,7 +112,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       let productId: string | undefined;
 
       try {
-        // Création produit
+        // 1. Crée le produit principal
         const gqlRes = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -146,16 +145,17 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         continue;
       }
 
-      // Ajout des variantes une à une
+      // 2. Ajout des variantes dynamiques (multi-options), puis l'image de chaque variant !
       for (const variantRow of group) {
-        // Reconstruit l'objet variant à partir de la ligne CSV
-        const selectedOptions = optionNames.map((name, idx) => ({
-          name,
-          value: variantRow[`${name} Value`] || ""
-        })).filter(opt => opt.value);
+        // Reconstruit l'array selectedOptions pour toutes les options du produit (nom dynamique)
+        const selectedOptions = optionNames.map(optionName => ({
+          name: optionName,
+          value: variantRow[`${optionName} Value`] || ""
+        }));
 
-        // Ne pas créer si pas d'option/value valable
-        if (selectedOptions.length === 0) continue;
+        // Shopify: pour chaque variant il faut au moins une valeur dans selectedOptions
+        const hasValidOption = selectedOptions.some(o => o.value);
+        if (!hasValidOption) continue;
 
         // Payload mutation Shopify
         const variantPayload: any = {
@@ -168,7 +168,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           barcode: variantRow["Variant Barcode"],
           selectedOptions,
         };
-        // Si image dispo, ajoute-la par update après
+
         try {
           const gqlVariantRes = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
             method: "POST",
@@ -180,7 +180,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
               query: `
                 mutation productVariantCreate($input: ProductVariantCreateInput!) {
                   productVariantCreate(input: $input) {
-                    productVariant { id sku selectedOptions { name value } }
+                    productVariant { id sku title selectedOptions { name value } }
                     userErrors { field message }
                   }
                 }
@@ -190,7 +190,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           });
           const gqlVariantJson = await gqlVariantRes.json() as any;
           const variantId = gqlVariantJson?.data?.productVariantCreate?.productVariant?.id;
-          // Attache image spécifique s'il y en a une pour la variante
+
+          // Attache image spécifique pour la variante, si dispo
           if (variantId && validImageUrl(variantRow["Variant Image"])) {
             await attachImageToVariant(shop, token, variantId, variantRow["Variant Image"], variantRow["Image Alt Text"] ?? "");
             console.log(`[setupShop:VARIANT IMAGE ATTACHED] for variant id ${variantId}`);
@@ -201,7 +202,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         await new Promise(res => setTimeout(res, 100));
       }
 
-      // Attache les images produits
+      // 3. Attache les images produits
       for (const row of group) {
         const productImageUrl = row["Image Src"];
         const imageAltText = row["Image Alt Text"] ?? "";
@@ -215,7 +216,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       }
       await new Promise(res => setTimeout(res, 200)); // Rate-limit Shopify
     }
-
     console.log("[Shopify] setupShop: DONE.");
   } catch (err) {
     console.log("Erreur globale setupShop:", err);
