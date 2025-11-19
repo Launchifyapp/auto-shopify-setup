@@ -4,7 +4,6 @@ import { fetch } from "undici";
 import { stagedUploadShopifyFile, attachImageToProduct, attachImageToVariant } from "./batchUploadUniversal";
 import { parse } from "csv-parse/sync";
 
-// UTILS
 function validImageUrl(url?: string): boolean {
   if (!url) return false;
   const v = url.trim().toLowerCase();
@@ -29,7 +28,7 @@ function parseCsvShopify(csvText: string): any[] {
   });
 }
 
-// Conversion CSV natif Shopify -> structure utilisable
+// Conversion CSV natif Shopify -> structure exploitable
 function csvToStructuredProducts(csvText: string): any[] {
   const records = parseCsvShopify(csvText);
   const productsByHandle: Record<string, any[]> = {};
@@ -42,18 +41,20 @@ function csvToStructuredProducts(csvText: string): any[] {
   for (const [handle, group] of Object.entries(productsByHandle)) {
     const main = group.find((row: any) => row.Title && row.Title.trim()) || group[0];
 
-    // Noms des options extraites
+    // Option names for each product, ex: ["Couleur"]
     const optionNames: string[] = [];
     for (let i = 1; i <= 3; i++) {
       const name = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
       if (name) optionNames.push(name);
     }
+
+    // Options to create, ex: { name: "Couleur", values: ["Noir", "Blanc", ...] }
     const optionsToCreate = optionNames.map((name: string, idx: number) => ({
       name,
       values: Array.from(new Set(group.map((row: any) => row[`Option${idx+1} Value`]).filter((v: any) => !!v)))
     }));
 
-    // Prépare variants pour la mutation bulk
+    // Variants array for bulk creation
     const variantsToCreate = group.map((row: any, idx: number) => ({
       options: optionNames.map((opt: string, i: number) => (row[`Option${i+1} Value`] || "").trim()),
       price: row["Variant Price"] || main["Variant Price"] || "0",
@@ -76,16 +77,13 @@ function csvToStructuredProducts(csvText: string): any[] {
   return products;
 }
 
-// PIPELINE PATCHÉ Shopify Admin GraphQL API (API 2024+) : 3 étapes
+// PATCH Shopify v2024+ : productCreate (fields only), productOptionsCreate, productVariantsBulkCreate
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     console.log("[Shopify] setupShop: fetch CSV...");
-    // 1. get CSV
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
-
-    // 2. Parse CSV et structure data produits
     const products = csvToStructuredProducts(csvText);
 
     let count = 0, errors: any[] = [];
@@ -93,7 +91,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     for (const { handle, group, main, optionNames, optionsToCreate, variantsToCreate } of products) {
       let productId: string | undefined;
       try {
-        // --- 1. Crée le produit (SANS options/variants) ---
+        // 1. Création du produit sans options/variants
         const productCreateInput = {
           title: main.Title,
           descriptionHtml: main["Body (HTML)"] || "",
@@ -105,7 +103,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         };
 
         console.log(`[${handle}] Shopify productCreate input:`, JSON.stringify(productCreateInput, null, 2));
-        const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+        const createRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
           body: JSON.stringify({
@@ -120,16 +118,17 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             variables: { input: productCreateInput }
           }),
         });
-        const gqlJson = await gqlRes.json() as any;
-        productId = gqlJson?.data?.productCreate?.product?.id;
+        const createdJson = await createRes.json() as any;
+        productId = createdJson?.data?.productCreate?.product?.id;
         if (!productId) {
-          errors.push({ handle, step: "productCreate", details: gqlJson?.data?.productCreate?.userErrors || gqlJson.errors || "Unknown error" });
-          console.error(`[${handle}] ERREUR productCreate`, JSON.stringify(gqlJson?.data?.productCreate?.userErrors || gqlJson.errors, null, 2));
+          errors.push({ handle, step: "productCreate", details: createdJson?.data?.productCreate?.userErrors || createdJson.errors || "Unknown error" });
+          console.error(`[${handle}] ERREUR productCreate`, JSON.stringify(createdJson?.data?.productCreate?.userErrors || createdJson.errors, null, 2));
           continue;
         }
+
         count++;
 
-        // --- 2. Ajoute les options au produit ---
+        // 2. Ajout des options
         if (optionsToCreate.length > 0) {
           console.log(`[${handle}] Shopify productOptionsCreate input:`, JSON.stringify(optionsToCreate, null, 2));
           const optionsRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
@@ -155,7 +154,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // --- 3. Ajoute les variants au produit en bulk (bulkCreate !) ---
+        // 3. Ajout des variants (en bulk)
         if (variantsToCreate.length > 0) {
           console.log(`[${handle}] Shopify productVariantsBulkCreate input:`, JSON.stringify(variantsToCreate, null, 2));
           const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
@@ -182,10 +181,37 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           if (bulkJson?.data?.productVariantsBulkCreate?.userErrors?.length) {
             errors.push({ handle, step: "productVariantsBulkCreate", details: bulkJson?.data?.productVariantsBulkCreate?.userErrors });
             console.error(`[${handle}] ERREUR productVariantsBulkCreate`, JSON.stringify(bulkJson?.data?.productVariantsBulkCreate?.userErrors, null, 2));
+          } else {
+            // Vérification finale : requête pour afficher les variantes créées
+            const checkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+              body: JSON.stringify({
+                query: `
+                  query fetchVariants($productId: ID!) {
+                    product(id: $productId) {
+                      variants(first: 10) {
+                        edges {
+                          node {
+                            id
+                            sku
+                            title
+                            selectedOptions { name value }
+                          }
+                        }
+                      }
+                    }
+                  }
+                `,
+                variables: { productId }
+              }),
+            });
+            const checkJson = await checkRes.json() as any;
+            console.log(`[${handle}] After create: product variants:`, JSON.stringify(checkJson?.data?.product?.variants?.edges ?? [], null, 2));
           }
         }
 
-        // --- Attache image produit principal
+        // Ajout images produit
         for (const row of group) {
           const productImageUrl = row["Image Src"];
           const imageAltText = row["Image Alt Text"] ?? "";
@@ -199,10 +225,9 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // Si tu as besoin d’attacher une image spécifique à chaque variant, utilise attachImageToVariant ici après avoir récupéré les variantIds.
+        // Pour chaque variant créé, on pourrait utiliser attachImageToVariant ici avec le mapping id/options.
 
-        await new Promise(res => setTimeout(res, 200)); // Shopify rate limit
-
+        await new Promise(res => setTimeout(res, 200));
       } catch (err) {
         errors.push({ handle, details: err });
         console.error(`[${handle}] FATAL erreur setupShop pour le produit`, handle, err);
