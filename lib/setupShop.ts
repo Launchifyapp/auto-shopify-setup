@@ -78,6 +78,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         const tempPath = path.join("/tmp", img.filename);
         fs.writeFileSync(tempPath, Buffer.from(imgBuffer));
         await stagedUploadShopifyFile(shop, token, tempPath);
+        console.log(`[setupShop BatchUpload OK] uploaded: "${img.url}"`);
       } catch (e) {
         console.error(`[setupShop BatchUpload FAIL] ${img.filename}:`, e);
       }
@@ -113,6 +114,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
       try {
         // 1. Crée le produit principal
+        console.log(`[Shopify] productCreate:`, JSON.stringify(productPayload, null, 2));
         const gqlRes = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -135,13 +137,18 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         productId = gqlJson?.data?.productCreate?.product?.id;
         if (!productId) {
           console.error(
-            "Aucun productId généré.",
+            "[ERROR] Aucun productId généré.",
             "Réponse brute:", JSON.stringify(gqlJson)
           );
           continue;
+        } else {
+          console.log(`[Shopify] Product created [${handleUnique}] id=${productId}`);
+        }
+        if (gqlJson?.data?.productCreate?.userErrors?.length) {
+          console.error(`[Shopify][ProductCreate] userErrors:`, gqlJson?.data?.productCreate?.userErrors);
         }
       } catch (err) {
-        console.log('Erreur création produit GraphQL', handleUnique, err);
+        console.log('[ERROR] création produit GraphQL', handleUnique, err);
         continue;
       }
 
@@ -153,11 +160,12 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           value: variantRow[`${optionName} Value`] || ""
         }));
 
-        // Shopify: pour chaque variant il faut au moins une valeur dans selectedOptions
         const hasValidOption = selectedOptions.some(o => o.value);
-        if (!hasValidOption) continue;
+        if (!hasValidOption) {
+          console.log(`[SKIP] Variant not created for row without selectedOptions:`, variantRow);
+          continue;
+        }
 
-        // Payload mutation Shopify
         const variantPayload: any = {
           productId,
           price: variantRow["Variant Price"] || main["Variant Price"] || "0",
@@ -170,6 +178,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         };
 
         try {
+          console.log(`[Shopify] productVariantCreate:`, JSON.stringify(variantPayload, null, 2));
           const gqlVariantRes = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
             method: "POST",
             headers: {
@@ -189,15 +198,27 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             }),
           });
           const gqlVariantJson = await gqlVariantRes.json() as any;
+          if (gqlVariantJson?.data?.productVariantCreate?.userErrors?.length) {
+            console.error(`[Shopify][VariantCreate][ERROR] userErrors:`, gqlVariantJson?.data?.productVariantCreate?.userErrors);
+          }
           const variantId = gqlVariantJson?.data?.productVariantCreate?.productVariant?.id;
+
+          if (!variantId) {
+            console.error(`[ERROR] Variant NOT CREATED for row:`, variantRow, "Réponse brute:", JSON.stringify(gqlVariantJson));
+            continue;
+          } else {
+            console.log(`[Shopify] Variant created id=${variantId} sku=${variantPayload.sku} options=`, selectedOptions);
+          }
 
           // Attache image spécifique pour la variante, si dispo
           if (variantId && validImageUrl(variantRow["Variant Image"])) {
             await attachImageToVariant(shop, token, variantId, variantRow["Variant Image"], variantRow["Image Alt Text"] ?? "");
             console.log(`[setupShop:VARIANT IMAGE ATTACHED] for variant id ${variantId}`);
+          } else {
+            console.log(`[setupShop][VARIANT IMAGE] Skipped for variantId=${variantId} / row:`, variantRow);
           }
         } catch (err) {
-          console.error("Erreur création ou update image variant", handleUnique, err);
+          console.error("[ERROR] création/update variant/image", handleUnique, err);
         }
         await new Promise(res => setTimeout(res, 100));
       }
@@ -209,8 +230,9 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         if (validImageUrl(productImageUrl)) {
           try {
             await attachImageToProduct(shop, token, productId!, productImageUrl, imageAltText);
+            console.log(`[setupShop:PRODUCT IMAGE ATTACHED] for product id ${productId}`);
           } catch (err) {
-            console.error("Erreur linkage image produit", handle, err);
+            console.error("[ERROR] linkage image produit", handle, err);
           }
         }
       }
@@ -218,6 +240,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     }
     console.log("[Shopify] setupShop: DONE.");
   } catch (err) {
-    console.log("Erreur globale setupShop:", err);
+    console.log("[ERROR] globale setupShop:", err);
   }
 }
