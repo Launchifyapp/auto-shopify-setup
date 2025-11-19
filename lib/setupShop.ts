@@ -127,7 +127,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       try {
         // --- 4. M1: CRÉATION DU PRODUIT ---
         console.log(`[${handle}] Shopify productCreate payload:`, JSON.stringify(productCreateInput, null, 2));
-        // Attention : input doit être passé avec "input" et le type ProductCreateInput!
+        // Utilise ProductInput (PAS ProductCreateInput)
         const gqlRes = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -153,11 +153,9 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         count++;
 
         // --- 5. M2: AJOUT DES OPTIONS ---
-        // On n'envoie cette mutation que si optionNames sont présents ET qu'il y a >1 value
         if (optionNames.length > 0) {
-          // Extraire "values" de toutes options
+          // Extraire les valeurs uniques pour chaque option :
           const productOptionsToCreate = optionNames.map((optName: string) => {
-            // toutes les possible values pour cette colonne
             const values: string[] = Array.from(new Set(
               group.map((row: any) => row[`Option${optionNames.indexOf(optName)+1} Value`]).filter((v: any) => !!v)
             ));
@@ -191,12 +189,13 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         }
 
         // --- 6. M3: CRÉATION BULK DES VARIANTS ---
-        // Mapping Shopify productVariantsBulkCreate: "options" is just an array of values in order
-        const variantsPayload = group.map((row: any) => {
+        const variantsPayload = group.map((row: any, idx: number) => {
+          // Pour le debug, on force un SKU si absent
+          const sku = row["Variant SKU"] && String(row["Variant SKU"]).trim() ? String(row["Variant SKU"]).trim() : `SKU-${handleUnique}-${idx+1}`;
           // Les values dans l'ordre des optionNames
-          const values: string[] = optionNames.map((opt: any, idx: number) => row[`Option${idx+1} Value`] || "").filter((v: any) => !!v);
+          const values: string[] = optionNames.map((opt: any, i: number) => row[`Option${i+1} Value`] || "").filter((v: any) => !!v);
           return {
-            sku: row["Variant SKU"],
+            sku: sku,
             price: row["Variant Price"] || main["Variant Price"] || "0",
             compareAtPrice: row["Variant Compare At Price"] || main["Variant Compare At Price"],
             barcode: row["Variant Barcode"],
@@ -232,15 +231,14 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             }),
           });
           const bulkJson = await bulkRes.json() as any;
+          console.log(`[BulkCreate Response ${handle}]`, JSON.stringify(bulkJson, null, 2));
           if (bulkJson?.data?.productVariantsBulkCreate?.userErrors?.length) {
             errors.push({ handle, details: bulkJson?.data?.productVariantsBulkCreate?.userErrors });
             console.error(`[${handle}] ERREUR variantsBulkCreate`, bulkJson?.data?.productVariantsBulkCreate?.userErrors);
           }
 
-          // Attaches d'images pour variants
           const createdVariants = bulkJson?.data?.productVariantsBulkCreate?.product?.variants?.edges?.map((e: any) => e.node) || [];
           for (const v of createdVariants) {
-            // On recalcule matching
             const variantMatch = group.find((row: any) =>
               optionNames.every((name: string, idx: number) =>
                 v.selectedOptions.some((o: any) => o.name === name && o.value === (row[`Option${idx + 1} Value`] || ""))
