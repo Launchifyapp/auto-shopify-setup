@@ -11,7 +11,7 @@ export async function getMediaStagedUpload(
   filename: string,
   mimeType: string = "image/jpeg"
 ): Promise<any> {
-  const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -79,7 +79,7 @@ export async function shopifyFileCreate(
   resourceUrl: string,
   filename: string
 ): Promise<any> {
-  const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -110,7 +110,7 @@ export async function attachImageToProduct(
   imageUrl: string,
   altText: string = ""
 ): Promise<any> {
-  const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -148,7 +148,7 @@ export async function attachImageToVariant(
   imageUrl: string,
   altText: string = ""
 ): Promise<any> {
-  const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
     body: JSON.stringify({
