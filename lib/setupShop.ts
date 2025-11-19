@@ -82,7 +82,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       }
     }
 
-    // Création des produits principaux avec variantes (mutation unique)
+    // Création des produits principaux avec variantes
     for (const [handle, group] of Object.entries(productsByHandle)) {
       // La première ligne du groupe (produit principal), contient les noms d'options
       const main = group.find(row => row.Title && row.Title.trim()) || group[0];
@@ -125,21 +125,21 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         vendor: main.Vendor,
         productType: main["Type"] || main["Product Category"] || "",
         tags: cleanTags(main.Tags ?? main["Product Category"] ?? "").join(","),
-        options: optionNames, // <-- Un tableau de chaînes, pas un tableau d'objets !
-        variants,             // <-- Un tableau d'objets, chacun avec ses selectedOptions
+        options: optionNames, // <--- Tableau de chaînes, ex: ["Couleur", "Taille"]
+        variants,             // <--- Tableau d'objets, chaque selectedOptions = [{name,value}]
       };
 
       let productId: string | undefined;
 
       try {
-        // Crée le produit principal AVEC variants et options
+        // mutation must use ProductCreateInput!
         console.log(`[${handle}] ProductCreate payload:`, JSON.stringify(productPayload, null, 2));
         const gqlRes = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
           body: JSON.stringify({
             query: `
-              mutation productCreate($product: ProductInput!) {
+              mutation productCreate($product: ProductCreateInput!) {
                 productCreate(product: $product) {
                   product {
                     id
