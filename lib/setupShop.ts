@@ -48,36 +48,32 @@ function csvToStructuredProducts(csvText: string): any[] {
       if (name) optionNames.push(name);
     }
 
-    // Options to create, ex: { name: "Couleur", values: ["Noir", "Blanc", ...] }
-    const optionsToCreate = optionNames.map((name: string, idx: number) => ({
+    // Values for productOptions array (Shopify unstable API structure)
+    const productOptions = optionNames.map((name: string, idx: number) => ({
       name,
-      values: Array.from(new Set(group.map((row: any) => row[`Option${idx+1} Value`]).filter((v: any) => !!v)))
-    }));
-
-    // Variants array for bulk creation
-    const variantsToCreate = group.map((row: any, idx: number) => ({
-      options: optionNames.map((opt: string, i: number) => (row[`Option${i+1} Value`] || "").trim()),
-      price: row["Variant Price"] || main["Variant Price"] || "0",
-      compareAtPrice: row["Variant Compare At Price"] || main["Variant Compare At Price"] || undefined,
-      sku: row["Variant SKU"] && String(row["Variant SKU"]).trim() ? String(row["Variant SKU"]).trim() : `SKU-${handle}-${idx+1}`,
-      barcode: row["Variant Barcode"] || undefined,
-      requiresShipping: row["Variant Requires Shipping"] === "True",
-      taxable: row["Variant Taxable"] === "True"
+      values: Array.from(
+        new Set(
+          group.map((row: any) => row[`Option${idx+1} Value`])
+          .filter((v: any) => !!v && v.trim())
+        )
+      ).map((value: string) => ({ name: value.trim() }))
     }));
 
     products.push({
       handle,
       group,
       main,
-      optionNames,
-      optionsToCreate,
-      variantsToCreate
+      productOptions
     });
   }
   return products;
 }
 
-// PATCH Shopify v2024+ : productCreate (fields only), productOptionsCreate, productVariantsBulkCreate
+/**
+ * Pipeline Shopify : utilise la mutation productCreate avec productOptions intégré
+ * Les variants sont générés automatiquement par Shopify via les combinaison d'options
+ * Fonctionne sur API unstable ou toute version qui supporte product/productOptions dans productCreate
+ */
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     console.log("[Shopify] setupShop: fetch CSV...");
@@ -88,128 +84,73 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
     let count = 0, errors: any[] = [];
 
-    for (const { handle, group, main, optionNames, optionsToCreate, variantsToCreate } of products) {
-      let productId: string | undefined;
+    for (const { handle, group, main, productOptions } of products) {
       try {
-        // 1. Création du produit sans options/variants
-        const productCreateInput = {
+        // 1. Build product payload for Shopify "unstable" API (direct productOptions)
+        const productPayload: Record<string, any> = {
           title: main.Title,
           descriptionHtml: main["Body (HTML)"] || "",
           handle: handle + "-" + Math.random().toString(16).slice(2, 7),
           vendor: main.Vendor,
           productType: main["Type"] || main["Product Category"] || "",
+          // Tag as array is accepted, but you can use string if preferred
           tags: cleanTags(main.Tags ?? main["Product Category"] ?? ""),
-          status: "ACTIVE"
+          status: "ACTIVE",
+          productOptions // format must be: [{name, values: [{name}]}, ...]
         };
-
-        console.log(`[${handle}] Shopify productCreate input:`, JSON.stringify(productCreateInput, null, 2));
-        const createRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+        console.log(`[${handle}] Shopify productCreate input:`, JSON.stringify(productPayload, null, 2));
+        const result = await fetch(`https://${shop}/admin/api/unstable/graphql.json`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
           body: JSON.stringify({
             query: `
-              mutation productCreate($input: ProductInput!) {
-                productCreate(input: $input) {
-                  product { id title handle }
-                  userErrors { field message }
+              mutation productCreate($product: ProductInput!) {
+                productCreate(product: $product) {
+                  userErrors {
+                    field
+                    message
+                  }
+                  product {
+                    id
+                    handle
+                    title
+                    options {
+                      id
+                      name
+                      position
+                      values
+                      optionValues {
+                        id
+                        name
+                        hasVariants
+                      }
+                    }
+                    variants(first: 20) {
+                      nodes {
+                        id
+                        title
+                        sku
+                        selectedOptions { name value }
+                      }
+                    }
+                  }
                 }
               }
             `,
-            variables: { input: productCreateInput }
+            variables: { product: productPayload }
           }),
         });
-        const createdJson = await createRes.json() as any;
-        productId = createdJson?.data?.productCreate?.product?.id;
+        const jsonResult = await result.json();
+        const productId = jsonResult?.data?.productCreate?.product?.id;
         if (!productId) {
-          errors.push({ handle, step: "productCreate", details: createdJson?.data?.productCreate?.userErrors || createdJson.errors || "Unknown error" });
-          console.error(`[${handle}] ERREUR productCreate`, JSON.stringify(createdJson?.data?.productCreate?.userErrors || createdJson.errors, null, 2));
+          errors.push({ handle, details: jsonResult?.data?.productCreate?.userErrors ?? jsonResult?.errors ?? "Unknown error" });
+          console.error(`[${handle}] ERREUR productCreate`, JSON.stringify(jsonResult?.data?.productCreate?.userErrors ?? jsonResult?.errors, null, 2));
           continue;
         }
-
         count++;
-
-        // 2. Ajout des options
-        if (optionsToCreate.length > 0) {
-          console.log(`[${handle}] Shopify productOptionsCreate input:`, JSON.stringify(optionsToCreate, null, 2));
-          const optionsRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-            body: JSON.stringify({
-              query: `
-                mutation productOptionsCreate($productId: ID!, $options: [ProductOptionInput!]!) {
-                  productOptionsCreate(productId: $productId, options: $options) {
-                    product { id options { id name values } }
-                    userErrors { field message }
-                  }
-                }
-              `,
-              variables: { productId, options: optionsToCreate }
-            }),
-          });
-          const optionsJson = await optionsRes.json() as any;
-          if (optionsJson?.data?.productOptionsCreate?.userErrors?.length) {
-            errors.push({ handle, step: "productOptionsCreate", details: optionsJson?.data?.productOptionsCreate?.userErrors });
-            console.error(`[${handle}] ERREUR productOptionsCreate`, JSON.stringify(optionsJson?.data?.productOptionsCreate?.userErrors, null, 2));
-            continue;
-          }
-        }
-
-        // 3. Ajout des variants (en bulk)
-        if (variantsToCreate.length > 0) {
-          console.log(`[${handle}] Shopify productVariantsBulkCreate input:`, JSON.stringify(variantsToCreate, null, 2));
-          const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-            body: JSON.stringify({
-              query: `
-                mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantInput!]!) {
-                  productVariantsBulkCreate(productId: $productId, variants: $variants) {
-                    product {
-                      id
-                      variants(first: 50) {
-                        edges { node { id sku title price selectedOptions { name value } } }
-                      }
-                    }
-                    userErrors { field message }
-                  }
-                }
-              `,
-              variables: { productId, variants: variantsToCreate }
-            }),
-          });
-          const bulkJson = await bulkRes.json() as any;
-          if (bulkJson?.data?.productVariantsBulkCreate?.userErrors?.length) {
-            errors.push({ handle, step: "productVariantsBulkCreate", details: bulkJson?.data?.productVariantsBulkCreate?.userErrors });
-            console.error(`[${handle}] ERREUR productVariantsBulkCreate`, JSON.stringify(bulkJson?.data?.productVariantsBulkCreate?.userErrors, null, 2));
-          } else {
-            // Vérification finale : requête pour afficher les variantes créées
-            const checkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-              body: JSON.stringify({
-                query: `
-                  query fetchVariants($productId: ID!) {
-                    product(id: $productId) {
-                      variants(first: 10) {
-                        edges {
-                          node {
-                            id
-                            sku
-                            title
-                            selectedOptions { name value }
-                          }
-                        }
-                      }
-                    }
-                  }
-                `,
-                variables: { productId }
-              }),
-            });
-            const checkJson = await checkRes.json() as any;
-            console.log(`[${handle}] After create: product variants:`, JSON.stringify(checkJson?.data?.product?.variants?.edges ?? [], null, 2));
-          }
-        }
+        // Affiche les variants générés automatiquement
+        const variants = jsonResult?.data?.productCreate?.product?.variants?.nodes ?? [];
+        console.log(`[${handle}] Variants générés Shopify:`, JSON.stringify(variants, null, 2));
 
         // Ajout images produit
         for (const row of group) {
@@ -217,7 +158,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           const imageAltText = row["Image Alt Text"] ?? "";
           if (validImageUrl(productImageUrl)) {
             try {
-              await attachImageToProduct(shop, token, productId!, productImageUrl, imageAltText);
+              await attachImageToProduct(shop, token, productId, productImageUrl, imageAltText);
               console.log(`[${handle}] Image produit attachée ${productImageUrl} -> productId=${productId}`);
             } catch (err) {
               console.error(`[${handle}] Erreur linkage image produit`, handle, err);
@@ -225,7 +166,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // Pour chaque variant créé, on pourrait utiliser attachImageToVariant ici avec le mapping id/options.
+        // Pour chaque variant généré, tu peux utiliser attachImageToVariant avec l’id du variant
+        // (nécessite éventuellement de mapper option values <-> variant sku ou selectedOptions)
 
         await new Promise(res => setTimeout(res, 200));
       } catch (err) {
