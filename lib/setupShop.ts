@@ -55,7 +55,8 @@ function csvToStructuredProducts(csvText: string): any[] {
       vendor: main.Vendor,
       productType: main["Type"] || main["Product Category"] || "",
       tags: cleanTags(main.Tags ?? main["Product Category"] ?? "").join(","),
-      status: "ACTIVE" // PAS de variants ni options ici !
+      status: "ACTIVE"
+      // PAS de variants/options ici !
     };
 
     products.push({
@@ -69,7 +70,7 @@ function csvToStructuredProducts(csvText: string): any[] {
   return products;
 }
 
-// MAIN FUNCTION - 100% compatible Shopify Admin GraphQL API 2025-10
+// MAIN FUNCTION compatible Shopify Admin GraphQL API
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     console.log("[Shopify] setupShop: fetch CSV...");
@@ -147,10 +148,11 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
         // --- 5. CREATE VARIANTS ONE-BY-ONE ---
         for (const [vidx, row] of group.entries()) {
-          const selectedOptions = optionNames.map((opt: string, i: number) => ({
-            name: opt,
-            value: (row[`Option${i+1} Value`] || "").trim()
-          })).filter(opt => !!opt.value);
+          const selectedOptions: { name: string; value: string }[] =
+            optionNames.map((opt: string, i: number) => ({
+              name: opt,
+              value: (row[`Option${i+1} Value`] || "").trim()
+            })).filter((optObj: { name: string; value: string }) => !!optObj.value);
 
           const sku = row["Variant SKU"] && String(row["Variant SKU"]).trim() ? String(row["Variant SKU"]).trim() : `SKU-${handle}-${vidx+1}`;
 
