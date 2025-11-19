@@ -4,18 +4,19 @@ import { fetch } from "undici";
 import { stagedUploadShopifyFile, attachImageToProduct, attachImageToVariant } from "./batchUploadUniversal";
 import { parse } from "csv-parse/sync";
 
-// --- UTILS ---
 function validImageUrl(url?: string): boolean {
   if (!url) return false;
   const v = url.trim().toLowerCase();
   return !!v && v !== "nan" && v !== "null" && v !== "undefined" && /^https?:\/\/\S+$/i.test(v);
 }
+
 function cleanTags(tags: string | undefined): string[] {
   if (!tags) return [];
   return tags.split(",").map(t => t.trim()).filter(t =>
     t && !t.startsWith("<") && !t.startsWith("&") && t !== "null" && t !== "undefined" && t !== "NaN"
   );
 }
+
 function parseCsvShopify(csvText: string): any[] {
   return parse(csvText, {
     delimiter: ";",
@@ -27,7 +28,7 @@ function parseCsvShopify(csvText: string): any[] {
   });
 }
 
-// --- CSV -> structure exploitable ---
+// Conversion CSV natif Shopify -> structure exploitable
 function csvToStructuredProducts(csvText: string): any[] {
   const records = parseCsvShopify(csvText);
   const productsByHandle: Record<string, any[]> = {};
@@ -41,7 +42,8 @@ function csvToStructuredProducts(csvText: string): any[] {
     const main = group.find((row: any) => row.Title && row.Title.trim()) || group[0];
 
     // productOptions structure for ProductInput
-    const productOptions: { name: string, values: { name: string }[] }[] = [];
+    type ProductOption = { name: string; values: { name: string }[] };
+    const productOptions: ProductOption[] = [];
     for (let i = 1; i <= 3; i++) {
       const name = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
       if (name) {
@@ -53,8 +55,8 @@ function csvToStructuredProducts(csvText: string): any[] {
       }
     }
 
-    // Prepare variants for bulk creation
-    const variants = group.map((row: any, idx: number) => ({
+    // Prepare variants for bulk creation (step 2)
+    const variants = group.map((row: any) => ({
       options: productOptions.map((opt, i) => row[`Option${i+1} Value`] ? row[`Option${i+1} Value`].trim() : ""),
       price: row["Variant Price"] || main["Variant Price"] || "0",
       compareAtPrice: row["Variant Compare At Price"] || main["Variant Compare At Price"] || undefined,
@@ -75,8 +77,8 @@ function csvToStructuredProducts(csvText: string): any[] {
   return products;
 }
 
-// --- PIPELINE PATCHÉ pour Shopify Admin API ---
-
+// PATCH Shopify v2025-10+ : productCreate avec productOptions uniquement dans l'input,
+// puis variantes créées en bulk via productVariantsBulkCreate
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     console.log("[Shopify] setupShop: fetch CSV...");
@@ -90,7 +92,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     for (const { handle, group, main, productOptions, variants } of products) {
       let productId: string | undefined;
       try {
-        // 1. Créer le produit avec productOptions
+        // 1. Créer le produit avec productOptions (et PAS options ou variants)
         const productCreateInput = {
           title: main.Title,
           descriptionHtml: main["Body (HTML)"] || "",
@@ -110,7 +112,17 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             query: `
               mutation productCreate($input: ProductInput!) {
                 productCreate(input: $input) {
-                  product { id title handle productOptions { name values { name } } }
+                  product {
+                    id
+                    title
+                    handle
+                    options {
+                      id
+                      name
+                      position
+                      values
+                    }
+                  }
                   userErrors { field message }
                 }
               }
@@ -126,6 +138,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           continue;
         }
         count++;
+
         // 2. Ensuite créer les variants via productVariantsBulkCreate
         if (variants.length > 0) {
           console.log(`[${handle}] Shopify productVariantsBulkCreate input:`, JSON.stringify(variants, null, 2));
@@ -169,7 +182,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             }
           }
         }
-        // Attacher images variant, si tu veux, ici : utiliser selectedOptions pour matcher ton CSV
+        // Pour attacher une image à une variante, tu fais attachImageToVariant ici, en retrouvant l'id du variant via selectedOptions ou sku.
 
         await new Promise(res => setTimeout(res, 200));
       } catch (err) {
