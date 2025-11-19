@@ -48,7 +48,6 @@ function csvToStructuredProducts(csvText: string): any[] {
       const name = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
       if (name) optionNames.push(name);
     }
-    // Liste unique de chaque valeur d'option
     const optionsToCreate = optionNames.map((name: string, idx: number) => ({
       name,
       values: Array.from(new Set(group.map((row: any) => row[`Option${idx+1} Value`]).filter((v: any) => !!v)))
@@ -200,7 +199,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // Pas d'image variant dans ce pipeline; tu peux intégrer attachImageToVariant ici si besoin (par conservation de l'id/sku/option).
+        // Si tu as besoin d’attacher une image spécifique à chaque variant, utilise attachImageToVariant ici après avoir récupéré les variantIds.
 
         await new Promise(res => setTimeout(res, 200)); // Shopify rate limit
 
