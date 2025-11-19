@@ -143,8 +143,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             variables: { input: productCreateInput }
           }),
         });
-        const gqlJson = await gqlRes.json();
-        productId = gqlJson?.data?.productCreate?.product?.id;
+       const gqlJson = await gqlRes.json() as any;
+productId = gqlJson?.data?.productCreate?.product?.id;
         if (!productId) {
           errors.push({ handle, details: gqlJson?.data?.productCreate?.userErrors || gqlJson.errors || "Unknown error" });
           console.error(`[${handle}] Aucun productId généré. UserErrors/shopify errors:`, gqlJson?.data?.productCreate?.userErrors || gqlJson.errors);
