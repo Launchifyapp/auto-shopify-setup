@@ -15,25 +15,23 @@ function validImageUrl(url?: string): boolean {
     /^https?:\/\/\S+$/i.test(v);
 }
 
-// UTILITAIRE DE PARSING CSV ROBUSTE
-function parseCsvShopify(csvText: string): any[] {
-  return parse(csvText, {
-    delimiter: ";",    // ton CSV: point-virgule
-    columns: true,     // output: array of objects
-    skip_empty_lines: true,
-    relax_column_count: true,
-    quote: '"',
-    trim: true
-  }); // type: any[]
-}
-
-// Correction Next.js strict: typer la fonction cleanTags
 function cleanTags(tags: string | undefined): string[] {
   if (!tags) return [];
   return tags
     .split(",")
     .map(t => t.trim())
     .filter(t => t && !t.startsWith("<") && !t.startsWith("&") && t !== "null" && t !== "undefined" && t !== "NaN");
+}
+
+function parseCsvShopify(csvText: string): any[] {
+  return parse(csvText, {
+    delimiter: ";",
+    columns: true,
+    skip_empty_lines: true,
+    relax_column_count: true,
+    quote: '"',
+    trim: true
+  });
 }
 
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
@@ -43,10 +41,10 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     const response = await fetch(csvUrl);
     const csvText = await response.text();
 
-    // ---- PARSE ROBUST ----
+    // PARSE CSV
     const records = parseCsvShopify(csvText);
 
-    // Regroupe par handle
+    // Regroupe par handle (produit principal et variantes)
     const productsByHandle: Record<string, any[]> = {};
     for (const row of records) {
       if (!row.Handle || !row.Handle.trim()) continue;
@@ -54,7 +52,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       productsByHandle[row.Handle].push(row);
     }
 
-    // Upload toutes les images produits et variantes validées
+    // Upload images produits et variantes
     const imagesToUpload: { url: string; filename: string }[] = [];
     for (const row of records) {
       if (validImageUrl(row["Image Src"])) {
@@ -79,91 +77,67 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         const imgBuffer = await fetch(img.url).then(res => res.arrayBuffer());
         const tempPath = path.join("/tmp", img.filename);
         fs.writeFileSync(tempPath, Buffer.from(imgBuffer));
+        // Upload image to Shopify files (staged upload)
         await stagedUploadShopifyFile(shop, token, tempPath);
       } catch (e) {
         console.error(`[setupShop BatchUpload FAIL] ${img.filename}:`, e);
       }
     }
 
-    // Création produits + linkage images
+    // Création produit principal SANS variantes ni options, puis ajout des variantes
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group.find(row => row.Title && row.Title.trim());
-
-      if (!main || !main.Title || main.Title.trim() === "" || !main.Handle || !main.Vendor) {
+      if (!main || !main.Title || !main.Handle || !main.Vendor) {
         console.warn(`Skip product creation: Missing mandatory fields for handle=${main?.Handle}`);
         continue;
       }
 
-      // Options
-      const optionNames = ["Option1 Name", "Option2 Name", "Option3 Name"].map(opt => main[opt]?.trim()).filter(Boolean);
+      // Les options (ex: Couleur, Taille) et variants (lignes par handle pour ce produit)
+      const optionNames = ["Option1 Name", "Option2 Name", "Option3 Name"]
+        .map(opt => main[opt] && main[opt].trim())
+        .filter(Boolean);
       const allOptionValues: Record<string, string[]> = {};
       for (const name of optionNames) {
         allOptionValues[name] = Array.from(new Set(group.map(row => row[`${name} Value`]).filter(Boolean)));
       }
-      const options = optionNames.map(name => ({
-        name,
-        values: allOptionValues[name]
-      }));
 
-      // Variants
-      const variants = group.map(row => {
-        const optionsArr = optionNames.map(opt => row[`${opt} Value`] || "").filter(Boolean);
-        return {
-          sku: row["Variant SKU"],
-          price: row["Variant Price"],
-          compareAtPrice: row["Variant Compare At Price"],
-          requiresShipping: row["Variant Requires Shipping"] === "True",
-          taxable: row["Variant Taxable"] === "True",
-          barcode: row["Variant Barcode"],
-          options: optionsArr,
-          image: row["Variant Image"]
-        };
-      });
-
+      // Génère handle unique pour éviter le conflit
       const handleUnique = main.Handle + "-" + Math.random().toString(16).slice(2, 7);
-      const product: any = {
+
+      // Crée le produit principal SANS variants/options
+      const productPayload: any = {
         title: main.Title,
         descriptionHtml: main["Body (HTML)"] || "",
         handle: handleUnique,
         vendor: main.Vendor,
         productType: main["Type"] || main["Product Category"] || "",
         tags: cleanTags(main.Tags ?? main["Product Category"] ?? "").join(","),
-        options,
-        variants
       };
 
+      let productId: string | undefined;
+
       try {
-        // Création produit avec variants
+        // Création produit
         const gqlRes = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-Shopify-Access-Token": token,
+            "X-Shopify-Access-Token": token
           },
           body: JSON.stringify({
             query: `
               mutation productCreate($product: ProductCreateInput!) {
                 productCreate(product: $product) {
-                  product {
-                    id
-                    title
-                    handle
-                    variants(first: 50) {
-                      edges { node { id sku title selectedOptions { name value } } }
-                    }
-                    options { id name position optionValues { id name hasVariants } }
-                  }
+                  product { id title handle }
                   userErrors { field message }
                 }
               }
             `,
-            variables: { product },
+            variables: { product: productPayload }
           }),
         });
-
         const gqlJson = await gqlRes.json() as any;
-        const productData = gqlJson?.data?.productCreate?.product;
-        const productId = productData?.id;
+        productId = gqlJson?.data?.productCreate?.product?.id;
         if (!productId) {
           console.error(
             "Aucun productId généré.",
@@ -171,60 +145,95 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           );
           continue;
         }
-
-        // Link images produit
-        for (const row of group) {
-          const productImageUrl = row["Image Src"];
-          const imageAltText = row["Image Alt Text"] ?? "";
-          if (validImageUrl(productImageUrl)) {
-            try {
-              const filename = productImageUrl.split('/').pop() ?? 'image.jpg';
-              const cdnUrl: string | null = productImageUrl.startsWith("https://cdn.shopify.com")
-                ? productImageUrl
-                : await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
-              if (!cdnUrl) {
-                console.warn(`Image produit non trouvée CDN : ${filename}`);
-                continue;
-              }
-              await attachImageToProduct(shop, token, productId, cdnUrl, imageAltText);
-            } catch (err) {
-              console.error("Erreur linkage image produit", handle, err);
-            }
-          }
-        }
-
-        // Link images variantes
-        const createdVariantsArr: any[] = productData?.variants?.edges?.map((edge: { node: any }) => edge.node) ?? [];
-        for (const v of createdVariantsArr) {
-          const variantKey = (v.selectedOptions ?? []).map((opt: any) => opt.value).join(":");
-          const matchingRows = group.filter(row =>
-            optionNames.map(opt => row[`${opt} Value`] || "").filter(Boolean).join(":") === variantKey
-          );
-          for (const variantCsvRow of matchingRows) {
-            const variantImageUrl = variantCsvRow?.["Variant Image"];
-            const variantAltText = variantCsvRow?.["Image Alt Text"] ?? "";
-            if (v.id && validImageUrl(variantImageUrl)) {
-              try {
-                const filename = variantImageUrl.split('/').pop() ?? 'variant.jpg';
-                const cdnUrl: string | null = variantImageUrl.startsWith("https://cdn.shopify.com")
-                  ? variantImageUrl
-                  : await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
-                if (!cdnUrl) {
-                  console.warn(`Image variante non trouvée CDN : ${filename}`);
-                  continue;
-                }
-                await attachImageToVariant(shop, token, v.id, cdnUrl, variantAltText);
-              } catch (err) {
-                console.error("Erreur linkage image variante", variantKey, err);
-              }
-            }
-          }
-        }
-        await new Promise(res => setTimeout(res, 200)); // Rate-limit Shopify
       } catch (err) {
         console.log('Erreur création produit GraphQL', handleUnique, err);
+        continue;
       }
+
+      // Ajout des variantes une à une
+      for (const variantRow of group) {
+        // Reconstruit l'objet variant à partir de la ligne CSV
+        const selectedOptions = optionNames.map((name, idx) => ({
+          name,
+          value: variantRow[`${name} Value`] || ""
+        })).filter(opt => opt.value);
+
+        // Ne pas créer si pas d'option/value valable
+        if (selectedOptions.length === 0) continue;
+
+        // Payload mutation Shopify
+        const variantPayload: any = {
+          productId,
+          price: variantRow["Variant Price"] || main["Variant Price"] || "0",
+          sku: variantRow["Variant SKU"],
+          compareAtPrice: variantRow["Variant Compare At Price"] || main["Variant Compare At Price"],
+          requiresShipping: variantRow["Variant Requires Shipping"] === "True",
+          taxable: variantRow["Variant Taxable"] === "True",
+          barcode: variantRow["Variant Barcode"],
+          selectedOptions,
+        };
+        // Si image dispo, ajoute-la par update après
+        try {
+          const gqlVariantRes = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shopify-Access-Token": token
+            },
+            body: JSON.stringify({
+              query: `
+                mutation productVariantCreate($input: ProductVariantCreateInput!) {
+                  productVariantCreate(input: $input) {
+                    productVariant { id sku selectedOptions { name value } }
+                    userErrors { field message }
+                  }
+                }
+              `,
+              variables: { input: variantPayload }
+            }),
+          });
+          const gqlVariantJson = await gqlVariantRes.json() as any;
+          const variantId = gqlVariantJson?.data?.productVariantCreate?.productVariant?.id;
+          // Attache image spécifique s'il y en a une pour la variante
+          if (variantId && validImageUrl(variantRow["Variant Image"])) {
+            const filename = variantRow["Variant Image"].split('/').pop() ?? "variant.jpg";
+            const cdnUrl: string | null = variantRow["Variant Image"].startsWith("https://cdn.shopify.com")
+              ? variantRow["Variant Image"]
+              : await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
+            if (cdnUrl) {
+              await attachImageToVariant(shop, token, variantId, cdnUrl, variantRow["Image Alt Text"] ?? "");
+              console.log(`[setupShop:VARIANT IMAGE ATTACHED] for variant id ${variantId}`);
+            }
+          }
+        } catch (err) {
+          console.error("Erreur création ou update image variant", handleUnique, err);
+        }
+        await new Promise(res => setTimeout(res, 100));
+      }
+
+      // Attache les images produits
+      for (const row of group) {
+        const productImageUrl = row["Image Src"];
+        const imageAltText = row["Image Alt Text"] ?? "";
+        if (validImageUrl(productImageUrl)) {
+          try {
+            const filename = productImageUrl.split('/').pop() ?? 'image.jpg';
+            const cdnUrl: string | null = productImageUrl.startsWith("https://cdn.shopify.com")
+              ? productImageUrl
+              : await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
+            if (!cdnUrl) {
+              console.warn(`Image produit non trouvée CDN : ${filename}`);
+              continue;
+            }
+            await attachImageToProduct(shop, token, productId!, cdnUrl, imageAltText);
+          } catch (err) {
+            console.error("Erreur linkage image produit", handle, err);
+          }
+        }
+      }
+      await new Promise(res => setTimeout(res, 200)); // Rate-limit Shopify
     }
+
     console.log("[Shopify] setupShop: DONE.");
   } catch (err) {
     console.log("Erreur globale setupShop:", err);
