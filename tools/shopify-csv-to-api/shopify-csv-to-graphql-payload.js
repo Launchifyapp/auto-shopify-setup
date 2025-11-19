@@ -49,21 +49,37 @@ function csvToShopifyPayload(csvText: string) {
       if (name) optionNames.push(name);
     }
 
-    // --- Build variants array ---
-    const variants = group
-      .filter(row => optionNames.some((name, idx) => row[`Option${idx + 1} Value`]))
-      .map(row => ({
-        sku: row["Variant SKU"],
-        price: row["Variant Price"] || main["Variant Price"] || "0",
-        compareAtPrice: row["Variant Compare At Price"] || main["Variant Compare At Price"],
-        requiresShipping: row["Variant Requires Shipping"] === "True",
-        taxable: row["Variant Taxable"] === "True",
-        barcode: row["Variant Barcode"],
-        selectedOptions: optionNames.map((name, idx) => ({
-          name,
-          value: row[`Option${idx + 1} Value`] || ""
-        })).filter(opt => opt.value)
-      }));
+    // --- PATCH: productOptions structure for ProductInput ---
+    const productOptions = optionNames.map((name, idx) => ({
+      name,
+      values: Array.from(new Set(group.map((row) => row[`Option${idx+1} Value`]).filter(v => !!v && v.trim())))
+        .map((v) => ({ name: v.trim() }))
+    }));
+
+    // --- PATCH: Build strict unique variants array ---
+    const rawVariants = group.map(row => ({
+      sku: row["Variant SKU"],
+      price: row["Variant Price"] || main["Variant Price"] || "0",
+      compareAtPrice: row["Variant Compare At Price"] || main["Variant Compare At Price"],
+      requiresShipping: row["Variant Requires Shipping"] === "True",
+      taxable: row["Variant Taxable"] === "True",
+      barcode: row["Variant Barcode"],
+      options: optionNames.map((name, idx) => row[`Option${idx+1} Value`] ? row[`Option${idx+1} Value`].trim() : "")
+    }));
+
+    // PATCH: Unicité + structure correcte - filter variants
+    // - Must have all options
+    // - Each combination unique
+    // - All option values present (no empty)
+    const seen = new Set();
+    const variants = rawVariants.filter(v => {
+      if (!Array.isArray(v.options)) return false;
+      if (v.options.length !== optionNames.length || v.options.some(opt => !opt)) return false;
+      const key = JSON.stringify(v.options);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
     // --- Build payload ---
     const payload = {
@@ -73,9 +89,8 @@ function csvToShopifyPayload(csvText: string) {
       vendor: main.Vendor,
       productType: main["Type"] || main["Product Category"] || "",
       tags: cleanTags(main.Tags ?? main["Product Category"] ?? "").join(","),
-      options: optionNames,   // ["Couleur", ...]
-      variants                // array of variants
-      // You can map images if using API to attach after creation
+      productOptions, // PATCHED: for API v2025-10+
+      variants        // PATCHED: unique + valid only
     };
     products.push(payload);
   }
