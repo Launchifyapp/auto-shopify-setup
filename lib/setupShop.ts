@@ -41,7 +41,7 @@ function csvToShopifyPayload(csvText: string): any[] {
   }
   const products: any[] = [];
   for (const [handle, group] of Object.entries(productsByHandle)) {
-    const main = group.find(row => row.Title && row.Title.trim()) || group[0];
+    const main = group.find((row: any) => row.Title && row.Title.trim()) || group[0];
     // Option names (first line)
     const optionNames: string[] = [];
     for (let i = 1; i <= 3; i++) {
@@ -50,8 +50,8 @@ function csvToShopifyPayload(csvText: string): any[] {
     }
     // Variants
     const variants = group
-      .filter(row => optionNames.some((name, idx) => row[`Option${idx + 1} Value`]))
-      .map(row => ({
+      .filter((row: any) => optionNames.some((name, idx) => row[`Option${idx + 1} Value`]))
+      .map((row: any) => ({
         sku: row["Variant SKU"],
         price: row["Variant Price"] || main["Variant Price"] || "0",
         compareAtPrice: row["Variant Compare At Price"] || main["Variant Compare At Price"],
@@ -137,7 +137,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         const createdVariants = gqlJson?.data?.productCreate?.product?.variants?.edges?.map((e: any) => e.node) || [];
         // Attache image variant si dispo
         for (const v of createdVariants) {
-          const variantMatch = group.find(row =>
+          const variantMatch = group.find((row: any) =>
             payload.options.every((name: string, idx: number) =>
               v.selectedOptions.some((o: any) => o.name === name && o.value === (row[`Option${idx + 1} Value`] || ""))
             ));
