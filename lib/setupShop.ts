@@ -93,6 +93,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         const name = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
         if (name) optionNames.push(name);
       }
+      console.log(`[${handle}] Option names du produit:`, optionNames);
 
       // Génère handle unique pour éviter le conflit
       const handleUnique = main.Handle + "-" + Math.random().toString(16).slice(2, 7);
@@ -110,7 +111,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       let productId: string | undefined;
 
       try {
-        // 1. Crée le produit principal
         const gqlRes = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -129,8 +129,10 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         const gqlJson = await gqlRes.json() as any;
         productId = gqlJson?.data?.productCreate?.product?.id;
         if (!productId) {
-          console.error("Aucun productId généré.", "Réponse brute:", JSON.stringify(gqlJson));
+          console.error(`[${handle}] Aucun productId généré. Réponse brute:`, JSON.stringify(gqlJson));
           continue;
+        } else {
+          console.log(`[${handle}] Produit principal créé, id ${productId}`);
         }
       } catch (err) {
         console.log('Erreur création produit GraphQL', handleUnique, err);
@@ -147,7 +149,13 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
         // Shopify: pour chaque variant il faut au moins une valeur dans selectedOptions
         const hasValidOption = selectedOptions.some(o => o.value);
-        if (!hasValidOption) continue;
+        // Ajoute le log pour débug toutes les situations !
+        console.log(`[${handle}] VariantRow -> selectedOptions:`, selectedOptions, variantRow);
+
+        if (!hasValidOption) {
+          console.log(`[SKIP] Pas de valeur dans selectedOptions pour cette ligne variantRow`, variantRow);
+          continue;
+        }
 
         // Payload mutation Shopify
         const variantPayload: any = {
@@ -162,6 +170,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         };
 
         try {
+          console.log(`[${handle}] productVariantCreate payload:`, variantPayload);
           const gqlVariantRes = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -179,19 +188,22 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           });
           const gqlVariantJson = await gqlVariantRes.json() as any;
           const variantId = gqlVariantJson?.data?.productVariantCreate?.productVariant?.id;
-
           if (!variantId) {
             if (gqlVariantJson?.data?.productVariantCreate?.userErrors?.length)
-              console.error(`[Shopify][VariantCreate] userErrors:`, gqlVariantJson?.data?.productVariantCreate?.userErrors);
+              console.error(`[${handle}][VariantCreate] userErrors:`, gqlVariantJson?.data?.productVariantCreate?.userErrors);
+            else
+              console.error(`[${handle}][VariantCreate] Echec, payload:`, variantPayload, "Réponse brute:", JSON.stringify(gqlVariantJson));
             continue;
           }
+          console.log(`[${handle}] Variant créé id=${variantId}, options=${JSON.stringify(selectedOptions)}`);
 
           // Attache image spécifique pour la variante, si dispo
           if (variantId && validImageUrl(variantRow["Variant Image"])) {
             await attachImageToVariant(shop, token, variantId, variantRow["Variant Image"], variantRow["Image Alt Text"] ?? "");
+            console.log(`[${handle}] Image variante attachée ${variantRow["Variant Image"]} -> variantId=${variantId}`);
           }
         } catch (err) {
-          console.error("Erreur création ou update image variant", handleUnique, err);
+          console.error(`[${handle}] Erreur création ou update image variant`, handleUnique, err);
         }
         await new Promise(res => setTimeout(res, 100));
       }
@@ -203,8 +215,9 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         if (validImageUrl(productImageUrl)) {
           try {
             await attachImageToProduct(shop, token, productId!, productImageUrl, imageAltText);
+            console.log(`[${handle}] Image produit attachée ${productImageUrl} -> productId=${productId}`);
           } catch (err) {
-            console.error("Erreur linkage image produit", handle, err);
+            console.error(`[${handle}] Erreur linkage image produit`, handle, err);
           }
         }
       }
