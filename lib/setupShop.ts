@@ -49,19 +49,39 @@ function csvToStructuredProducts(csvText: string): any[] {
       if (name) optionNames.push(name);
     }
 
-    // --- payload minimal pour la première mutation
+    // --- payload for the first mutation
+    // ALL variants are defined in this payload, as Shopify expects
+    const variants = group.map((row: any, idx: number) => {
+      const sku = row["Variant SKU"] && String(row["Variant SKU"]).trim() ? String(row["Variant SKU"]).trim() : `SKU-${handle}-${idx+1}`;
+      // selectedOptions for each variant, as required by Shopify
+      const selectedOptions = optionNames.map((opt, i) => ({
+        name: opt,
+        value: (row[`Option${i+1} Value`] || "").trim()
+      })).filter(opt => !!opt.value);
+
+      return {
+        sku,
+        price: row["Variant Price"] || main["Variant Price"] || "0",
+        compareAtPrice: row["Variant Compare At Price"] || main["Variant Compare At Price"] || undefined,
+        barcode: row["Variant Barcode"] || undefined,
+        requiresShipping: row["Variant Requires Shipping"] === "True",
+        taxable: row["Variant Taxable"] === "True",
+        selectedOptions
+      };
+    });
+
     const productCreateInput: any = {
       title: main.Title,
       descriptionHtml: main["Body (HTML)"] || "",
-      handle: main.Handle,
+      handle: handle + "-" + Math.random().toString(16).slice(2, 7),
       vendor: main.Vendor,
       productType: main["Type"] || main["Product Category"] || "",
       tags: cleanTags(main.Tags ?? main["Product Category"] ?? "").join(","),
-      status: "ACTIVE" // Optionnel, tu peux le retirer si inutile
-      // NO options/variants here!
+      status: "ACTIVE", // IMPORTANT: must be uppercase
+      options: optionNames,
+      variants // bulk variants inside productCreate!
     };
 
-    // Collect info for stages following product creation
     products.push({
       handle,
       group,
@@ -73,11 +93,11 @@ function csvToStructuredProducts(csvText: string): any[] {
   return products;
 }
 
-// MAIN FUNCTION - compatible Shopify 2025-10 API logic (mutation bulk)
+// MAIN FUNCTION - uses only productCreate for bulk creation
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     console.log("[Shopify] setupShop: fetch CSV...");
-    // 1. get CSV (assumes remote, change if needed)
+    // 1. get CSV
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
@@ -85,51 +105,13 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     // 2. parse CSV
     const products = csvToStructuredProducts(csvText);
 
-    // 3. UPLOAD toutes les images produits et variantes (CDN staging/caching)
-    const imagesToUpload: { url: string; filename: string }[] = [];
-    for (const { group } of products) {
-      for (const row of group) {
-        if (validImageUrl(row["Image Src"])) {
-          imagesToUpload.push({
-            url: row["Image Src"],
-            filename: row["Image Src"].split('/').pop() || "image.jpg"
-          });
-        }
-        if (validImageUrl(row["Variant Image"])) {
-          imagesToUpload.push({
-            url: row["Variant Image"],
-            filename: row["Variant Image"].split('/').pop() || "variant.jpg"
-          });
-        }
-      }
-    }
-    for (const img of imagesToUpload) {
-      if (!validImageUrl(img.url) || !img.filename || !/\.(jpe?g|png|webp)$/i.test(img.filename)) {
-        console.warn(`[setupShop BatchUpload SKIP] url invalid: "${img.url}" filename="${img.filename}"`);
-        continue;
-      }
-      try {
-        const imgBuffer = await fetch(img.url).then(res => res.arrayBuffer());
-        const tempPath = path.join("/tmp", img.filename);
-        fs.writeFileSync(tempPath, Buffer.from(imgBuffer));
-        await stagedUploadShopifyFile(shop, token, tempPath);
-      } catch (e) {
-        console.error(`[setupShop BatchUpload FAIL] ${img.filename}:`, e);
-      }
-    }
-
     let count = 0, errors: any[] = [];
 
     for (const { handle, group, main, optionNames, productCreateInput } of products) {
-      // handle unique pour éviter collision
-      const handleUnique = productCreateInput.handle + "-" + Math.random().toString(16).slice(2, 7);
-      productCreateInput.handle = handleUnique;
-
       let productId: string | undefined;
       try {
-        // --- 4. M1: CRÉATION DU PRODUIT ---
+        // --- 3. CREATE PRODUCT AND BULK VARIANTS IN ONE MUTATION ---
         console.log(`[${handle}] Shopify productCreate payload:`, JSON.stringify(productCreateInput, null, 2));
-        // Utilise ProductInput API 2025-10
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -137,7 +119,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             query: `
               mutation productCreate($input: ProductInput!) {
                 productCreate(input: $input) {
-                  product { id title handle options { id name values } }
+                  product { id title handle variants(first: 50) { edges { node { id sku title selectedOptions { name value } } } } }
                   userErrors { field message }
                 }
               }
@@ -154,124 +136,39 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         }
         count++;
 
-        // --- 5. M2: AJOUT DES OPTIONS ---
-        if (optionNames.length > 0) {
-          const productOptionsToCreate = optionNames.map((optName: string) => {
-            const values: string[] = Array.from(new Set(
-              group.map((row: any) => row[`Option${optionNames.indexOf(optName)+1} Value`]).filter((v: any) => !!v)
-            ));
-            return {
-              name: optName,
-              values
-            };
-          });
-          console.log(`[${handle}] Shopify productOptionsCreate input:`, JSON.stringify(productOptionsToCreate, null, 2));
-          const optionsRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-            body: JSON.stringify({
-              query: `
-                mutation productOptionsCreate($productId: ID!, $options: [ProductOptionInput!]!) {
-                  productOptionsCreate(productId: $productId, options: $options) {
-                    product { id options { id name values } }
-                    userErrors { field message }
-                  }
-                }
-              `,
-              variables: { productId, options: productOptionsToCreate }
-            }),
-          });
-          const optionsJson = await optionsRes.json() as any;
-          if (optionsJson?.data?.productOptionsCreate?.userErrors?.length) {
-            errors.push({ handle, details: optionsJson?.data?.productOptionsCreate?.userErrors });
-            console.error(`[${handle}] ERREUR optionsCreate`, optionsJson?.data?.productOptionsCreate?.userErrors);
-            continue;
+        // --- 4. Attache images produit principal
+        for (const row of group) {
+          const productImageUrl = row["Image Src"];
+          const imageAltText = row["Image Alt Text"] ?? "";
+          if (validImageUrl(productImageUrl)) {
+            try {
+              await attachImageToProduct(shop, token, productId!, productImageUrl, imageAltText);
+              console.log(`[${handle}] Image produit attachée ${productImageUrl} -> productId=${productId}`);
+            } catch (err) {
+              console.error(`[${handle}] Erreur linkage image produit`, handle, err);
+            }
           }
         }
 
-        // --- 6. M3: CRÉATION BULK DES VARIANTS (SHOPIFY 2025-10) ---
-        const variantsPayload = group.map((row: any, idx: number) => {
-          // Forcer un SKU si absent pour chaque variant
-          const sku = row["Variant SKU"] && String(row["Variant SKU"]).trim() ? String(row["Variant SKU"]).trim() : `SKU-${handleUnique}-${idx+1}`;
-          const values: string[] = optionNames.map((opt: any, i: number) => row[`Option${i+1} Value`] || "").filter((v: any) => !!v);
-          return {
-            sku,
-            price: row["Variant Price"] || main["Variant Price"] || "0",
-            compareAtPrice: row["Variant Compare At Price"] || main["Variant Compare At Price"],
-            barcode: row["Variant Barcode"],
-            requiresShipping: row["Variant Requires Shipping"] === "True",
-            taxable: row["Variant Taxable"] === "True",
-            options: values
-          };
-        });
-        if (variantsPayload.length) {
-          console.log(`[${handle}] Shopify productVariantsBulkCreate:`, JSON.stringify(variantsPayload, null, 2));
-          const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-            body: JSON.stringify({
-              query: `
-                mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantBulkInput!]!) {
-                  productVariantsBulkCreate(productId: $productId, variants: $variants) {
-                    product {
-                      id
-                      variants(first: 50) {
-                        edges {
-                          node {
-                            id sku title selectedOptions { name value }
-                          }
-                        }
-                      }
-                    }
-                    userErrors { field message }
-                  }
-                }
-              `,
-              variables: { productId, variants: variantsPayload }
-            }),
-          });
-          const bulkJson = await bulkRes.json() as any;
-          console.log(`[BulkCreate Response ${handle}]`, JSON.stringify(bulkJson, null, 2));
-          if (bulkJson?.data?.productVariantsBulkCreate?.userErrors?.length) {
-            errors.push({ handle, details: bulkJson?.data?.productVariantsBulkCreate?.userErrors });
-            console.error(`[${handle}] ERREUR variantsBulkCreate`, bulkJson?.data?.productVariantsBulkCreate?.userErrors);
-          }
-
-          const createdVariants = bulkJson?.data?.productVariantsBulkCreate?.product?.variants?.edges?.map((e: any) => e.node) || [];
-          for (const v of createdVariants) {
-            const variantMatch = group.find((row: any) =>
-              optionNames.every((name: string, idx: number) =>
-                v.selectedOptions.some((o: any) => o.name === name && o.value === (row[`Option${idx + 1} Value`] || ""))
-              ));
-            if (variantMatch && validImageUrl(variantMatch["Variant Image"])) {
-              try {
-                await attachImageToVariant(shop, token, v.id, variantMatch["Variant Image"], variantMatch["Image Alt Text"] ?? "");
-                console.log(`[${handle}] Image variante attachée ${variantMatch["Variant Image"]} -> variantId=${v.id}`);
-              } catch (err) {
-                console.error(`[${handle}] Erreur linkage image variant`, v.id, err);
-              }
+        // --- 5. Attache images variantes
+        const createdVariants = gqlJson?.data?.productCreate?.product?.variants?.edges?.map((e: any) => e.node) || [];
+        for (const [vidx, v] of createdVariants.entries()) {
+          const row = group[vidx];
+          if (!row) continue;
+          if (validImageUrl(row["Variant Image"])) {
+            try {
+              await attachImageToVariant(shop, token, v.id, row["Variant Image"], row["Image Alt Text"] ?? "");
+              console.log(`[${handle}] Image variante attachée ${row["Variant Image"]} -> variantId=${v.id}`);
+            } catch (err) {
+              console.error(`[${handle}] Erreur linkage image variant`, v.id, err);
             }
           }
         }
 
       } catch (err) {
         errors.push({ handle, details: err });
-        console.error(`[${handle}] FATAL erreur setupShop pour le produit`, handleUnique, err);
+        console.error(`[${handle}] FATAL erreur setupShop pour le produit`, handle, err);
         continue;
-      }
-
-      // --- 7. Attache images produit principal
-      for (const row of group) {
-        const productImageUrl = row["Image Src"];
-        const imageAltText = row["Image Alt Text"] ?? "";
-        if (validImageUrl(productImageUrl)) {
-          try {
-            await attachImageToProduct(shop, token, productId!, productImageUrl, imageAltText);
-            console.log(`[${handle}] Image produit attachée ${productImageUrl} -> productId=${productId}`);
-          } catch (err) {
-            console.error(`[${handle}] Erreur linkage image produit`, handle, err);
-          }
-        }
       }
       await new Promise(res => setTimeout(res, 200)); // Rate-limit Shopify
     }
