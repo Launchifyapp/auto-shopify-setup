@@ -87,17 +87,50 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     const response = await fetch(csvUrl);
     const csvText = await response.text();
 
-    // 2. convertit le CSV → array [{payload, handle, group}]
+    // 2. parse CSV → array [{payload, handle, group}]
     const products = csvToShopifyPayload(csvText);
 
-    // 3. upload product + variants + images
+    // 3. UPLOAD toutes les images produits et variantes (CDN staging/caching)
+    const imagesToUpload: { url: string; filename: string }[] = [];
+    for (const { group } of products) {
+      for (const row of group) {
+        if (validImageUrl(row["Image Src"])) {
+          imagesToUpload.push({
+            url: row["Image Src"],
+            filename: row["Image Src"].split('/').pop() || "image.jpg"
+          });
+        }
+        if (validImageUrl(row["Variant Image"])) {
+          imagesToUpload.push({
+            url: row["Variant Image"],
+            filename: row["Variant Image"].split('/').pop() || "variant.jpg"
+          });
+        }
+      }
+    }
+    for (const img of imagesToUpload) {
+      if (!validImageUrl(img.url) || !img.filename || !/\.(jpe?g|png|webp)$/i.test(img.filename)) {
+        console.warn(`[setupShop BatchUpload SKIP] url invalid: "${img.url}" filename="${img.filename}"`);
+        continue;
+      }
+      try {
+        const imgBuffer = await fetch(img.url).then(res => res.arrayBuffer());
+        const tempPath = path.join("/tmp", img.filename);
+        fs.writeFileSync(tempPath, Buffer.from(imgBuffer));
+        await stagedUploadShopifyFile(shop, token, tempPath);
+      } catch (e) {
+        console.error(`[setupShop BatchUpload FAIL] ${img.filename}:`, e);
+      }
+    }
+
+    // 4. upload product + variants + images
     let count = 0, errors: any[] = [];
     for (const { payload, handle, group } of products) {
       // handle unique pour éviter les collisions sur le shop
       const handleUnique = payload.handle + "-" + Math.random().toString(16).slice(2, 7);
       payload.handle = handleUnique;
 
-      // Create product + variants/options
+      // Correction mutation: ProductInput (et non ProductCreateInput !)
       let productId: string | undefined;
       try {
         console.log(`[${handle}] ProductCreate payload:`, JSON.stringify(payload, null, 2));
@@ -106,7 +139,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
           body: JSON.stringify({
             query: `
-              mutation productCreate($product: ProductCreateInput!) {
+              mutation productCreate($product: ProductInput!) {
                 productCreate(product: $product) {
                   product {
                     id
