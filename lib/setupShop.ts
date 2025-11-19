@@ -32,6 +32,9 @@ function parseCsvShopify(csvText: string): any[] {
 // CSV → Shopify API payload conversion
 function csvToShopifyPayload(csvText: string): any[] {
   const records = parseCsvShopify(csvText);
+  if (!records.length) {
+    console.warn("[SetupShop] Aucune ligne parsée dans le CSV ! CSV source :\n", csvText.slice(0, 1000));
+  }
   // Group by Handle
   const productsByHandle: Record<string, any[]> = {};
   for (const row of records) {
@@ -86,9 +89,14 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
+    console.log("[Shopify] CSV téléchargé : Nb caractères =", csvText.length);
 
     // 2. parse CSV → array [{payload, handle, group}]
     const products = csvToShopifyPayload(csvText);
+    console.log(`[Shopify] Nb produits importés : ${products.length}`);
+    if (!products.length) {
+      throw new Error("Aucun produit à importer ! CSV source :\n" + csvText.slice(0, 1000));
+    }
 
     // 3. UPLOAD toutes les images produits et variantes (CDN staging/caching)
     const imagesToUpload: { url: string; filename: string }[] = [];
@@ -108,6 +116,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         }
       }
     }
+    console.log(`[Shopify] Nb images à upload (produit+variant): ${imagesToUpload.length}`);
     for (const img of imagesToUpload) {
       if (!validImageUrl(img.url) || !img.filename || !/\.(jpe?g|png|webp)$/i.test(img.filename)) {
         console.warn(`[setupShop BatchUpload SKIP] url invalid: "${img.url}" filename="${img.filename}"`);
@@ -118,6 +127,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         const tempPath = path.join("/tmp", img.filename);
         fs.writeFileSync(tempPath, Buffer.from(imgBuffer));
         await stagedUploadShopifyFile(shop, token, tempPath);
+        console.log(`[setupShop BatchUpload OK]: ${img.filename}`);
       } catch (e) {
         console.error(`[setupShop BatchUpload FAIL] ${img.filename}:`, e);
       }
@@ -156,16 +166,21 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }),
         });
         const gqlJson = await gqlRes.json() as any;
+        if (gqlJson.errors) {
+          console.error(`[${handle}] ERREUR Shopify GQL:`, JSON.stringify(gqlJson.errors));
+        }
         productId = gqlJson?.data?.productCreate?.product?.id;
+
         if (!productId) {
           errors.push({ handle, details: gqlJson?.data?.productCreate?.userErrors || gqlJson.errors || "Unknown error" });
-          console.error(`[${handle}] Aucun productId généré. Réponse brute:`, JSON.stringify(gqlJson));
+          console.error(`[${handle}] Aucun productId généré. UserErrors/shopify errors:`, gqlJson?.data?.productCreate?.userErrors || gqlJson.errors);
           continue;
         } else {
           count++;
           if (gqlJson?.data?.productCreate?.userErrors?.length)
             console.error(`[${handle}][ProductCreate] userErrors:`, gqlJson?.data?.productCreate?.userErrors);
         }
+
         // Récupère les variants Shopify
         const createdVariants = gqlJson?.data?.productCreate?.product?.variants?.edges?.map((e: any) => e.node) || [];
         // Attache image variant si dispo
@@ -185,7 +200,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         }
       } catch (err) {
         errors.push({ handle, details: err });
-        console.log(`[${handle}] Erreur création produit/variants GraphQL`, handleUnique, err);
+        console.error(`[${handle}] Erreur création produit/variants GraphQL`, handleUnique, err);
         continue;
       }
 
@@ -206,13 +221,14 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     }
 
     if (errors.length) {
+      console.error("[Shopify] setupShop ERREURS produits :", JSON.stringify(errors, null, 2));
       throw new Error("Erreurs sur " + errors.length + " produits : " + JSON.stringify(errors, null, 2));
     }
 
-    console.log(`[Shopify] setupShop: DONE. Created ${count} products`);
+    console.log(`[Shopify] setupShop: DONE. Products created: ${count}`);
     return { ok: true, created: count };
   } catch (err: any) {
-    console.log("Erreur globale setupShop:", err);
+    console.error("[Shopify] setupShop: FATAL ERROR", err);
     throw err;
   }
 }
