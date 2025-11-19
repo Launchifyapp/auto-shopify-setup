@@ -4,19 +4,18 @@ import { fetch } from "undici";
 import { stagedUploadShopifyFile, attachImageToProduct, attachImageToVariant } from "./batchUploadUniversal";
 import { parse } from "csv-parse/sync";
 
+// --- UTILS ---
 function validImageUrl(url?: string): boolean {
   if (!url) return false;
   const v = url.trim().toLowerCase();
   return !!v && v !== "nan" && v !== "null" && v !== "undefined" && /^https?:\/\/\S+$/i.test(v);
 }
-
 function cleanTags(tags: string | undefined): string[] {
   if (!tags) return [];
   return tags.split(",").map(t => t.trim()).filter(t =>
     t && !t.startsWith("<") && !t.startsWith("&") && t !== "null" && t !== "undefined" && t !== "NaN"
   );
 }
-
 function parseCsvShopify(csvText: string): any[] {
   return parse(csvText, {
     delimiter: ";",
@@ -28,7 +27,7 @@ function parseCsvShopify(csvText: string): any[] {
   });
 }
 
-// Conversion CSV natif Shopify -> structure exploitable
+// --- CSV -> structure exploitable et PATCH : variants doivent respecter l’ordre et l’unicité des options !
 function csvToStructuredProducts(csvText: string): any[] {
   const records = parseCsvShopify(csvText);
   const productsByHandle: Record<string, any[]> = {};
@@ -44,6 +43,8 @@ function csvToStructuredProducts(csvText: string): any[] {
     // productOptions structure for ProductInput
     type ProductOption = { name: string; values: { name: string }[] };
     const productOptions: ProductOption[] = [];
+    // Récupérer les noms d’options dans l’ordre du produit
+    const optionNames: string[] = [];
     for (let i = 1; i <= 3; i++) {
       const name = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
       if (name) {
@@ -52,12 +53,13 @@ function csvToStructuredProducts(csvText: string): any[] {
           values: Array.from(new Set(group.map((row: any) => row[`Option${i} Value`]).filter((v: any) => !!v && v.trim())))
             .map((v: string) => ({ name: v.trim() }))
         });
+        optionNames.push(name);
       }
     }
 
-    // Prepare variants for bulk creation (step 2)
-    const variants = group.map((row: any) => ({
-      options: productOptions.map((opt, i) => row[`Option${i+1} Value`] ? row[`Option${i+1} Value`].trim() : ""),
+    // PATCH : Construction stricte et unique des variants
+    const variantsRaw = group.map((row: any) => ({
+      options: optionNames.map((opt, i) => row[`Option${i+1} Value`] ? row[`Option${i+1} Value`].trim() : ""),
       price: row["Variant Price"] || main["Variant Price"] || "0",
       compareAtPrice: row["Variant Compare At Price"] || main["Variant Compare At Price"] || undefined,
       sku: row["Variant SKU"] ? String(row["Variant SKU"]).trim() : "",
@@ -65,6 +67,17 @@ function csvToStructuredProducts(csvText: string): any[] {
       requiresShipping: row["Variant Requires Shipping"] === "True",
       taxable: row["Variant Taxable"] === "True"
     }));
+
+    // PATCH : filtrer unicité, longueur et completude des options par Set sur JSON.stringify
+    const seen = new Set<string>();
+    const variants = variantsRaw.filter(v => {
+      const key = JSON.stringify(v.options);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      if (v.options.length !== optionNames.length) return false;
+      if (v.options.some(opt => !opt)) return false;
+      return true;
+    });
 
     products.push({
       handle,
@@ -77,8 +90,8 @@ function csvToStructuredProducts(csvText: string): any[] {
   return products;
 }
 
-// PATCH Shopify v2025-10+ : productCreate avec productOptions uniquement dans l'input,
-// puis variantes créées en bulk via productVariantsBulkCreate
+// --- PIPELINE PATCHÉ Shopify ---
+
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     console.log("[Shopify] setupShop: fetch CSV...");
@@ -92,7 +105,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     for (const { handle, group, main, productOptions, variants } of products) {
       let productId: string | undefined;
       try {
-        // 1. Créer le produit avec productOptions (et PAS options ou variants)
+        // 1. Créer le produit AVEC productOptions
         const productCreateInput = {
           title: main.Title,
           descriptionHtml: main["Body (HTML)"] || "",
@@ -104,7 +117,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           productOptions
         };
 
-        console.log(`[${handle}] Shopify productCreate input:`, JSON.stringify(productCreateInput, null, 2));
+        // Création produit
         const createRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -116,12 +129,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
                     id
                     title
                     handle
-                    options {
-                      id
-                      name
-                      position
-                      values
-                    }
+                    options { id name position values }
+                    variants(first: 5) { edges { node { id title sku selectedOptions { name value } } } }
                   }
                   userErrors { field message }
                 }
@@ -139,9 +148,30 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         }
         count++;
 
-        // 2. Ensuite créer les variants via productVariantsBulkCreate
+        // PATCH : Supprimer la variante "Default Title"
+        const variantsDefault = createdJson?.data?.productCreate?.product?.variants?.edges ?? [];
+        for (const v of variantsDefault) {
+          if (v.node.title === "Default Title") {
+            await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+              body: JSON.stringify({
+                query: `
+                  mutation productVariantDelete($id: ID!) {
+                    productVariantDelete(id: $id) {
+                      deletedProductVariantId
+                      userErrors { field message }
+                    }
+                  }
+                `,
+                variables: { id: v.node.id }
+              }),
+            });
+          }
+        }
+
+        // 2. Créer les variants en bulk avec options bien structurés
         if (variants.length > 0) {
-          console.log(`[${handle}] Shopify productVariantsBulkCreate input:`, JSON.stringify(variants, null, 2));
           const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -166,6 +196,9 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           if (bulkJson?.data?.productVariantsBulkCreate?.userErrors?.length) {
             errors.push({ handle, details: bulkJson?.data?.productVariantsBulkCreate?.userErrors });
             console.error(`[${handle}] ERREUR productVariantsBulkCreate`, JSON.stringify(bulkJson?.data?.productVariantsBulkCreate?.userErrors, null, 2));
+          } else {
+            const created = bulkJson?.data?.productVariantsBulkCreate?.product?.variants?.edges ?? [];
+            console.log(`[${handle}] Variants créés Shopify:`, JSON.stringify(created, null, 2));
           }
         }
 
@@ -182,7 +215,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             }
           }
         }
-        // Pour attacher une image à une variante, tu fais attachImageToVariant ici, en retrouvant l'id du variant via selectedOptions ou sku.
 
         await new Promise(res => setTimeout(res, 200));
       } catch (err) {
