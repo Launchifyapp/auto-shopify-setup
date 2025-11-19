@@ -31,7 +31,12 @@ export async function getMediaStagedUpload(
         }
       `,
       variables: { input: [
-        { filename, mimeType, resource: "IMAGE" }
+        {
+          filename,
+          mimeType,
+          resource: "IMAGE",
+          httpMethod: "POST"
+        }
       ]}
     })
   });
@@ -42,7 +47,7 @@ export async function getMediaStagedUpload(
   return target;
 }
 
-// 2. Upload image to Google Cloud endpoint
+// 2. Upload image to staged Google Cloud/S3 endpoint
 export async function uploadStagedMedia(
   stagedTarget: any,
   fileBuffer: Buffer,
@@ -97,52 +102,7 @@ export async function shopifyFileCreate(
   return fileNode;
 }
 
-// 4. Poll for CDN URL (file available for product media)
-export async function pollShopifyFileCDNByFilename(
-  shop: string,
-  token: string,
-  filename: string,
-  intervalMs: number = 10000,
-  maxTries: number = 40
-): Promise<string | null> {
-  for (let attempt = 1; attempt <= maxTries; attempt++) {
-    const url = await searchShopifyFileByFilename(shop, token, filename);
-    if (url) return url;
-    await new Promise(res => setTimeout(res, intervalMs));
-  }
-  return null;
-}
-
-export async function searchShopifyFileByFilename(
-  shop: string,
-  token: string,
-  filename: string
-): Promise<string | null> {
-  const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-    body: JSON.stringify({
-      query: `
-        query getFiles($filename: String!) {
-          files(first: 10, query: $filename) {
-            edges {
-              node {
-                ... on MediaImage { preview { image { url } } }
-              }
-            }
-          }
-        }
-      `,
-      variables: { filename }
-    }),
-    duplex: "half"
-  });
-  const body = await res.json() as any;
-  const node = body?.data?.files?.edges?.[0]?.node;
-  return node?.preview?.image?.url ?? null;
-}
-
-// 5. Attach file to product as product media
+// 4. Attach file to product as product media
 export async function attachImageToProduct(
   shop: string,
   token: string,
@@ -178,7 +138,41 @@ export async function attachImageToProduct(
   return data.data?.productCreateMedia?.media?.[0];
 }
 
-// OPTIONAL WRAPPER: staged file upload from file path (for previous pipeline compatibility)
+/**
+ * Step 5b: Attach image to product variant (used for variant-specific images)
+ */
+export async function attachImageToVariant(
+  shop: string,
+  token: string,
+  variantId: string,
+  imageUrl: string,
+  altText: string = ""
+): Promise<any> {
+  const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        mutation productVariantUpdate($input: ProductVariantUpdateInput!) {
+          productVariantUpdate(input: $input) {
+            productVariant { id image { id src altText } }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: {
+        input: {
+          id: variantId,
+          image: { src: imageUrl, altText }
+        }
+      }
+    })
+  });
+  const json = await res.json() as any;
+  return json?.data?.productVariantUpdate?.productVariant;
+}
+
+// Wrapper: staged file upload from file path
 export async function stagedUploadShopifyFile(
   shop: string,
   token: string,
