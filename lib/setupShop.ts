@@ -133,7 +133,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
           body: JSON.stringify({
             query: `
-              mutation productCreate($input: ProductCreateInput!) {
+              mutation productCreate($input: ProductInput!) {
                 productCreate(input: $input) {
                   product { id title handle options { id name values } }
                   userErrors { field message }
