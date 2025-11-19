@@ -118,7 +118,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             query: `
               mutation productCreate($input: ProductInput!) {
                 productCreate(input: $input) {
-                  product { id title handle variants(first: 50) { edges { node { id sku title price options { name values } selectedOptions { name value } } } } }
+                  product { id title handle variants(first: 50) { edges { node { id sku title price selectedOptions { name value } } } } }
                   userErrors { field message }
                 }
               }
