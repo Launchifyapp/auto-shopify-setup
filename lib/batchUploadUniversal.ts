@@ -111,53 +111,6 @@ export async function shopifyFileCreate(
 }
 
 /**
- * Step 4: Poll for CDN URL (file available for product media)
- */
-export async function pollShopifyFileCDNByFilename(
-  shop: string,
-  token: string,
-  filename: string,
-  intervalMs: number = 10000,
-  maxTries: number = 40
-): Promise<string | null> {
-  for (let attempt = 1; attempt <= maxTries; attempt++) {
-    const url = await searchShopifyFileByFilename(shop, token, filename);
-    if (url) return url;
-    await new Promise(res => setTimeout(res, intervalMs));
-  }
-  return null;
-}
-
-export async function searchShopifyFileByFilename(
-  shop: string,
-  token: string,
-  filename: string
-): Promise<string | null> {
-  const res = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-    body: JSON.stringify({
-      query: `
-        query getFiles($filename: String!) {
-          files(first: 10, query: $filename) {
-            edges {
-              node {
-                ... on MediaImage { preview { image { url } } }
-              }
-            }
-          }
-        }
-      `,
-      variables: { filename }
-    }),
-    duplex: "half"
-  });
-  const body = await res.json() as any;
-  const node = body?.data?.files?.edges?.[0]?.node;
-  return node?.preview?.image?.url ?? null;
-}
-
-/**
  * Step 5: Attach file to product as product media
  */
 export async function attachImageToProduct(
