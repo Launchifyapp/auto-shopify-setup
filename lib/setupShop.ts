@@ -29,7 +29,6 @@ function parseCsvShopify(csvText: string): any[] {
   });
 }
 
-// Convertit le CSV natif Shopify vers structure exploitable
 function csvToStructuredProducts(csvText: string): any[] {
   const records = parseCsvShopify(csvText);
   const productsByHandle: Record<string, any[]> = {};
@@ -42,12 +41,22 @@ function csvToStructuredProducts(csvText: string): any[] {
   for (const [handle, group] of Object.entries(productsByHandle)) {
     const main = group.find((row: any) => row.Title && row.Title.trim()) || group[0];
 
-    // Option names from first line (always in original order)
-    const optionNames: string[] = [];
-    for (let i = 1; i <= 3; i++) {
-      const name = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
-      if (name) optionNames.push(name);
-    }
+    // Construire variants array pour productCreate
+    const variants = group.map((row: any, idx: number) => {
+      // Shopify accepte option1, option2, option3; price, sku, etc.
+      // Vérifie existence pour chaque option !
+      return {
+        option1: row["Option1 Value"] ? row["Option1 Value"].trim() : undefined,
+        option2: row["Option2 Value"] ? row["Option2 Value"].trim() : undefined,
+        option3: row["Option3 Value"] ? row["Option3 Value"].trim() : undefined,
+        price: row["Variant Price"] || main["Variant Price"] || "0",
+        compareAtPrice: row["Variant Compare At Price"] || main["Variant Compare At Price"] || undefined,
+        sku: row["Variant SKU"] && String(row["Variant SKU"]).trim() ? String(row["Variant SKU"]).trim() : `SKU-${handle}-${idx+1}`,
+        barcode: row["Variant Barcode"] || undefined,
+        requiresShipping: row["Variant Requires Shipping"] === "True",
+        taxable: row["Variant Taxable"] === "True"
+      };
+    });
 
     const productCreateInput: any = {
       title: main.Title,
@@ -56,38 +65,36 @@ function csvToStructuredProducts(csvText: string): any[] {
       vendor: main.Vendor,
       productType: main["Type"] || main["Product Category"] || "",
       tags: cleanTags(main.Tags ?? main["Product Category"] ?? "").join(","),
-      status: "ACTIVE"
+      status: "ACTIVE",
+      variants
     };
 
     products.push({
       handle,
       group,
       main,
-      optionNames,
       productCreateInput
     });
   }
   return products;
 }
 
-// MAIN FUNCTION - compatible Shopify Admin GraphQL API
+// MAIN FUNCTION - création modèle Shopify avec variants dans productCreate
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     console.log("[Shopify] setupShop: fetch CSV...");
-    // 1. get CSV
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
 
-    // 2. parse CSV
     const products = csvToStructuredProducts(csvText);
 
     let count = 0, errors: any[] = [];
 
-    for (const { handle, group, main, optionNames, productCreateInput } of products) {
+    for (const { handle, group, main, productCreateInput } of products) {
       let productId: string | undefined;
       try {
-        // --- 3. CREATE PRODUCT ---
+        // --- 1. Crée produit + variants d'un coup ---
         console.log(`[${handle}] Shopify productCreate payload:`, JSON.stringify(productCreateInput, null, 2));
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
@@ -96,7 +103,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             query: `
               mutation productCreate($input: ProductInput!) {
                 productCreate(input: $input) {
-                  product { id title handle }
+                  product { id title handle variants(first: 50) { edges { node { id sku title price selectedOptions { name value } } } } }
                   userErrors { field message }
                 }
               }
@@ -113,113 +120,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         }
         count++;
 
-        // --- 4. CREATE OPTIONS (if any) ---
-        if (optionNames.length > 0) {
-          const productOptionsToCreate = optionNames.map((name: string) => ({
-            name,
-            values: Array.from(
-              new Set(group.map((row: any) => row[`Option${optionNames.indexOf(name) + 1} Value`]).filter((v: any) => !!v))
-            )
-          }));
-          console.log(`[${handle}] Shopify productOptionsCreate input:`, JSON.stringify(productOptionsToCreate, null, 2));
-
-          const optionsRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-            body: JSON.stringify({
-              query: `
-                mutation productOptionsCreate($productId: ID!, $options: [ProductOptionInput!]!) {
-                  productOptionsCreate(productId: $productId, options: $options) {
-                    product { id options { id name values } }
-                    userErrors { field message }
-                  }
-                }
-              `,
-              variables: { productId, options: productOptionsToCreate }
-            }),
-          });
-          const optionsJson = await optionsRes.json() as any;
-          if (optionsJson?.data?.productOptionsCreate?.userErrors?.length) {
-            errors.push({ handle, details: optionsJson?.data?.productOptionsCreate?.userErrors });
-            console.error(`[${handle}] ERREUR optionsCreate`, JSON.stringify(optionsJson?.data?.productOptionsCreate?.userErrors, null, 2));
-            continue;
-          }
-        }
-
-        // --- 5. CREATE VARIANTS ONE-BY-ONE ---
-        for (const [vidx, row] of group.entries()) {
-          // LOGS DEBUG : CSV + mapping
-          console.log(`[${handle}] VARIANT INDEX=${vidx}`);
-          console.log(`[${handle}] Variant CSV row:`, JSON.stringify(row, null, 2));
-          console.log(`[${handle}] Option names:`, JSON.stringify(optionNames));
-          console.log(`[${handle}] Raw mapping:`,
-            optionNames.map((opt: string, i: number) => ({
-              name: opt,
-              value: (row[`Option${i+1} Value`] || "").trim()
-            }))
-          );
-
-          const selectedOptions: { name: string; value: string }[] =
-            optionNames.map((opt: string, i: number) => ({
-              name: opt,
-              value: (row[`Option${i+1} Value`] || "").trim()
-            })).filter((optObj: { name: string; value: string }) => !!optObj.value);
-
-          console.log(`[${handle}] selectedOptions:`, JSON.stringify(selectedOptions));
-          const sku = row["Variant SKU"] && String(row["Variant SKU"]).trim() ? String(row["Variant SKU"]).trim() : `SKU-${handle}-${vidx+1}`;
-          console.log(`[${handle}] Built SKU: ${sku}`);
-
-          const variantInput = {
-            productId,
-            sku,
-            price: row["Variant Price"] || main["Variant Price"] || "0",
-            compareAtPrice: row["Variant Compare At Price"] || main["Variant Compare At Price"] || undefined,
-            barcode: row["Variant Barcode"] || undefined,
-            requiresShipping: row["Variant Requires Shipping"] === "True",
-            taxable: row["Variant Taxable"] === "True",
-            selectedOptions
-          };
-
-          console.log(`[${handle}] Shopify productVariantCreate input:`, JSON.stringify(variantInput, null, 2));
-
-          const variantRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-            body: JSON.stringify({
-              query: `
-                mutation productVariantCreate($input: ProductVariantCreateInput!) {
-                  productVariantCreate(input: $input) {
-                    variant { id title selectedOptions { name value } }
-                    userErrors { field message }
-                  }
-                }
-              `,
-              variables: { input: variantInput }
-            }),
-          });
-
-          const variantJson = await variantRes.json() as any;
-          console.log(`[${handle}] Shopify productVariantCreate response:`, JSON.stringify(variantJson, null, 2));
-
-          if (variantJson?.data?.productVariantCreate?.userErrors?.length) {
-            errors.push({ handle, details: variantJson?.data?.productVariantCreate?.userErrors });
-            console.error(`[${handle}] ERREUR productVariantCreate`, JSON.stringify(variantJson?.data?.productVariantCreate?.userErrors, null, 2));
-            continue;
-          }
-
-          // --- 6. OPTIONAL: Attach image to variant
-          const variantId = variantJson?.data?.productVariantCreate?.variant?.id;
-          if (variantId && validImageUrl(row["Variant Image"])) {
-            try {
-              await attachImageToVariant(shop, token, variantId, row["Variant Image"], row["Image Alt Text"] ?? "");
-              console.log(`[${handle}] Image variante attachée ${row["Variant Image"]} -> variantId=${variantId}`);
-            } catch (err) {
-              console.error(`[${handle}] Erreur linkage image variant`, variantId, err);
-            }
-          }
-        }
-
-        // --- 7. OPTIONAL: Attach image to product
+        // --- 2. Attache image produit
         for (const row of group) {
           const productImageUrl = row["Image Src"];
           const imageAltText = row["Image Alt Text"] ?? "";
@@ -229,6 +130,26 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
               console.log(`[${handle}] Image produit attachée ${productImageUrl} -> productId=${productId}`);
             } catch (err) {
               console.error(`[${handle}] Erreur linkage image produit`, handle, err);
+            }
+          }
+        }
+
+        // --- 3. Attache image variantes si possible (mapping via option values)
+        const createdVariants = gqlJson?.data?.productCreate?.product?.variants?.edges?.map((e: any) => e.node) || [];
+        for (const v of createdVariants) {
+          const variantMatch = group.find((row: any) =>
+            // Shopfiy mapping: toutes options de v.selectedOptions doivent matcher row
+            v.selectedOptions.every((o: any, idx: number) =>
+              row[`Option${idx+1} Value`] && o.value === row[`Option${idx+1} Value`]
+            )
+          );
+          // S'il existe une image pour cette variante, on l'attache
+          if (variantMatch && validImageUrl(variantMatch["Variant Image"])) {
+            try {
+              await attachImageToVariant(shop, token, v.id, variantMatch["Variant Image"], variantMatch["Image Alt Text"] ?? "");
+              console.log(`[${handle}] Image variante attachée ${variantMatch["Variant Image"]} -> variantId=${v.id}`);
+            } catch (err) {
+              console.error(`[${handle}] Erreur linkage image variant`, v.id, err);
             }
           }
         }
