@@ -29,7 +29,6 @@ function parseCsvShopify(csvText: string): any[] {
   });
 }
 
-// Conversion du CSV natif Shopify vers la structure exploitable
 function csvToStructuredProducts(csvText: string): any[] {
   const records = parseCsvShopify(csvText);
   const productsByHandle: Record<string, any[]> = {};
@@ -49,27 +48,6 @@ function csvToStructuredProducts(csvText: string): any[] {
       if (name) optionNames.push(name);
     }
 
-    // --- payload for the first mutation
-    // ALL variants are defined in this payload, as Shopify expects
-    const variants = group.map((row: any, idx: number) => {
-      const sku = row["Variant SKU"] && String(row["Variant SKU"]).trim() ? String(row["Variant SKU"]).trim() : `SKU-${handle}-${idx+1}`;
-      // selectedOptions for each variant, as required by Shopify
-      const selectedOptions = optionNames.map((opt, i) => ({
-        name: opt,
-        value: (row[`Option${i+1} Value`] || "").trim()
-      })).filter(opt => !!opt.value);
-
-      return {
-        sku,
-        price: row["Variant Price"] || main["Variant Price"] || "0",
-        compareAtPrice: row["Variant Compare At Price"] || main["Variant Compare At Price"] || undefined,
-        barcode: row["Variant Barcode"] || undefined,
-        requiresShipping: row["Variant Requires Shipping"] === "True",
-        taxable: row["Variant Taxable"] === "True",
-        selectedOptions
-      };
-    });
-
     const productCreateInput: any = {
       title: main.Title,
       descriptionHtml: main["Body (HTML)"] || "",
@@ -77,9 +55,7 @@ function csvToStructuredProducts(csvText: string): any[] {
       vendor: main.Vendor,
       productType: main["Type"] || main["Product Category"] || "",
       tags: cleanTags(main.Tags ?? main["Product Category"] ?? "").join(","),
-      status: "ACTIVE", // IMPORTANT: must be uppercase
-      options: optionNames,
-      variants // bulk variants inside productCreate!
+      status: "ACTIVE" // PAS de variants ni options ici !
     };
 
     products.push({
@@ -93,7 +69,7 @@ function csvToStructuredProducts(csvText: string): any[] {
   return products;
 }
 
-// MAIN FUNCTION - uses only productCreate for bulk creation
+// MAIN FUNCTION - 100% compatible Shopify Admin GraphQL API 2025-10
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     console.log("[Shopify] setupShop: fetch CSV...");
@@ -110,7 +86,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     for (const { handle, group, main, optionNames, productCreateInput } of products) {
       let productId: string | undefined;
       try {
-        // --- 3. CREATE PRODUCT AND BULK VARIANTS IN ONE MUTATION ---
+        // --- 3. CREATE PRODUCT ---
         console.log(`[${handle}] Shopify productCreate payload:`, JSON.stringify(productCreateInput, null, 2));
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
@@ -119,7 +95,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             query: `
               mutation productCreate($input: ProductInput!) {
                 productCreate(input: $input) {
-                  product { id title handle variants(first: 50) { edges { node { id sku title selectedOptions { name value } } } } }
+                  product { id title handle }
                   userErrors { field message }
                 }
               }
@@ -136,7 +112,95 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         }
         count++;
 
-        // --- 4. Attache images produit principal
+        // --- 4. CREATE OPTIONS (if any) ---
+        if (optionNames.length > 0) {
+          const productOptionsToCreate = optionNames.map((name: string) => ({
+            name,
+            values: Array.from(
+              new Set(group.map((row: any) => row[`Option${optionNames.indexOf(name) + 1} Value`]).filter((v: any) => !!v))
+            )
+          }));
+          console.log(`[${handle}] Shopify productOptionsCreate input:`, JSON.stringify(productOptionsToCreate, null, 2));
+
+          const optionsRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+            body: JSON.stringify({
+              query: `
+                mutation productOptionsCreate($productId: ID!, $options: [ProductOptionInput!]!) {
+                  productOptionsCreate(productId: $productId, options: $options) {
+                    product { id options { id name values } }
+                    userErrors { field message }
+                  }
+                }
+              `,
+              variables: { productId, options: productOptionsToCreate }
+            }),
+          });
+          const optionsJson = await optionsRes.json() as any;
+          if (optionsJson?.data?.productOptionsCreate?.userErrors?.length) {
+            errors.push({ handle, details: optionsJson?.data?.productOptionsCreate?.userErrors });
+            console.error(`[${handle}] ERREUR optionsCreate`, optionsJson?.data?.productOptionsCreate?.userErrors);
+            continue;
+          }
+        }
+
+        // --- 5. CREATE VARIANTS ONE-BY-ONE ---
+        for (const [vidx, row] of group.entries()) {
+          const selectedOptions = optionNames.map((opt: string, i: number) => ({
+            name: opt,
+            value: (row[`Option${i+1} Value`] || "").trim()
+          })).filter(opt => !!opt.value);
+
+          const sku = row["Variant SKU"] && String(row["Variant SKU"]).trim() ? String(row["Variant SKU"]).trim() : `SKU-${handle}-${vidx+1}`;
+
+          const variantInput = {
+            productId,
+            sku,
+            price: row["Variant Price"] || main["Variant Price"] || "0",
+            compareAtPrice: row["Variant Compare At Price"] || main["Variant Compare At Price"] || undefined,
+            barcode: row["Variant Barcode"] || undefined,
+            requiresShipping: row["Variant Requires Shipping"] === "True",
+            taxable: row["Variant Taxable"] === "True",
+            selectedOptions
+          };
+
+          const variantRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+            body: JSON.stringify({
+              query: `
+                mutation productVariantCreate($input: ProductVariantCreateInput!) {
+                  productVariantCreate(input: $input) {
+                    variant { id title selectedOptions { name value } }
+                    userErrors { field message }
+                  }
+                }
+              `,
+              variables: { input: variantInput }
+            }),
+          });
+
+          const variantJson = await variantRes.json() as any;
+          if (variantJson?.data?.productVariantCreate?.userErrors?.length) {
+            errors.push({ handle, details: variantJson?.data?.productVariantCreate?.userErrors });
+            console.error(`[${handle}] ERREUR productVariantCreate`, variantJson?.data?.productVariantCreate?.userErrors);
+            continue;
+          }
+
+          // --- 6. OPTIONAL: Attach image to variant
+          const variantId = variantJson?.data?.productVariantCreate?.variant?.id;
+          if (variantId && validImageUrl(row["Variant Image"])) {
+            try {
+              await attachImageToVariant(shop, token, variantId, row["Variant Image"], row["Image Alt Text"] ?? "");
+              console.log(`[${handle}] Image variante attachée ${row["Variant Image"]} -> variantId=${variantId}`);
+            } catch (err) {
+              console.error(`[${handle}] Erreur linkage image variant`, variantId, err);
+            }
+          }
+        }
+
+        // --- 7. OPTIONAL: Attach image to product
         for (const row of group) {
           const productImageUrl = row["Image Src"];
           const imageAltText = row["Image Alt Text"] ?? "";
@@ -150,27 +214,13 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // --- 5. Attache images variantes
-        const createdVariants = gqlJson?.data?.productCreate?.product?.variants?.edges?.map((e: any) => e.node) || [];
-        for (const [vidx, v] of createdVariants.entries()) {
-          const row = group[vidx];
-          if (!row) continue;
-          if (validImageUrl(row["Variant Image"])) {
-            try {
-              await attachImageToVariant(shop, token, v.id, row["Variant Image"], row["Image Alt Text"] ?? "");
-              console.log(`[${handle}] Image variante attachée ${row["Variant Image"]} -> variantId=${v.id}`);
-            } catch (err) {
-              console.error(`[${handle}] Erreur linkage image variant`, v.id, err);
-            }
-          }
-        }
+        await new Promise(res => setTimeout(res, 200)); // Shopify rate limit
 
       } catch (err) {
         errors.push({ handle, details: err });
         console.error(`[${handle}] FATAL erreur setupShop pour le produit`, handle, err);
         continue;
       }
-      await new Promise(res => setTimeout(res, 200)); // Rate-limit Shopify
     }
 
     if (errors.length) {
