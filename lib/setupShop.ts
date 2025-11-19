@@ -8,17 +8,18 @@ import { parse } from "csv-parse/sync";
 function validImageUrl(url?: string): boolean {
   if (!url) return false;
   const v = url.trim().toLowerCase();
-  return !!v && v !== "nan" && v !== "null" && v !== "undefined" && /^https?:\/\/\S+$/i.test(v);
+  return !!v &&
+    v !== "nan" &&
+    v !== "null" &&
+    v !== "undefined" &&
+    /^https?:\/\/\S+$/i.test(v);
 }
 
 function cleanTags(tags: string | undefined): string[] {
   if (!tags) return [];
-  return tags
-    .split(",")
-    .map(t => t.trim())
-    .filter(t =>
-      t && !t.startsWith("<") && !t.startsWith("&") && t !== "null" && t !== "undefined" && t !== "NaN"
-    );
+  return tags.split(",").map(t => t.trim()).filter(t =>
+    t && !t.startsWith("<") && !t.startsWith("&") && t !== "null" && t !== "undefined" && t !== "NaN"
+  );
 }
 
 function parseCsvShopify(csvText: string): any[] {
@@ -81,7 +82,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       }
     }
 
-    // Création des produits principaux avec variantes
+    // Création des produits principaux avec variantes (mutation unique)
     for (const [handle, group] of Object.entries(productsByHandle)) {
       // La première ligne du groupe (produit principal), contient les noms d'options
       const main = group.find(row => row.Title && row.Title.trim()) || group[0];
@@ -97,18 +98,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         if (name) optionNames.push(name);
       }
 
-      // 2. Pour chaque option, récupérer toutes les valeurs uniques du groupe
-      const optionValues: string[][] = optionNames.map((name, idx) =>
-        Array.from(new Set(group.map(row => row[`Option${idx + 1} Value`]).filter(Boolean)))
-      );
-
-      // 3. Format Shopify : Array d'options
-      const options = optionNames.map((name, idx) => ({
-        name,
-        values: optionValues[idx]
-      }));
-
-      // 4. Format Shopify : Array de variants (chaque ligne du groupe)
+      // 2. Format Shopify : Array de variants (chaque ligne du groupe)
       const variants = group
         .filter(row => optionNames.some((name, idx) => row[`Option${idx + 1} Value`]))
         .map(row => ({
@@ -127,7 +117,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       // Génère handle unique pour éviter le conflit
       const handleUnique = main.Handle + "-" + Math.random().toString(16).slice(2, 7);
 
-      // Crée le payload complet
+      // Crée le payload complet au format attendu par Shopify
       const productPayload: any = {
         title: main.Title,
         descriptionHtml: main["Body (HTML)"] || "",
@@ -135,8 +125,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         vendor: main.Vendor,
         productType: main["Type"] || main["Product Category"] || "",
         tags: cleanTags(main.Tags ?? main["Product Category"] ?? "").join(","),
-        options,
-        variants,
+        options: optionNames, // <-- Un tableau de chaînes, pas un tableau d'objets !
+        variants,             // <-- Un tableau d'objets, chacun avec ses selectedOptions
       };
 
       let productId: string | undefined;
@@ -149,7 +139,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
           body: JSON.stringify({
             query: `
-              mutation productCreate($product: ProductCreateInput!) {
+              mutation productCreate($product: ProductInput!) {
                 productCreate(product: $product) {
                   product {
                     id
