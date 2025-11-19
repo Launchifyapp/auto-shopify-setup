@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { fetch } from "undici";
-import { stagedUploadShopifyFile, pollShopifyFileCDNByFilename, attachImageToProduct, attachImageToVariant } from "./batchUploadUniversal";
+import { stagedUploadShopifyFile, attachImageToProduct, attachImageToVariant } from "./batchUploadUniversal";
 import { parse } from "csv-parse/sync";
 
 // Vérifie la validité d'une URL
@@ -96,10 +96,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       const optionNames = ["Option1 Name", "Option2 Name", "Option3 Name"]
         .map(opt => main[opt] && main[opt].trim())
         .filter(Boolean);
-      const allOptionValues: Record<string, string[]> = {};
-      for (const name of optionNames) {
-        allOptionValues[name] = Array.from(new Set(group.map(row => row[`${name} Value`]).filter(Boolean)));
-      }
 
       // Génère handle unique pour éviter le conflit
       const handleUnique = main.Handle + "-" + Math.random().toString(16).slice(2, 7);
@@ -196,14 +192,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           const variantId = gqlVariantJson?.data?.productVariantCreate?.productVariant?.id;
           // Attache image spécifique s'il y en a une pour la variante
           if (variantId && validImageUrl(variantRow["Variant Image"])) {
-            const filename = variantRow["Variant Image"].split('/').pop() ?? "variant.jpg";
-            const cdnUrl: string | null = variantRow["Variant Image"].startsWith("https://cdn.shopify.com")
-              ? variantRow["Variant Image"]
-              : await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
-            if (cdnUrl) {
-              await attachImageToVariant(shop, token, variantId, cdnUrl, variantRow["Image Alt Text"] ?? "");
-              console.log(`[setupShop:VARIANT IMAGE ATTACHED] for variant id ${variantId}`);
-            }
+            await attachImageToVariant(shop, token, variantId, variantRow["Variant Image"], variantRow["Image Alt Text"] ?? "");
+            console.log(`[setupShop:VARIANT IMAGE ATTACHED] for variant id ${variantId}`);
           }
         } catch (err) {
           console.error("Erreur création ou update image variant", handleUnique, err);
@@ -217,15 +207,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         const imageAltText = row["Image Alt Text"] ?? "";
         if (validImageUrl(productImageUrl)) {
           try {
-            const filename = productImageUrl.split('/').pop() ?? 'image.jpg';
-            const cdnUrl: string | null = productImageUrl.startsWith("https://cdn.shopify.com")
-              ? productImageUrl
-              : await pollShopifyFileCDNByFilename(shop, token, filename, 10000, 40);
-            if (!cdnUrl) {
-              console.warn(`Image produit non trouvée CDN : ${filename}`);
-              continue;
-            }
-            await attachImageToProduct(shop, token, productId!, cdnUrl, imageAltText);
+            await attachImageToProduct(shop, token, productId!, productImageUrl, imageAltText);
           } catch (err) {
             console.error("Erreur linkage image produit", handle, err);
           }
