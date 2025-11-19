@@ -194,7 +194,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         // Mapping Shopify productVariantsBulkCreate: "options" is just an array of values in order
         const variantsPayload = group.map((row: any) => {
           // Les values dans l'ordre des optionNames
-          const values: string[] = optionNames.map((opt, idx) => row[`Option${idx+1} Value`] || "").filter((v: any) => !!v);
+          const values: string[] = optionNames.map((opt: any, idx: number) => row[`Option${idx+1} Value`] || "").filter((v: any) => !!v);
           return {
             sku: row["Variant SKU"],
             price: row["Variant Price"] || main["Variant Price"] || "0",
