@@ -57,10 +57,11 @@ async function attachImageToProduct(shop: string, token: string, productId: stri
   return json?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
-// PATCH: Met à jour le prix et compareAtPrice de la variante existante
-async function updateVariantPrice(shop: string, token: string, variantId: string, price: string, compareAtPrice?: string) {
+async function updateVariantPrice(shop: string, token: string, variantId: string, price?: string, compareAtPrice?: string) {
+  // Check undefined before calling mutation
+  if (!variantId || price === undefined) return;
   const variables: any = { id: variantId, price };
-  if (compareAtPrice) {
+  if (compareAtPrice !== undefined) {
     variables.compareAtPrice = compareAtPrice;
   }
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
@@ -81,8 +82,8 @@ async function updateVariantPrice(shop: string, token: string, variantId: string
   return await res.json();
 }
 
-// Création bulk des variantes (si > 1 variant)
 async function bulkCreateVariants(shop: string, token: string, productId: string, variants: any[]) {
+  if (!productId || !variants?.length) return;
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -179,7 +180,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           continue;
         }
 
-        // 1. Images import
+        // Images
         const allImagesToAttach = [
           ...new Set([
             ...group.map(row => row["Image Src"]).filter(Boolean),
@@ -191,46 +192,43 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           await attachImageToProduct(shop, token, productId, normalizedUrl, "");
         }
 
-        // 2. Variants
+        // Variants logic
         const seen = new Set<string>();
-        const variants = group
-          .map(row => {
-            const optionValues: { name: string; optionName: string }[] = [];
-            productOptions.forEach((opt, idx) => {
-              const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
-              if (value && value !== "Default Title") {
-                optionValues.push({ name: value, optionName: opt.name });
-              }
-            });
-            const key = optionValues.map(ov => ov.name).join('|');
-            if (seen.has(key)) return undefined;
-            seen.add(key);
-            // Si aucune optionValue mais il n'y a qu'une ligne : produite simple
-            if (!optionValues.length && group.length === 1) {
-              return {
-                price: row["Variant Price"] || main["Variant Price"] || "0",
-                compareAtPrice: row["Variant Compare At Price"] || undefined,
-                sku: row["Variant SKU"] || undefined,
-                barcode: row["Variant Barcode"] || undefined,
-                optionValues: []
-              };
+        const variants = group.map(row => {
+          const optionValues: { name: string; optionName: string }[] = [];
+          productOptions.forEach((opt, idx) => {
+            const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
+            if (value && value !== "Default Title") {
+              optionValues.push({ name: value, optionName: opt.name });
             }
-            if (!optionValues.length) return undefined;
+          });
+          const key = optionValues.map(ov => ov.name).join('|');
+          if (seen.has(key)) return undefined;
+          seen.add(key);
+          // Produit simple
+          if (!optionValues.length && group.length === 1) {
             return {
               price: row["Variant Price"] || main["Variant Price"] || "0",
               compareAtPrice: row["Variant Compare At Price"] || undefined,
               sku: row["Variant SKU"] || undefined,
               barcode: row["Variant Barcode"] || undefined,
-              optionValues
+              optionValues: []
             };
-          })
-          .filter(v => v);
+          }
+          if (!optionValues.length) return undefined;
+          return {
+            price: row["Variant Price"] || main["Variant Price"] || "0",
+            compareAtPrice: row["Variant Compare At Price"] || undefined,
+            sku: row["Variant SKU"] || undefined,
+            barcode: row["Variant Barcode"] || undefined,
+            optionValues
+          };
+        }).filter(v => v);
 
         if (variants.length > 1) {
-          // Supprimer la variante Shopify auto ("Default Title")
+          // Supprime la variante "Default Title" créée automatiquement par Shopify
           const defaultVariantId = productData?.variants?.edges?.[0]?.node?.id;
           if (defaultVariantId) {
-            // Pas bloquant si échec, ignore si déjà supprimée
             await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
               method: "POST",
               headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
@@ -248,13 +246,13 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             });
           }
 
-          // Bulk create toutes tes variantes
+          // Bulk create toutes variantes
           await bulkCreateVariants(shop, token, productId, variants);
+
         } else if (variants.length === 1) {
-          // Un seul variant: il existe déjà côté Shopify, on le met juste à jour
+          // Un seul variant à mettre à jour sur la variante existante
           const defaultVariantId = productData?.variants?.edges?.[0]?.node?.id;
-          if (defaultVariantId) {
-            // update price/compareAtPrice
+          if (defaultVariantId && variants[0]?.price !== undefined) {
             await updateVariantPrice(
               shop,
               token,
