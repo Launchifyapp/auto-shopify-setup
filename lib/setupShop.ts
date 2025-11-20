@@ -51,7 +51,7 @@ export async function setupShop({ shop, token, session }: { shop: string; token:
     const products = csvToStructuredProducts(csvText);
 
     for (const { handle, group, main, optionNames } of products) {
-      // 1. Upload toutes les images nécessaires pour les variantes et construction mapping imageUrl -> mediaId
+      // 1. Upload images nécessaires pour les variantes et construction mapping imageUrl -> mediaId
       const variantImageMap: Record<string, string> = {};
       for (const row of group) {
         const variantImageUrl = row["Variant Image"] ?? row["Image Src"];
@@ -74,11 +74,12 @@ export async function setupShop({ shop, token, session }: { shop: string; token:
       const seen = new Set<string>();
       const variantsBulk: any[] = [];
       for (const row of group) {
+        // PATCH: Typage de ov explicitement pour TypeScript
         const optionValues = optionNames.map((optionName: string, i: number) => ({
           name: row[`Option${i+1} Value`] ? String(row[`Option${i+1} Value`]).trim() : "",
           optionName
         }));
-        if (optionValues.some(ov => !ov.name)) continue;
+        if (optionValues.some((ov: { name: string; optionName: string }) => !ov.name)) continue;
         const key = JSON.stringify(optionValues);
         if (seen.has(key)) continue;
         seen.add(key);
@@ -143,7 +144,7 @@ export async function setupShop({ shop, token, session }: { shop: string; token:
         }
       });
 
-      // 5. LOGS bulk retour Shopify
+      // LOGS bulk retour Shopify
       console.log(`[DEBUG][${handle}] Shopify API bulkCreate retour:`, JSON.stringify(data, null, 2));
       if (data?.body?.data?.productVariantsBulkCreate?.userErrors?.length) {
         console.error(`[${handle}] userErrors:`, JSON.stringify(data.body.data.productVariantsBulkCreate.userErrors, null, 2));
