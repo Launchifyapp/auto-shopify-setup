@@ -154,7 +154,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             variables: { product },
           }),
         });
-        const gqlJson = await res.json();
+        const gqlJson = await gqlRes.json();
         const productData = gqlJson?.data?.productCreate?.product;
         const productId = productData?.id;
         if (!productId) {
