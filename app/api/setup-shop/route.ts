@@ -1,17 +1,7 @@
-// Exemple PATCH pour gérer la variable session lors de l'appel à setupShop
-// Tu adapteras l'import/setupShop selon ton arborescence
-import { setupShop } from "../../../lib/setupShop"; // <-- adapte ce chemin selon ton repo
+import { setupShop } from "../../../lib/setupShop";
 
 export async function POST(req: Request) {
-  // Ici, on récupère shop et token selon ton logique (corps de requête, env, etc.)
-  // Exemple :
-  // const { shop, token } = await req.json();
-  // Pour le test, tu peux hardcoder ou extraire selon besoin
-
-  // MOCK / PATCH : Ajoute une session vide pour corriger le bug
-  const session = {}; // <-- Patch ici. Adapte avec la vraie session Shopify quand tu veux.
-
-  // Récupère shop et token
+  // Récupération des paramètres du body (shop, token)
   let shop = "";
   let token = "";
   try {
@@ -26,7 +16,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    await setupShop({ shop, token, session }); // <-- session est bien déclaré !
+    // PATCH : Appel sans session, car setupShop n'accepte que { shop, token }
+    await setupShop({ shop, token });
     return new Response(
       JSON.stringify({ ok: true, message: "Setup boutique terminé !" }),
       { status: 200, headers: { "Content-Type": "application/json" } }
