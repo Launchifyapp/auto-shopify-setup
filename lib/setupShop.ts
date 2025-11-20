@@ -5,6 +5,32 @@ function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
 
+// Ajoute/maj les metafields d'un produit
+async function updateProductMetafields(shop: string, token: string, productId: string, metafields: any[]) {
+  if (!metafields || metafields.length === 0) return;
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        mutation productSetMetafields($productId: ID!, $metafields: [MetafieldsSetInput!]!) {
+          metafieldsSet(ownerId: $productId, metafields: $metafields) {
+            metafields { id namespace key value type }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: { productId, metafields }
+    })
+  });
+  const json = await res.json();
+  if (json.data?.metafieldsSet?.userErrors?.length) {
+    console.warn('Metafields userErrors:', JSON.stringify(json.data.metafieldsSet.userErrors));
+  } else {
+    console.log(`Metafields ajoutés au produit ${productId}:`, JSON.stringify(json.data?.metafieldsSet?.metafields));
+  }
+}
+
 // Attache une image en tant que media produit (retourne l'id du media créé)
 async function attachImageToProduct(shop: string, token: string, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
   const media = [{
@@ -53,6 +79,33 @@ async function attachImageToVariant(shop: string, token: string, variantId: stri
     })
   });
   return await res.json();
+}
+
+// Utilitaire pour extraire tous les metafields d'une ligne CSV
+function extractProductMetafields(row: any): any[] {
+  // Logique exemple : détecter les colonnes commençant par "Metafield:"
+  // Si ton CSV utilise des colonnes type "Metafield:namespace.key:type"
+  // Exemple: "Metafield:details.material:single_line_text_field"
+  const metafields: any[] = [];
+  for (const key of Object.keys(row)) {
+    if (key.startsWith("Metafield:")) {
+      // Format: Metafield:namespace.key:type
+      const matches = key.match(/^Metafield:([^\.]+)\.([^:]+):(.+)$/);
+      if (matches) {
+        const [, namespace, metafieldKey, type] = matches;
+        // Shopify demande une valeur string pour tout type
+        if (row[key] && row[key].trim() !== "") {
+          metafields.push({
+            namespace,
+            key: metafieldKey,
+            type,
+            value: row[key].trim()
+          });
+        }
+      }
+    }
+  }
+  return metafields;
 }
 
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
@@ -129,6 +182,12 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         if (!productId) {
           console.error("Aucun productId généré.", JSON.stringify(gqlJson, null, 2));
           continue;
+        }
+
+        // Ajoute les metafields du produit
+        const productMetafields = extractProductMetafields(main);
+        if (productMetafields.length > 0) {
+          await updateProductMetafields(shop, token, productId, productMetafields);
         }
 
         // Regroupe toutes les images uniques à uploader (Image Src ET Variant Image)
@@ -222,7 +281,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           // Trouve l'id variante qui correspond à la combinaison d'options
           const optionsKey = productOptions.map((opt, idx) => row[`Option${idx + 1} Value`] ? row[`Option${idx + 1} Value`].trim() : '').join('|');
           const variantId = allVariantIds.find((vid) => {
-            // No reliable mapping possible sans query, fallback: on attache à toutes, ou faire un mapping plus fin en requêtant les options !
             return true;
           });
           if (variantId) {
