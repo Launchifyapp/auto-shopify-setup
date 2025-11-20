@@ -1,35 +1,38 @@
 import { parse } from "csv-parse/sync";
 
-// Utilitaire pour normaliser l'URL des images
+// Utilitaire pour normaliser le domaine des urls images
 function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
 
-// Fonction d'extraction des checkbox metafields (depuis les colonnes du CSV)
+// Fonction d'extraction des metafields (checkboxes) depuis les colonnes du CSV
 function extractCheckboxMetafields(row: any): any[] {
   const metafields: any[] = [];
+  // Checkbox 1
   if (row["Checkbox 1 (product.metafields.custom.checkbox_1)"] !== undefined) {
     metafields.push({
       namespace: "custom",
       key: "checkbox_1",
-      type: "boolean",
-      value: row["Checkbox 1 (product.metafields.custom.checkbox_1)"] === "true" ? "true" : "false"
+      type: "single_line_text_field", // correspond à ta définition Shopify actuelle
+      value: row["Checkbox 1 (product.metafields.custom.checkbox_1)"].toString()
     });
   }
+  // Checkbox 2
   if (row["Checkbox 2 (product.metafields.custom.checkbox_2)"] !== undefined) {
     metafields.push({
       namespace: "custom",
       key: "checkbox_2",
-      type: "boolean",
-      value: row["Checkbox 2 (product.metafields.custom.checkbox_2)"] === "true" ? "true" : "false"
+      type: "single_line_text_field",
+      value: row["Checkbox 2 (product.metafields.custom.checkbox_2)"].toString()
     });
   }
+  // Checkbox 3
   if (row["Checkbox 3 (product.metafields.custom.checkbox_3)"] !== undefined) {
     metafields.push({
       namespace: "custom",
       key: "checkbox_3",
-      type: "boolean",
-      value: row["Checkbox 3 (product.metafields.custom.checkbox_3)"] === "true" ? "true" : "false"
+      type: "single_line_text_field",
+      value: row["Checkbox 3 (product.metafields.custom.checkbox_3)"].toString()
     });
   }
   return metafields;
@@ -63,7 +66,7 @@ async function attachImageToProduct(shop: string, token: string, productId: stri
   return json?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
-// Attache un media à une variante (code legacy, ignore pour import prod/metafields)
+// Attache un media à une variante
 async function attachImageToVariant(shop: string, token: string, variantId: string, mediaId: string) {
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -117,9 +120,10 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       const productOptionsOrUndefined = productOptions.length ? productOptions : undefined;
       const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
 
-      // === GÉNÈRE LES METAFIELDS POUR CE PRODUIT (checkboxes du CSV)
+      // Génére les metafields à partir de la première ligne du groupe
       const productMetafields = extractCheckboxMetafields(main);
 
+      // Prépare le payload produit avec les metafields inclus
       const product: any = {
         title: main.Title,
         descriptionHtml: main["Body (HTML)"] || "",
@@ -128,11 +132,11 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         productType: main.Type,
         tags: main.Tags?.split(",").map((t: string) => t.trim()),
         productOptions: productOptionsOrUndefined,
-        metafields: productMetafields.length > 0 ? productMetafields : undefined // Ajout direct à productCreateInput !
+        metafields: productMetafields.length > 0 ? productMetafields : undefined,
       };
 
       try {
-        // Création du produit Shopify AVEC METAFIELDS inclus
+        // Création du produit (avec metafields intégrés à la mutation)
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -165,10 +169,9 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           console.error("Aucun productId généré.", JSON.stringify(gqlJson, null, 2));
           continue;
         }
-        // Log complet (dont metafields)
         console.log("Product metafields results:", JSON.stringify(productData?.metafields, null, 2));
 
-        // Upload images produit (optionnel)
+        // Upload des images (optionnel, inchangé)
         const allImagesToAttach = [
           ...new Set([
             ...group.map(row => row["Image Src"]).filter(Boolean),
@@ -185,8 +188,64 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // (Variants and variant image code remains as before...)
-        // ... si besoin, ici tu peux continuer le traitement variants/images comme avant
+        // Création (optionnelle) des variantes supplémentaires
+        const seen = new Set<string>();
+        const variants = group
+          .map(row => {
+            const optionValues: { name: string; optionName: string }[] = [];
+            productOptions.forEach((opt, idx) => {
+              const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
+              if (value && value !== "Default Title") {
+                optionValues.push({ name: value, optionName: opt.name });
+              }
+            });
+            const key = optionValues.map(ov => ov.name).join('|');
+            if (seen.has(key)) return undefined;
+            seen.add(key);
+            if (!optionValues.length) return undefined;
+            return {
+              price: row["Variant Price"] || main["Variant Price"] || "0",
+              compareAtPrice: row["Variant Compare At Price"] || undefined,
+              sku: row["Variant SKU"] || undefined,
+              barcode: row["Variant Barcode"] || undefined,
+              optionValues
+            };
+          })
+          .filter(v => v && v.optionValues && v.optionValues.length);
+
+        let allVariantIds: string[] = [];
+        // Bulk create (variants en plus)
+        if (variants.length > 1) {
+          const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shopify-Access-Token": token,
+            },
+            body: JSON.stringify({
+              query: `
+                mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+                  productVariantsBulkCreate(productId: $productId, variants: $variants) {
+                    productVariants { id sku price }
+                    userErrors { field message }
+                  }
+                }
+              `,
+              variables: { productId, variants: variants.slice(1) },
+            }),
+          });
+          const bulkJson = await bulkRes.json();
+          if (bulkJson?.data?.productVariantsBulkCreate?.productVariants) {
+            allVariantIds = bulkJson.data.productVariantsBulkCreate.productVariants.map((v: { id: string }) => v.id);
+          }
+        }
+
+        if (productData?.variants?.edges) {
+          allVariantIds = [
+            ...allVariantIds,
+            ...productData.variants.edges.map((edge: { node: { id: string } }) => edge.node.id)
+          ];
+        }
 
         await new Promise(res => setTimeout(res, 300));
       } catch (err) {
