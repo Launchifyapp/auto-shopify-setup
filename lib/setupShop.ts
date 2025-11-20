@@ -187,6 +187,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         });
         const jsonVariants = await resVariants.json();
         const allVariantsEdges = jsonVariants?.data?.product?.variants?.edges ?? [];
+        // Typage explicite du paramètre pour lever l'implicite any
         const allVariantIds = allVariantsEdges.map((edge: { node: { id: string, selectedOptions: { value: string }[] } }) => ({
           variantId: edge.node.id,
           selectedOptions: edge.node.selectedOptions.map(opt => opt.value.trim()).join('|')
@@ -215,8 +216,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           const optionsKey = productOptions.map((opt, idx) =>
             row[`Option${idx + 1} Value`] ? row[`Option${idx + 1} Value`].trim() : ''
           ).join('|');
-          // Match sur la clé normalisée !
-          const variantMapping = allVariantIds.find((v) => normalizeKey(v.selectedOptions) === normalizeKey(optionsKey));
+          // Typage explicite pour lever TS error (v: { variantId: string, selectedOptions: string })
+          const variantMapping = allVariantIds.find((v: { variantId: string, selectedOptions: string }) => normalizeKey(v.selectedOptions) === normalizeKey(optionsKey));
           if (!variantMapping) {
             console.warn(`[DEBUG] Aucune variante trouvée pour CSV optionsKey=${normalizeKey(optionsKey)}; row=${JSON.stringify(row)}`);
           }
