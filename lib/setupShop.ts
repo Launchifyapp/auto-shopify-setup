@@ -68,6 +68,9 @@ function csvToStructuredProducts(csvText: string): any[] {
       taxable: row["Variant Taxable"] === "True"
     }));
 
+    // --- LOG DEBUG BRUTS ---
+    console.log(`[DEBUG][${handle}] variantsRaw du CSV :`, JSON.stringify(variantsRaw, null, 2));
+
     // PATCH : filtrer unicité, longueur et completude des options par Set sur JSON.stringify
     const seen = new Set<string>();
     const variants = variantsRaw.filter(v => {
@@ -78,6 +81,9 @@ function csvToStructuredProducts(csvText: string): any[] {
       if (v.options.some(opt => !opt)) return false;
       return true;
     });
+
+    // --- LOG DEBUG FILTRÉS ---
+    console.log(`[DEBUG][${handle}] Variants filtrés (uniques et complets):`, JSON.stringify(variants, null, 2));
 
     products.push({
       handle,
@@ -170,6 +176,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
+        // LOG FINAL AVANT ENVOI BULK
+        console.log(`[DEBUG][${handle}] Variants à envoyer à productVariantsBulkCreate:`, JSON.stringify(variants, null, 2));
         // 2. Créer les variants en bulk avec options bien structurés
         if (variants.length > 0) {
           const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
@@ -193,9 +201,11 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             }),
           });
           const bulkJson: any = await bulkRes.json();
+          // LOG DU RETOUR BRUT
+          console.log(`[DEBUG][${handle}] Shopify réponse bulkCreate:`, JSON.stringify(bulkJson, null, 2));
           if (bulkJson?.data?.productVariantsBulkCreate?.userErrors?.length) {
             errors.push({ handle, details: bulkJson?.data?.productVariantsBulkCreate?.userErrors });
-            console.error(`[${handle}] ERREUR productVariantsBulkCreate`, JSON.stringify(bulkJson?.data?.productVariantsBulkCreate?.userErrors, null, 2));
+            console.error(`[DEBUG][${handle}] ERREUR userErrors:`, JSON.stringify(bulkJson?.data?.productVariantsBulkCreate?.userErrors, null, 2));
           } else {
             const created = bulkJson?.data?.productVariantsBulkCreate?.product?.variants?.edges ?? [];
             console.log(`[${handle}] Variants créés Shopify:`, JSON.stringify(created, null, 2));
