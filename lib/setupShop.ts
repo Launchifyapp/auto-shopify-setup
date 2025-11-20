@@ -59,7 +59,7 @@ function csvToStructuredProducts(csvText: string): any[] {
 
     // PATCH : Construction stricte et unique des variants
     const variantsRaw = group.map((row: any) => ({
-      options: optionNames.map((opt: string, i: number) => row[`Option${i+1} Value`] ? row[`Option${i+1} Value`].trim() : ""),
+      options: optionNames.map((opt, i) => row[`Option${i+1} Value`] ? row[`Option${i+1} Value`].trim() : ""),
       price: row["Variant Price"] || main["Variant Price"] || "0",
       compareAtPrice: row["Variant Compare At Price"] || main["Variant Compare At Price"] || undefined,
       sku: row["Variant SKU"] ? String(row["Variant SKU"]).trim() : "",
@@ -78,7 +78,7 @@ function csvToStructuredProducts(csvText: string): any[] {
       if (seen.has(key)) return false;
       seen.add(key);
       if (v.options.length !== optionNames.length) return false;
-      if (v.options.some((opt: string) => !opt)) return false;
+      if (v.options.some(opt => !opt)) return false;
       return true;
     });
 
