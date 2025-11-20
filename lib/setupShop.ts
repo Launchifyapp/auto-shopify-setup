@@ -74,7 +74,7 @@ export async function setupShop({ shop, token, session }: { shop: string; token:
       const seen = new Set<string>();
       const variantsBulk: any[] = [];
       for (const row of group) {
-        const optionValues = optionNames.map((optionName, i) => ({
+        const optionValues = optionNames.map((optionName: string, i: number) => ({
           name: row[`Option${i+1} Value`] ? String(row[`Option${i+1} Value`]).trim() : "",
           optionName
         }));
@@ -104,7 +104,8 @@ export async function setupShop({ shop, token, session }: { shop: string; token:
       console.log(`[DEBUG][${handle}] Variants bulk final à importer:`, JSON.stringify(variantsBulk, null, 2));
 
       // 4. Shopify productVariantsBulkCreate avec shopify.clients.Graphql
-      const { clients } = require("shopify-api-node"); // Adapte au SDK utilisé
+      // ⚠️ Adapte ce require selon l'installation de shopify-api-node ou Shopify CLI
+      const { clients } = require("shopify-api-node");
       const client = new clients.Graphql({ session });
       const data = await client.query({
         data: {
