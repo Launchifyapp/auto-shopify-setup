@@ -1,11 +1,11 @@
 import { parse } from "csv-parse/sync";
 
-// Utilitaire pour normaliser le domaine des urls images
+// Utility: normalize image URLs
 function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
 
-// Attache une image à un produit (productCreateMedia)
+// Attach image as media to product
 async function attachImageToProduct(shop: string, token: string, productId: string, imageUrl: string, altText: string = "") {
   const media = [{
     originalSource: imageUrl,
@@ -36,7 +36,7 @@ async function attachImageToProduct(shop: string, token: string, productId: stri
   return await res.json();
 }
 
-// Attache un media à une variante (productVariantAppendMedia)
+// Attach mediaId to variant
 async function attachImageToVariant(shop: string, token: string, variantId: string, mediaId: string) {
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -58,7 +58,7 @@ async function attachImageToVariant(shop: string, token: string, variantId: stri
   return await res.json();
 }
 
-// Récupère tous les media du produit
+// Get product media list
 async function getProductMedia(shop: string, token: string, productId: string) {
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -77,7 +77,7 @@ async function getProductMedia(shop: string, token: string, productId: string) {
     })
   });
   const json = await res.json();
-  return json?.data?.product?.media?.edges?.map(edge => ({
+  return json?.data?.product?.media?.edges?.map((edge: { node: { id: string, image: { url?: string } } }) => ({
     url: edge.node.image?.url,
     id: edge.node.id
   })) ?? [];
@@ -90,14 +90,14 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     const csvText = await response.text();
     const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: ";" });
 
-    // Regroupement par Handle
+    // Group by Handle
     const productsByHandle: Record<string, any[]> = {};
     for (const row of records) {
       if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
       productsByHandle[row.Handle].push(row);
     }
 
-    // --- CREATION PRODUITS & VARIANTS & PATCH IMAGE VARIANTS ---
+    // Main shop creation loop
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
       type ProductOption = { name: string, values: { name: string }[] };
@@ -127,7 +127,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       };
 
       try {
-        // 1. Création du produit principal avec toutes les variantes/options
+        // Create product with its base options
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -164,7 +164,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         const productVariants = productData?.variants?.edges ?? [];
         console.log('Produit créé', handleUnique, '| GraphQL response:', JSON.stringify(gqlJson, null, 2));
 
-        // 2. Attacher toutes les images PRODUIT (multi-images patch)
+        // Attach all product images (multi-images, main images, deduplicated)
         const imagesToAttach = [
           ...new Set(group.map(row => row["Image Src"]).filter(Boolean))
         ];
@@ -177,18 +177,14 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           } catch (err) { console.error(`Erreur upload/attach image produit ${productId} | ${imgUrl}`, err); }
         }
 
-        // 3. PATCH image variante via productVariantAppendMedia
-        // a. Récupérer tous les media pour ce produit
+        // Get all product media for mapping image - variant
         const medias = await getProductMedia(shop, token, productId);
 
-        // b. Pour chaque variante créée, attacher image si CSV la propose
+        // For each variant, attach Variant Image if present via productVariantAppendMedia
         for (const v of productVariants) {
           const variantId = v.node?.id;
           if (!variantId) continue;
-          // Recompose options pour matching (join avec séparateur pour robustesse)
           const createdSelectedOpt = (v.node.selectedOptions ?? []).map((opt: any) => opt.value).join("|");
-
-          // Retrouver la ligne CSV correspondante
           const csvRow = group.find(row =>
             productOptions.map((opt, idx) => row[`Option${idx + 1} Value`]?.trim()).filter(Boolean).join("|") === createdSelectedOpt
           );
@@ -196,7 +192,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             const normalizedVariantImageUrl = normalizeImageUrl(csvRow["Variant Image"]);
             let mediaId = medias.find(m => m.url === normalizedVariantImageUrl)?.id;
 
-            // Si l'image de la variante n'est pas déjà un media, upload-la
+            // Upload if not present in product media
             if (!mediaId) {
               try {
                 const mediaRes = await attachImageToProduct(shop, token, productId, normalizedVariantImageUrl, "");
@@ -205,7 +201,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
                 else console.error(`Erreur création media pour image variant: ${normalizedVariantImageUrl}`);
               } catch (err) { console.error(`Erreur attach/mapping media image variant`, err); }
             }
-            // Attache le mediaId à la variante
+            // Attach mediaId to variant
             if (mediaId) {
               try {
                 await attachImageToVariant(shop, token, variantId, mediaId);
@@ -216,7 +212,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             }
           }
         }
-
         await new Promise(res => setTimeout(res, 300));
       } catch (err) {
         console.error('Erreur création produit GraphQL', handleUnique, err);
