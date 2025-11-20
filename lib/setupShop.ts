@@ -1,23 +1,20 @@
 import { parse } from "csv-parse/sync";
 
-// Utilitaire pour normaliser le domaine des urls images
 function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
 
-// Fonction d'extraction des metafields (checkboxes) depuis les colonnes du CSV
+// Fonction d'extraction des metafields (checkboxes du CSV, format Shopify attendu)
 function extractCheckboxMetafields(row: any): any[] {
   const metafields: any[] = [];
-  // Checkbox 1
   if (row["Checkbox 1 (product.metafields.custom.checkbox_1)"] !== undefined) {
     metafields.push({
       namespace: "custom",
       key: "checkbox_1",
-      type: "single_line_text_field", // correspond à ta définition Shopify actuelle
+      type: "single_line_text_field",
       value: row["Checkbox 1 (product.metafields.custom.checkbox_1)"].toString()
     });
   }
-  // Checkbox 2
   if (row["Checkbox 2 (product.metafields.custom.checkbox_2)"] !== undefined) {
     metafields.push({
       namespace: "custom",
@@ -26,7 +23,6 @@ function extractCheckboxMetafields(row: any): any[] {
       value: row["Checkbox 2 (product.metafields.custom.checkbox_2)"].toString()
     });
   }
-  // Checkbox 3
   if (row["Checkbox 3 (product.metafields.custom.checkbox_3)"] !== undefined) {
     metafields.push({
       namespace: "custom",
@@ -38,7 +34,7 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
-// Attache une image en tant que media produit (retourne l'id du media créé)
+// Upload image en media produit Shopify
 async function attachImageToProduct(shop: string, token: string, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
   const media = [{
     originalSource: imageUrl,
@@ -64,28 +60,6 @@ async function attachImageToProduct(shop: string, token: string, productId: stri
   });
   const json = await res.json();
   return json?.data?.productCreateMedia?.media?.[0]?.id;
-}
-
-// Attache un media à une variante
-async function attachImageToVariant(shop: string, token: string, variantId: string, mediaId: string) {
-  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-    body: JSON.stringify({
-      query: `
-        mutation productVariantAppendMedia($variantId: ID!, $mediaIds: [ID!]!) {
-          productVariantAppendMedia(variantId: $variantId, mediaIds: $mediaIds) {
-            media {
-              ... on MediaImage { id image { url } }
-            }
-            mediaUserErrors { field message }
-          }
-        }
-      `,
-      variables: { variantId, mediaIds: [mediaId] }
-    })
-  });
-  return await res.json();
 }
 
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
@@ -120,10 +94,9 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       const productOptionsOrUndefined = productOptions.length ? productOptions : undefined;
       const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
 
-      // Génére les metafields à partir de la première ligne du groupe
       const productMetafields = extractCheckboxMetafields(main);
 
-      // Prépare le payload produit avec les metafields inclus
+      // Construction du payload produit
       const product: any = {
         title: main.Title,
         descriptionHtml: main["Body (HTML)"] || "",
@@ -136,7 +109,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       };
 
       try {
-        // Création du produit (avec metafields intégrés à la mutation)
+        // MUTATION CORRECTE : PAS de query sur product.metafields !
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -148,13 +121,11 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
               mutation productCreate($product: ProductCreateInput!) {
                 productCreate(product: $product) {
                   product {
-  id
-  handle
-  variants(first: 50) {
-    edges { node { id sku title selectedOptions { name value } } }
-  }
-}
-                    metafields { edges { node { namespace key type value } } }
+                    id
+                    handle
+                    variants(first: 50) {
+                      edges { node { id sku title selectedOptions { name value } } }
+                    }
                   }
                   userErrors { field message }
                 }
@@ -170,9 +141,9 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           console.error("Aucun productId généré.", JSON.stringify(gqlJson, null, 2));
           continue;
         }
-        console.log("Product metafields results:", JSON.stringify(productData?.metafields, null, 2));
+        console.log("Product créé avec id:", productId);
 
-        // Upload des images (optionnel, inchangé)
+        // Upload des images
         const allImagesToAttach = [
           ...new Set([
             ...group.map(row => row["Image Src"]).filter(Boolean),
@@ -189,7 +160,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
-        // Création (optionnelle) des variantes supplémentaires
+        // Création des variantes supplémentaires
         const seen = new Set<string>();
         const variants = group
           .map(row => {
@@ -215,7 +186,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           .filter(v => v && v.optionValues && v.optionValues.length);
 
         let allVariantIds: string[] = [];
-        // Bulk create (variants en plus)
         if (variants.length > 1) {
           const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
             method: "POST",
@@ -241,6 +211,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           }
         }
 
+        // Ajoute les variantes de la création du produit (toujours présentes dans productData.variants.edges)
         if (productData?.variants?.edges) {
           allVariantIds = [
             ...allVariantIds,
