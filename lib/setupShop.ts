@@ -148,11 +148,12 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
               mutation productCreate($product: ProductCreateInput!) {
                 productCreate(product: $product) {
                   product {
-                    id
-                    handle
-                    variants(first: 50) {
-                      edges { node { id sku title selectedOptions { name value } } }
-                    }
+  id
+  handle
+  variants(first: 50) {
+    edges { node { id sku title selectedOptions { name value } } }
+  }
+}
                     metafields { edges { node { namespace key type value } } }
                   }
                   userErrors { field message }
