@@ -4,7 +4,63 @@ function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
 
-// ... extractCheckboxMetafields (identique au patch précédent) ...
+// Fonction d'extraction des metafields "checkbox" depuis les colonnes du CSV
+function extractCheckboxMetafields(row: any): any[] {
+  const metafields: any[] = [];
+  if (row["Checkbox 1 (product.metafields.custom.checkbox_1)"] !== undefined) {
+    metafields.push({
+      namespace: "custom",
+      key: "checkbox_1",
+      type: "single_line_text_field",
+      value: row["Checkbox 1 (product.metafields.custom.checkbox_1)"].toString()
+    });
+  }
+  if (row["Checkbox 2 (product.metafields.custom.checkbox_2)"] !== undefined) {
+    metafields.push({
+      namespace: "custom",
+      key: "checkbox_2",
+      type: "single_line_text_field",
+      value: row["Checkbox 2 (product.metafields.custom.checkbox_2)"].toString()
+    });
+  }
+  if (row["Checkbox 3 (product.metafields.custom.checkbox_3)"] !== undefined) {
+    metafields.push({
+      namespace: "custom",
+      key: "checkbox_3",
+      type: "single_line_text_field",
+      value: row["Checkbox 3 (product.metafields.custom.checkbox_3)"].toString()
+    });
+  }
+  return metafields;
+}
+
+// Upload image en media produit Shopify
+async function attachImageToProduct(shop: string, token: string, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
+  const media = [{
+    originalSource: imageUrl,
+    mediaContentType: "IMAGE",
+    alt: altText
+  }];
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+          productCreateMedia(productId: $productId, media: $media) {
+            media {
+              ... on MediaImage { id image { url } }
+            }
+            mediaUserErrors { field message }
+          }
+        }
+      `,
+      variables: { productId, media }
+    })
+  });
+  const json = await res.json();
+  return json?.data?.productCreateMedia?.media?.[0]?.id;
+}
 
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
@@ -42,7 +98,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       // Metafields
       const productMetafields = extractCheckboxMetafields(main);
 
-      // PAYLOAD SANS variants
+      // PAYLOAD SANS variants => variantes ajoutées en bulk ensuite
       const product: any = {
         title: main.Title,
         descriptionHtml: main["Body (HTML)"] || "",
