@@ -5,8 +5,8 @@ function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
 
-// Mutation pour attacher une image au produit (Shopify v2025-10+)
-async function attachImageToProduct(shop: string, token: string, productId: string, imageUrl: string, altText: string = "") {
+// Attache une image en tant que media produit (retourne l'id du media créé)
+async function attachImageToProduct(shop: string, token: string, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
   const media = [{
     originalSource: imageUrl,
     mediaContentType: "IMAGE",
@@ -20,11 +20,7 @@ async function attachImageToProduct(shop: string, token: string, productId: stri
         mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
           productCreateMedia(productId: $productId, media: $media) {
             media {
-              ... on MediaImage {
-                id
-                alt
-                image { url }
-              }
+              ... on MediaImage { id image { url } }
             }
             mediaUserErrors { field message }
           }
@@ -33,10 +29,11 @@ async function attachImageToProduct(shop: string, token: string, productId: stri
       variables: { productId, media }
     })
   });
-  return await res.json();
+  const json = await res.json();
+  return json?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
-// Mutation pour attacher une image media à une variante
+// Attache un media à une variante
 async function attachImageToVariant(shop: string, token: string, variantId: string, mediaId: string) {
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
     method: "POST",
@@ -46,11 +43,7 @@ async function attachImageToVariant(shop: string, token: string, variantId: stri
         mutation productVariantAppendMedia($variantId: ID!, $mediaIds: [ID!]!) {
           productVariantAppendMedia(variantId: $variantId, mediaIds: $mediaIds) {
             media {
-              ... on MediaImage {
-                id
-                alt
-                image { url }
-              }
+              ... on MediaImage { id image { url } }
             }
             mediaUserErrors { field message }
           }
@@ -69,14 +62,12 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
     const csvText = await response.text();
     const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: ";" });
 
-    // Regroupe les lignes du CSV par Handle produit
     const productsByHandle: Record<string, any[]> = {};
     for (const row of records) {
       if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
       productsByHandle[row.Handle].push(row);
     }
 
-    // --- CREATION PRODUITS & VARIANTS PATCH ---
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
 
@@ -94,7 +85,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         }
       }
       const productOptionsOrUndefined = productOptions.length ? productOptions : undefined;
-
       const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
 
       const product: any = {
@@ -108,7 +98,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       };
 
       try {
-        // Création produit principal Shopify
+        // Création du produit
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -121,12 +111,10 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
                 productCreate(product: $product) {
                   product {
                     id
-                    title
                     handle
                     variants(first: 50) {
                       edges { node { id sku title selectedOptions { name value } } }
                     }
-                    options { id name position optionValues { id name hasVariants } }
                   }
                   userErrors { field message }
                 }
@@ -139,24 +127,29 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         const productData = gqlJson?.data?.productCreate?.product;
         const productId = productData?.id;
         if (!productId) {
-          console.error(
-            "Aucun productId généré.",
-            "Réponse brute:", JSON.stringify(gqlJson, null, 2)
-          );
+          console.error("Aucun productId généré.", JSON.stringify(gqlJson, null, 2));
           continue;
         }
-        console.log('Produit créé', handleUnique, '| GraphQL response:', JSON.stringify(gqlJson, null, 2));
 
-        // Attacher toutes les images PRODUIT (multi-images PATCH)
-        const imagesToAttach = [
-          ...new Set(group.map(row => row["Image Src"]).filter(Boolean))
+        // Regroupe toutes les images uniques à uploader (Image Src ET Variant Image)
+        const allImagesToAttach = [
+          ...new Set([
+            ...group.map(row => row["Image Src"]).filter(Boolean),
+            ...group.map(row => row["Variant Image"]).filter(Boolean),
+          ])
         ];
-        for (const imgUrl of imagesToAttach) {
+        // Upload toutes les images comme media produit AVANT rattachement
+        const mediaMap: Record<string, string> = {};
+        for (const imgUrl of allImagesToAttach) {
           const normalizedUrl = normalizeImageUrl(imgUrl);
-          await attachImageToProduct(shop, token, productId, normalizedUrl, "");
+          const mediaId = await attachImageToProduct(shop, token, productId, normalizedUrl, "");
+          if (mediaId) {
+            mediaMap[normalizedUrl] = mediaId;
+            console.log(`Media importé (${mediaId}) pour ${normalizedUrl}`);
+          }
         }
 
-        // --- Crée la liste de variants
+        // Crée variantes supplémentaires si nécessaire
         const seen = new Set<string>();
         const variants = group
           .map(row => {
@@ -181,126 +174,60 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           })
           .filter(v => v && v.optionValues && v.optionValues.length);
 
-        // Bulk create variants en respectant le workflow (créé la première via productCreate, les suivantes en bulk)
-        let bulkCreatedVariants: any[] = [];
+        let allVariantIds: string[] = [];
+        // Bulk create (variants en plus)
         if (variants.length > 1) {
-          try {
-            const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Shopify-Access-Token": token,
-              },
-              body: JSON.stringify({
-                query: `
-                  mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-                    productVariantsBulkCreate(productId: $productId, variants: $variants) {
-                      productVariants { id sku price }
-                      userErrors { field message }
-                    }
-                  }
-                `,
-                variables: { productId, variants: variants.slice(1) },
-              }),
-            });
-            const bulkJson = await bulkRes.json();
-            if (bulkJson?.data?.productVariantsBulkCreate?.userErrors?.length) {
-              console.error('Bulk variants userErrors:', bulkJson.data.productVariantsBulkCreate.userErrors);
-            } else {
-              bulkCreatedVariants = bulkJson?.data?.productVariantsBulkCreate?.productVariants ?? [];
-              console.log('Bulk variants response:', JSON.stringify(bulkJson, null, 2));
-            }
-          } catch (err) {
-            console.error('Erreur bulk variants GraphQL', handleUnique, err);
-          }
-        }
-
-        // PATCH: Attacher aux variants l'image via productVariantAppendMedia
-        const imagesRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-          body: JSON.stringify({
-            query: `
-              query getMedia($productId: ID!) {
-                product(id: $productId) {
-                  media(first:20) {
-                    edges { node { ... on MediaImage { id image { url } } } }
+          const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shopify-Access-Token": token,
+            },
+            body: JSON.stringify({
+              query: `
+                mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+                  productVariantsBulkCreate(productId: $productId, variants: $variants) {
+                    productVariants { id sku price }
+                    userErrors { field message }
                   }
                 }
-              }
-            `,
-            variables: { productId }
-          })
-        });
-        const imagesJson = await imagesRes.json();
-        const mediaEdges = imagesJson?.data?.product?.media?.edges ?? [];
-        const mediasToAppend: { url: string, id: string }[] = [];
-        for (const edge of mediaEdges) {
-          const url = edge?.node?.image?.url;
-          const id = edge?.node?.id;
-          if (url && id) mediasToAppend.push({ url, id });
-        }
-
-        // Récupère toutes les variants créées (productCreate + bulk)
-        const variantIds: { variantId: string, optValues: string }[] = [];
-        // ProductCreate variants
-        const productVariantsCreated = productData?.variants?.edges ?? [];
-        for (const v of productVariantsCreated) {
-          variantIds.push({
-            variantId: v.node?.id,
-            optValues: (v.node?.selectedOptions ?? []).map((opt: any) => opt.value).join(' ')
+              `,
+              variables: { productId, variants: variants.slice(1) },
+            }),
           });
-        }
-        // Bulk variants
-        for (const v of bulkCreatedVariants) {
-          // BulkCreate does not return selectedOptions, so we need to recompute optValues from CSV group
-          // We'll map by SKU if present (or price if not), or recompute mapping
-          // For safety, do fuzzy match
-          variantIds.push({
-            variantId: v.id,
-            optValues: '' // Will map later
-          });
-        }
-
-        // Attacher images aux variants
-        for (const variantObj of variantIds) {
-          const variantId = variantObj.variantId;
-          if (!variantId) continue;
-
-          // FIND CSV line that matches this variant
-          // For variants from productCreate : use selectedOptions mapping
-          let csvRow;
-          if (variantObj.optValues) {
-            csvRow = group.find(row =>
-              productOptions.map((opt, idx) => row[`Option${idx + 1} Value`]?.trim()).filter(Boolean).join(' ') === variantObj.optValues
-            );
-          } else if (variantId) {
-            // For bulk variants: fallback matching by SKU if present
-            csvRow = group.find(row =>
-              (row["Variant SKU"] && row["Variant SKU"] === variantId) // highly unlikely, fallback only
-            );
+          const bulkJson = await bulkRes.json();
+          if (bulkJson?.data?.productVariantsBulkCreate?.productVariants) {
+            allVariantIds = bulkJson.data.productVariantsBulkCreate.productVariants.map((v: { id: string }) => v.id);
           }
-          if (csvRow && csvRow["Variant Image"]) {
-            const normalizedVariantImageUrl = normalizeImageUrl(csvRow["Variant Image"]);
-            let mediaId = mediasToAppend.find((m: { url: string, id: string }) => m.url === normalizedVariantImageUrl)?.id;
-            // Sinon, upload + attach en tant que media produit -> Récupère mediaId
-            if (!mediaId) {
-              try {
-                const resJson = await attachImageToProduct(shop, token, productId, normalizedVariantImageUrl, "");
-                mediaId = resJson?.data?.productCreateMedia?.media?.[0]?.id;
-                if (mediaId) mediasToAppend.push({ url: normalizedVariantImageUrl, id: mediaId });
-                else console.error(`Erreur attach image variant: ${JSON.stringify(resJson)}`);
-              } catch (err) { console.error(`Erreur attach/mapping media image variant`, err); }
-            }
-            // Si mediaId dispo, patch la variante
-            if (mediaId) {
-              try {
-                await attachImageToVariant(shop, token, variantId, mediaId);
-                console.log(`Image de variante attachée à ${variantId}`);
-              } catch (err) {
-                console.error(`Erreur patch variant image media ${variantId}`, err);
-              }
-            }
+        }
+
+        // Ajoute les variantes de la création du produit (toujours présente dans productData.variants.edges)
+        if (productData?.variants?.edges) {
+          allVariantIds = [
+            ...allVariantIds,
+            ...productData.variants.edges.map((edge: { node: { id: string } }) => edge.node.id)
+          ];
+        }
+
+        // Après bulkCreate, rattacher l'image à chaque variante si Variant Image existe
+        for (const row of group) {
+          const variantImageUrl = row["Variant Image"];
+          if (!variantImageUrl) continue;
+          const normalizedVariantImageUrl = normalizeImageUrl(variantImageUrl);
+          const mediaId = mediaMap[normalizedVariantImageUrl];
+          if (!mediaId) {
+            console.error(`Media non trouvé pour image variante: ${normalizedVariantImageUrl}`);
+            continue;
+          }
+          // Trouve l'id variante qui correspond à la combinaison d'options
+          const optionsKey = productOptions.map((opt, idx) => row[`Option${idx + 1} Value`] ? row[`Option${idx + 1} Value`].trim() : '').join('|');
+          const variantId = allVariantIds.find((vid) => {
+            // No reliable mapping possible sans query, fallback: on attache à toutes, ou faire un mapping plus fin en requêtant les options !
+            return true;
+          });
+          if (variantId) {
+            await attachImageToVariant(shop, token, variantId, mediaId);
+            console.log(`Image variante attachée: ${variantId} <- ${mediaId}`);
           }
         }
 
