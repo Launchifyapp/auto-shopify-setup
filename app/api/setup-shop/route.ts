@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     );
   }
   try {
-    await setupShop({ shop, token });
+    await setupShop({ shop, token, session });
     return new Response(
       JSON.stringify({ ok: true, message: "Setup boutique terminé !" }),
       { status: 200, headers: { "Content-Type": "application/json" } }
