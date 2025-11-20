@@ -4,37 +4,32 @@ function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
 
-// Fonction d'extraction des metafields (checkboxes du CSV, format Shopify attendu)
 function extractCheckboxMetafields(row: any): any[] {
   const metafields: any[] = [];
-  if (row["Checkbox 1 (product.metafields.custom.checkbox_1)"] !== undefined) {
+  if (row["Checkbox 1 (product.metafields.custom.checkbox_1)"] !== undefined)
     metafields.push({
       namespace: "custom",
       key: "checkbox_1",
       type: "single_line_text_field",
       value: row["Checkbox 1 (product.metafields.custom.checkbox_1)"].toString()
     });
-  }
-  if (row["Checkbox 2 (product.metafields.custom.checkbox_2)"] !== undefined) {
+  if (row["Checkbox 2 (product.metafields.custom.checkbox_2)"] !== undefined)
     metafields.push({
       namespace: "custom",
       key: "checkbox_2",
       type: "single_line_text_field",
       value: row["Checkbox 2 (product.metafields.custom.checkbox_2)"].toString()
     });
-  }
-  if (row["Checkbox 3 (product.metafields.custom.checkbox_3)"] !== undefined) {
+  if (row["Checkbox 3 (product.metafields.custom.checkbox_3)"] !== undefined)
     metafields.push({
       namespace: "custom",
       key: "checkbox_3",
       type: "single_line_text_field",
       value: row["Checkbox 3 (product.metafields.custom.checkbox_3)"].toString()
     });
-  }
   return metafields;
 }
 
-// Upload image en media produit Shopify
 async function attachImageToProduct(shop: string, token: string, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
   const media = [{
     originalSource: imageUrl,
@@ -60,6 +55,33 @@ async function attachImageToProduct(shop: string, token: string, productId: stri
   });
   const json = await res.json();
   return json?.data?.productCreateMedia?.media?.[0]?.id;
+}
+
+// PATCH: Met à jour le prix de la première variante d’un produit (parfois nommée "Default Title")
+async function updateVariantPrice(shop: string, token: string, variantId: string, price: string, compareAtPrice?: string) {
+  const variables: any = {
+    id: variantId,
+    price,
+  };
+  if (compareAtPrice) {
+    variables.compareAtPrice = compareAtPrice;
+  }
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        mutation productVariantUpdate($id: ID!, $price: Money!, $compareAtPrice: Money) {
+          productVariantUpdate(id: $id, price: $price, compareAtPrice: $compareAtPrice) {
+            productVariant { id price compareAtPrice }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables,
+    }),
+  });
+  return await res.json();
 }
 
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
@@ -96,7 +118,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
       const productMetafields = extractCheckboxMetafields(main);
 
-      // Construction du payload produit
       const product: any = {
         title: main.Title,
         descriptionHtml: main["Body (HTML)"] || "",
@@ -109,7 +130,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       };
 
       try {
-        // MUTATION CORRECTE : PAS de query sur product.metafields !
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -134,7 +154,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             variables: { product },
           }),
         });
-        const gqlJson = await gqlRes.json();
+        const gqlJson = await res.json();
         const productData = gqlJson?.data?.productCreate?.product;
         const productId = productData?.id;
         if (!productId) {
@@ -143,27 +163,32 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         }
         console.log("Product créé avec id:", productId);
 
-        // Upload des images
+        // PATCH PRIX/SINGLE VARIANT: s’il n'y a qu'une variante (pas d'option produit réelle), on met à jour son prix ici
+        const onlyOneVariant = (!productOptionsOrUndefined || productOptionsOrUndefined.length === 0) && group.length === 1;
+        if (onlyOneVariant && productData?.variants?.edges?.length) {
+          const variantId = productData.variants.edges[0].node.id;
+          const price = main["Variant Price"] || "0";
+          const compareAtPrice = main["Variant Compare At Price"];
+          const updateRes = await updateVariantPrice(shop, token, variantId, price, compareAtPrice);
+          console.log(`Prix variante mise à jour:`, updateRes);
+        }
+
+        // Upload des images produit
         const allImagesToAttach = [
           ...new Set([
             ...group.map(row => row["Image Src"]).filter(Boolean),
             ...group.map(row => row["Variant Image"]).filter(Boolean),
           ])
         ];
-        const mediaMap: Record<string, string> = {};
         for (const imgUrl of allImagesToAttach) {
           const normalizedUrl = normalizeImageUrl(imgUrl);
-          const mediaId = await attachImageToProduct(shop, token, productId, normalizedUrl, "");
-          if (mediaId) {
-            mediaMap[normalizedUrl] = mediaId;
-            console.log(`Media importé (${mediaId}) pour ${normalizedUrl}`);
-          }
+          await attachImageToProduct(shop, token, productId, normalizedUrl, "");
         }
 
-        // Création des variantes supplémentaires
-        const seen = new Set<string>();
-        const variants = group
-          .map(row => {
+        // Création des variantes supplémentaires (avec options, si + d'une ligne ou + d'une option)
+        if (productOptionsOrUndefined && group.length > 1) {
+          const seen = new Set<string>();
+          const variants = group.map(row => {
             const optionValues: { name: string; optionName: string }[] = [];
             productOptions.forEach((opt, idx) => {
               const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
@@ -182,41 +207,32 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
               barcode: row["Variant Barcode"] || undefined,
               optionValues
             };
-          })
-          .filter(v => v && v.optionValues && v.optionValues.length);
+          }).filter(v => v && v.optionValues && v.optionValues.length);
 
-        let allVariantIds: string[] = [];
-        if (variants.length > 1) {
-          const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Shopify-Access-Token": token,
-            },
-            body: JSON.stringify({
-              query: `
-                mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-                  productVariantsBulkCreate(productId: $productId, variants: $variants) {
-                    productVariants { id sku price }
-                    userErrors { field message }
+          if (variants.length) {
+            const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Shopify-Access-Token": token,
+              },
+              body: JSON.stringify({
+                query: `
+                  mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+                    productVariantsBulkCreate(productId: $productId, variants: $variants) {
+                      productVariants { id sku price }
+                      userErrors { field message }
+                    }
                   }
-                }
-              `,
-              variables: { productId, variants: variants.slice(1) },
-            }),
-          });
-          const bulkJson = await bulkRes.json();
-          if (bulkJson?.data?.productVariantsBulkCreate?.productVariants) {
-            allVariantIds = bulkJson.data.productVariantsBulkCreate.productVariants.map((v: { id: string }) => v.id);
+                `,
+                variables: { productId, variants },
+              }),
+            });
+            const bulkJson = await bulkRes.json();
+            if (bulkJson?.data?.productVariantsBulkCreate?.userErrors?.length) {
+              console.warn("Bulk variants userErrors:", JSON.stringify(bulkJson.data.productVariantsBulkCreate.userErrors));
+            }
           }
-        }
-
-        // Ajoute les variantes de la création du produit (toujours présentes dans productData.variants.edges)
-        if (productData?.variants?.edges) {
-          allVariantIds = [
-            ...allVariantIds,
-            ...productData.variants.edges.map((edge: { node: { id: string } }) => edge.node.id)
-          ];
         }
 
         await new Promise(res => setTimeout(res, 300));
