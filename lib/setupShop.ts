@@ -41,6 +41,29 @@ function csvToStructuredProducts(csvText: string): any[] {
   return products;
 }
 
+// Fonction pour récupérer l'ID Shopify du produit via son handle
+async function getProductIdByHandle(handle: string, shop: string, token: string): Promise<string | null> {
+  // Shopify GraphQL : recherche par handle (slug du produit)
+  const query = `
+    query getProductIdByHandle($handle: String!) {
+      productByHandle(handle: $handle) {
+        id
+      }
+    }
+  `;
+
+  const response = await fetch(`https://${shop}/admin/api/2023-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query,
+      variables: { handle }
+    })
+  });
+  const data = await response.json();
+  return data?.data?.productByHandle?.id || null;
+}
+
 // PATCH principal pour bulk import avec optionValues + mediaId
 export async function setupShop({ shop, token, session }: { shop: string; token: string; session: any }) {
   try {
@@ -65,16 +88,17 @@ export async function setupShop({ shop, token, session }: { shop: string; token:
         }
       }
 
-      // 2. Créer ou récupérer le produit et son productId
-      // Attention : à adapter selon où tu crées le produit initialement
-      // Ici tu dois récupérer le productId (par ex via productCreate ou recherche GID)
-      const productId = "gid://shopify/Product/TON_ID_ICI"; // <-- adapte ici
+      // 2. Récupérer automatiquement le productId avec le handle
+      const productId = await getProductIdByHandle(handle, shop, token);
+      if (!productId) {
+        console.error(`[${handle}] Aucun productId trouvé pour le handle ${handle}! Skipping product.`);
+        continue;
+      }
 
       // 3. Préparer variants au format productVariantsBulkCreate Shopify avec optionValues + mediaId
       const seen = new Set<string>();
       const variantsBulk: any[] = [];
       for (const row of group) {
-        // PATCH: Typage de ov explicitement pour TypeScript
         const optionValues = optionNames.map((optionName: string, i: number) => ({
           name: row[`Option${i+1} Value`] ? String(row[`Option${i+1} Value`]).trim() : "",
           optionName
