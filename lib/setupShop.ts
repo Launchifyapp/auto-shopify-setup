@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { fetch } from "undici";
-import { stagedUploadShopifyFile, attachImageToProduct, attachImageToVariant } from "./batchUploadUniversal";
+import { stagedUploadShopifyFile } from "./batchUploadUniversal";
 import { parse } from "csv-parse/sync";
 
 // UTILS
@@ -15,13 +14,12 @@ function parseCsvShopify(csvText: string): any[] {
     delimiter: ";",
     columns: true,
     skip_empty_lines: true,
-    columns: true,
     quote: '"',
     trim: true
   });
 }
 
-// CSV > structure exploitable (handle, group, etc.)
+// CSV -> structure exploitable pour bulk variants + mediaId
 function csvToStructuredProducts(csvText: string): any[] {
   const records = parseCsvShopify(csvText);
   const productsByHandle: Record<string, any[]> = {};
@@ -33,7 +31,6 @@ function csvToStructuredProducts(csvText: string): any[] {
   const products: any[] = [];
   for (const [handle, group] of Object.entries(productsByHandle)) {
     const main = group.find((row: any) => row.Title && row.Title.trim()) || group[0];
-    // Option names
     const optionNames: string[] = [];
     for (let i = 1; i <= 3; i++) {
       const name = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
@@ -44,7 +41,7 @@ function csvToStructuredProducts(csvText: string): any[] {
   return products;
 }
 
-// PIPELINE PATCH Shopify API (variants + media images)
+// PATCH principal pour bulk import avec optionValues + mediaId
 export async function setupShop({ shop, token, session }: { shop: string; token: string; session: any }) {
   try {
     console.log("[Shopify] setupShop: fetch CSV...");
@@ -54,37 +51,38 @@ export async function setupShop({ shop, token, session }: { shop: string; token:
     const products = csvToStructuredProducts(csvText);
 
     for (const { handle, group, main, optionNames } of products) {
-      // 1. Upload toutes les images nécessaires, et construire mapping image filename → mediaId
+      // 1. Upload toutes les images nécessaires pour les variantes et construction mapping imageUrl -> mediaId
       const variantImageMap: Record<string, string> = {};
       for (const row of group) {
         const variantImageUrl = row["Variant Image"] ?? row["Image Src"];
         if (validImageUrl(variantImageUrl)) {
-          // Upload image, enregistrer mediaId (obtenue via fileCreate + productCreateMedia)
-          const file = await stagedUploadShopifyFile(shop, token, variantImageUrl);
-          if (file?.id) variantImageMap[variantImageUrl] = file.id;
+          try {
+            const file = await stagedUploadShopifyFile(shop, token, variantImageUrl);
+            if (file?.id) variantImageMap[variantImageUrl] = file.id;
+          } catch (err) {
+            console.error(`[${handle}] Erreur upload image:`, variantImageUrl, err);
+          }
         }
       }
 
-      // 2. Créer le produit avec les options
-      // ... (productCreate étape ici, ou récupère son id si déjà créé via productCreate(input: { ... }))
-      const productId = /* gid://shopify/Product/xxxxxxxxxxxxxx */ "A_COMPLETER";
+      // 2. Créer ou récupérer le produit et son productId
+      // Attention : à adapter selon où tu crées le produit initialement
+      // Ici tu dois récupérer le productId (par ex via productCreate ou recherche GID)
+      const productId = "gid://shopify/Product/TON_ID_ICI"; // <-- adapte ici
 
-      // 3. Préparer les variantes au format Shopify bulk
+      // 3. Préparer variants au format productVariantsBulkCreate Shopify avec optionValues + mediaId
       const seen = new Set<string>();
       const variantsBulk: any[] = [];
       for (const row of group) {
-        // Crée la clé unique
         const optionValues = optionNames.map((optionName, i) => ({
-          name: row[`Option${i+1} Value`] ? row[`Option${i+1} Value`].trim() : "",
+          name: row[`Option${i+1} Value`] ? String(row[`Option${i+1} Value`]).trim() : "",
           optionName
         }));
-        // Unicité + complétude
         if (optionValues.some(ov => !ov.name)) continue;
         const key = JSON.stringify(optionValues);
         if (seen.has(key)) continue;
         seen.add(key);
 
-        // mediaId direct mapping si image
         let mediaId = undefined;
         const variantImageUrl = row["Variant Image"] ?? row["Image Src"];
         if (validImageUrl(variantImageUrl)) {
@@ -103,12 +101,11 @@ export async function setupShop({ shop, token, session }: { shop: string; token:
         });
       }
 
-      // --- DEBUG log variantsBulk ---
-      console.log(`[DEBUG][${handle}] Variants bulk final à envoyer:`, JSON.stringify(variantsBulk, null, 2));
+      console.log(`[DEBUG][${handle}] Variants bulk final à importer:`, JSON.stringify(variantsBulk, null, 2));
 
-      // 4. Shopify productVariantsBulkCreate GraphQL avec mediaId
-      // Utilisation structure Shopify cli/shopify-node-api
-      const client = new shopify.clients.Graphql({ session });
+      // 4. Shopify productVariantsBulkCreate avec shopify.clients.Graphql
+      const { clients } = require("shopify-api-node"); // Adapte au SDK utilisé
+      const client = new clients.Graphql({ session });
       const data = await client.query({
         data: {
           query: `
@@ -125,7 +122,9 @@ export async function setupShop({ shop, token, session }: { shop: string; token:
                       id
                       alt
                       mediaContentType
-                      preview { status }
+                      preview {
+                        status
+                      }
                     }
                   }
                 }
@@ -143,6 +142,7 @@ export async function setupShop({ shop, token, session }: { shop: string; token:
         }
       });
 
+      // 5. LOGS bulk retour Shopify
       console.log(`[DEBUG][${handle}] Shopify API bulkCreate retour:`, JSON.stringify(data, null, 2));
       if (data?.body?.data?.productVariantsBulkCreate?.userErrors?.length) {
         console.error(`[${handle}] userErrors:`, JSON.stringify(data.body.data.productVariantsBulkCreate.userErrors, null, 2));
