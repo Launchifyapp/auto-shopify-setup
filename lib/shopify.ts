@@ -1,26 +1,24 @@
-import { shopifyApi, LATEST_API_VERSION, Session } from "@shopify/shopify-api";
+import { shopifyApi, ApiVersion, Session } from "@shopify/shopify-api";
 
-// Configuration globale Shopify API : PATCH v12+ (isCustomStoreApp ici, pas dans Session)
+// Configuration globale Shopify API v12+ (isCustomStoreApp ICI, pas dans Session)
 export const shopify = shopifyApi({
   api: {
-    apiVersion: LATEST_API_VERSION,
-    isCustomStoreApp: true, // Obligatoire ici !
+    apiVersion: ApiVersion.Latest, // Remplace LATEST_API_VERSION
+    isCustomStoreApp: true, // Important : ici, jamais dans Session !
     adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!,
     privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!,
-    // ... ajoute tes autres options ici si besoin
+    // Ajoute d'autres options si nécessaire
   },
-  // Ajoute sessionStorage si tu utilises une persistance custom
-  // sessionStorage: new CustomSessionStorage(),
+  // sessionStorage: ... (optionnel, selon tes besoins)
 });
 
-// Nouvelle fonction d'appel Shopify GraphQL via SDK, version PATCHÉE
+// Appel Shopify GraphQL universel (toujours via le client du shopifyApi !)
 export async function shopifyGraphQL(
   shop: string,
   token: string,
   query: string,
   variables: any = {}
 ) {
-  // Construct session Shopify v12+ (PAS de isCustomStoreApp ici)
   const session = new Session({
     id: `${shop}_${Date.now()}`,
     shop,
@@ -32,7 +30,7 @@ export async function shopifyGraphQL(
     onlineAccessInfo: undefined,
   });
 
-  // Utilise le client GraphQL du shopifyApi global, PAS new GraphqlClient
+  // PATCH : Utilise le client GraphQL du shopifyApi global
   const client = new shopify.clients.Graphql({ session });
 
   const response: any = await client.query({
@@ -42,12 +40,8 @@ export async function shopifyGraphQL(
     },
   });
 
-  // Retour .body du SDK
   if (response?.body) {
     return response.body;
   }
-  // Fallback (peu probable)
   return response;
 }
-
-// Toutes vos opérations d'upload doivent passer par le client GraphQL (PAS REST)
