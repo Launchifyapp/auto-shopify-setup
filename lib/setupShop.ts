@@ -32,8 +32,7 @@ Reste du monde : 7-14 jours
     templateSuffix: "custom"
   };
 
-  // Correction du typage de retour : le .body est le vrai résultat
-  const response = await client.query({
+  const response: any = await client.query({
     data: {
       query,
       variables: { page: livraisonVars },
@@ -98,7 +97,7 @@ async function attachImageToProductWithSDK(session: any, productId: string, imag
     mediaContentType: "IMAGE",
     alt: altText
   }];
-  const response = await client.query({
+  const response: any = await client.query({
     data: {
       query,
       variables: { productId, media }
@@ -125,7 +124,7 @@ async function createProductWithSDK(session: any, product: any) {
       }
     }
   `;
-  const response = await client.query({
+  const response: any = await client.query({
     data: {
       query,
       variables: { product }
@@ -146,7 +145,7 @@ async function bulkCreateVariantsWithSDK(session: any, productId: string, varian
       }
     }
   `;
-  const response = await client.query({
+  const response: any = await client.query({
     data: {
       query,
       variables: { productId, variants },
