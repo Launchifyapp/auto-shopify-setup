@@ -1,4 +1,4 @@
-import { shopifyApi, Session } from "@shopify/shopify-api";
+import { shopifyApi, Session, ApiVersion } from "@shopify/shopify-api";
 
 // Sécurisation + fallback pour hostName
 function getHostName() {
@@ -10,13 +10,12 @@ function getHostName() {
 export const shopify = shopifyApi({
   apiKey: process.env.SHOPIFY_API_KEY!,
   apiSecretKey: process.env.SHOPIFY_API_SECRET!,
-  apiVersion: ApiVersion.October22, // Adapte selon la version du SDK supportée ou le nom de la constante ApiVersion.Xxx
+  apiVersion: "2025-10", // ← string si la constante n'existe pas
   isCustomStoreApp: true,
   adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!,
   privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!,
-  hostName: getHostName(), // ← PATCH ICI !
+  hostName: getHostName(),
   isEmbeddedApp: false,
-  // sessionStorage: ...
 });
 
 // Fonction GraphQL : inchangée
