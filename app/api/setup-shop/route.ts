@@ -2,14 +2,15 @@ import { NextRequest } from "next/server";
 import { setupShop } from "@/lib/setupShop";
 import { Session } from "@shopify/shopify-api";
 
-async function getSession(shop: string, accessToken: string) {
-  // Crée une session Shopify valide pour le SDK
+function getSession(shop: string, accessToken: string): Session {
+  // Patch Session Shopify ^12.x.x — isCustomStoreApp requis
   return new Session({
     id: `${shop}_${Date.now()}`,
     shop,
     state: "",
     isOnline: true,
-    accessToken
+    accessToken,
+    isCustomStoreApp: false, // Obligatoire pour >= v12
   });
 }
 
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const session = await getSession(shop, token);
+    const session = getSession(shop, token);
     await setupShop({ session });
 
     return new Response(
