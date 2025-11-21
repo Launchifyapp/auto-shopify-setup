@@ -1,4 +1,5 @@
 import { parse } from "csv-parse/sync";
+import shopify from "@shopify/shopify-api";
 
 function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
@@ -68,11 +69,14 @@ async function attachImageToProduct(
   return json?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
-// Fonction pour créer la page Livraison au début du script
-async function createLivraisonPage(shop: string, token: string) {
-  const pageTitle = "Livraison";
-  const pageContent = `
-Livraison GRATUITE
+// Fonction pour créer la page Livraison au début du script via shopify.clients.Graphql
+async function createLivraisonPageWithClient(session: any) {
+  const client = new shopify.clients.Graphql({ session });
+  const livraisonVars = {
+    page: {
+      title: "Livraison",
+      handle: "livraison",
+      body: `Livraison GRATUITE
 Le traitement des commandes prend de 1 à 3 jours ouvrables avant l'expédition. Une fois l'article expédié, le délai de livraison estimé est le suivant:
 
 France : 4-10 jours ouvrables
@@ -80,32 +84,46 @@ Belgique: 4-10 jours ouvrables
 Suisse : 7-12 jours ouvrables
 Canada : 7-12 jours ouvrables
 Reste du monde : 7-14 jours
-  `;
-  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-    body: JSON.stringify({
-      query: `
-        mutation pageCreate($input: PageInput!) {
-          pageCreate(input: $input) {
-            page { id handle title }
-            userErrors { field message }
-          }
-        }
-      `,
-      variables: {
-        input: { title: pageTitle, bodyHtml: pageContent }
+`,
+      isPublished: true,
+      templateSuffix: "custom"
+    }
+  };
+
+  const query = `mutation CreatePage($page: PageCreateInput!) {
+    pageCreate(page: $page) {
+      page {
+        id
+        title
+        handle
       }
-    })
+      userErrors {
+        code
+        field
+        message
+      }
+    }
+  }`;
+
+  const data = await client.query({
+    data: {
+      query,
+      variables: livraisonVars,
+    },
   });
-  const json = await res.json();
-  return json?.data?.pageCreate?.page?.id;
+
+  if (data?.body?.data?.pageCreate?.userErrors?.length) {
+    console.error("Erreur création page Livraison:", data.body.data.pageCreate.userErrors);
+  } else {
+    console.log("Page Livraison créée :", data.body.data.pageCreate.page);
+  }
 }
 
-export async function setupShop({ shop, token }: { shop: string; token: string }) {
+// La fonction principale requiert maintenant un paramètre session Shopify
+export async function setupShop({ shop, token, session }: { shop: string; token: string; session: any }) {
   try {
-    // Création de la page Livraison AVANT l'import des produits
-    await createLivraisonPage(shop, token);
+    // Crée la page Livraison avec la mutation type shopify.clients.Graphql
+    await createLivraisonPageWithClient(session);
 
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
@@ -270,4 +288,4 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
   } catch (err) {
     console.error("Erreur globale setupShop:", err);
   }
-} 
+}
