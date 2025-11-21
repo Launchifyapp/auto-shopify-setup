@@ -32,16 +32,18 @@ Reste du monde : 7-14 jours
     templateSuffix: "custom"
   };
 
-  const data = await client.query({
+  // Correction du typage de retour : le .body est le vrai résultat
+  const response = await client.query({
     data: {
       query,
       variables: { page: livraisonVars },
     },
   });
-  if (data?.body?.data?.pageCreate?.userErrors?.length) {
-    console.error("Erreur création page Livraison:", data.body.data.pageCreate.userErrors);
+  const data = response.body;
+  if (data?.data?.pageCreate?.userErrors?.length) {
+    console.error("Erreur création page Livraison:", data.data.pageCreate.userErrors);
   } else {
-    console.log("Page Livraison créée :", data.body.data.pageCreate.page);
+    console.log("Page Livraison créée :", data.data.pageCreate.page);
   }
 }
 
@@ -96,13 +98,14 @@ async function attachImageToProductWithSDK(session: any, productId: string, imag
     mediaContentType: "IMAGE",
     alt: altText
   }];
-  const data = await client.query({
+  const response = await client.query({
     data: {
       query,
       variables: { productId, media }
     },
   });
-  return data?.body?.data?.productCreateMedia?.media?.[0]?.id;
+  const data = response.body;
+  return data?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
 // Crée un produit avec une mutation GraphQL via SDK
@@ -122,13 +125,14 @@ async function createProductWithSDK(session: any, product: any) {
       }
     }
   `;
-  const data = await client.query({
+  const response = await client.query({
     data: {
       query,
       variables: { product }
     }
   });
-  return data?.body?.data?.productCreate;
+  const data = response.body;
+  return data?.data?.productCreate;
 }
 
 // Création bulk des variantes via SDK
@@ -142,13 +146,14 @@ async function bulkCreateVariantsWithSDK(session: any, productId: string, varian
       }
     }
   `;
-  const data = await client.query({
+  const response = await client.query({
     data: {
       query,
       variables: { productId, variants },
     },
   });
-  return data?.body?.data?.productVariantsBulkCreate;
+  const data = response.body;
+  return data?.data?.productVariantsBulkCreate;
 }
 
 // Update variant price via SDK
