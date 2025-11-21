@@ -10,7 +10,6 @@ function getSession(shop: string, accessToken: string): Session {
     state: "",
     isOnline: true,
     accessToken,
-    isCustomStoreApp: false, // Obligatoire pour >= v12
   });
 }
 
