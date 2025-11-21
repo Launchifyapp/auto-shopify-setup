@@ -1,7 +1,7 @@
 import { parse } from "csv-parse/sync";
 import shopify from "@shopify/shopify-api";
 
-// Fonction pour créer la page Livraison avec le SDK Shopify
+// Fonction pour créer la page Livraison via SDK Shopify
 async function createLivraisonPageWithSDK(session: any) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -12,11 +12,7 @@ async function createLivraisonPageWithSDK(session: any) {
           title
           handle
         }
-        userErrors {
-          code
-          field
-          message
-        }
+        userErrors { code field message }
       }
     }
   `;
@@ -49,12 +45,10 @@ Reste du monde : 7-14 jours
   }
 }
 
-// Fonction utilitaire pour normaliser l'URL
 function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
 
-// Extraction des metafields checkboxes
 function extractCheckboxMetafields(row: any): any[] {
   const metafields: any[] = [];
   if (row["Checkbox 1 (product.metafields.custom.checkbox_1)"] !== undefined) {
