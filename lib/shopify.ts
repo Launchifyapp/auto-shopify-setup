@@ -1,22 +1,25 @@
-import { shopifyApi, Session, ApiVersion } from "@shopify/shopify-api";
+import { shopifyApi, Session } from "@shopify/shopify-api";
 
-// Utilise la bonne constante du type ApiVersion
-// S'il n'existe pas ApiVersion.October25, regarde l'export de "@shopify/shopify-api" ou ta version installée
-// Pour 2025-10 : ce sera probablement ApiVersion.October25 ou un nom équivalent
+// Sécurisation + fallback pour hostName
+function getHostName() {
+  const host = process.env.SHOPIFY_APP_HOST;
+  if (!host) throw new Error("Variable d'environnement SHOPIFY_APP_HOST manquante !");
+  return host.replace(/^https?:\/\//, "");
+}
 
 export const shopify = shopifyApi({
   apiKey: process.env.SHOPIFY_API_KEY!,
   apiSecretKey: process.env.SHOPIFY_API_SECRET!,
-  apiVersion: ApiVersion.October25, // PATCH : version 2025-10, syntaxe correcte attendue par le type
+  apiVersion: "2025-10", // Adapte selon la version du SDK supportée ou le nom de la constante ApiVersion.Xxx
   isCustomStoreApp: true,
   adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!,
   privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!,
-  hostName: process.env.SHOPIFY_APP_HOST!.replace(/^https?:\/\//, ""),
+  hostName: getHostName(), // ← PATCH ICI !
   isEmbeddedApp: false,
-  // sessionStorage: ... (optionnel)
+  // sessionStorage: ...
 });
 
-// Fonction d'appel Shopify GraphQL via clients du SDK officiel
+// Fonction GraphQL : inchangée
 export async function shopifyGraphQL(
   shop: string,
   token: string,
