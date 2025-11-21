@@ -3,14 +3,14 @@ import { setupShop } from "@/lib/setupShop";
 import { Session } from "@shopify/shopify-api";
 
 function getSession(shop: string, accessToken: string): Session {
-  // Patch Session Shopify ^12.x.x — isCustomStoreApp requis
+  // Patch Session Shopify v12+ — isCustomStoreApp obligatoire !
   return new Session({
     id: `${shop}_${Date.now()}`,
     shop,
     state: "",
     isOnline: true,
     accessToken,
-    isCustomStoreApp: false, // Obligatoire pour >= v12
+    isCustomStoreApp: false, // <= CECI corrige l’erreur !
   });
 }
 
