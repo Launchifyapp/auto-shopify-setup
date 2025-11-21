@@ -1,7 +1,9 @@
 import { parse } from "csv-parse/sync";
+import shopify from "@shopify/shopify-api";
 
-// Fonction pour créer la page Livraison au début du script via appel GraphQL direct (pas le SDK)
-async function createLivraisonPage(shop: string, token: string) {
+// Fonction pour créer la page Livraison avec le SDK Shopify
+async function createLivraisonPageWithSDK(session: any) {
+  const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation CreatePage($page: PageCreateInput!) {
       pageCreate(page: $page) {
@@ -34,29 +36,25 @@ Reste du monde : 7-14 jours
     templateSuffix: "custom"
   };
 
-  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token,
-    },
-    body: JSON.stringify({
+  const data = await client.query({
+    data: {
       query,
       variables: { page: livraisonVars },
-    }),
+    },
   });
-  const json = await res.json();
-  if (json?.data?.pageCreate?.userErrors?.length) {
-    console.error("Erreur création page Livraison:", json.data.pageCreate.userErrors);
+  if (data?.body?.data?.pageCreate?.userErrors?.length) {
+    console.error("Erreur création page Livraison:", data.body.data.pageCreate.userErrors);
   } else {
-    console.log("Page Livraison créée :", json?.data?.pageCreate?.page);
+    console.log("Page Livraison créée :", data.body.data.pageCreate.page);
   }
 }
 
+// Fonction utilitaire pour normaliser l'URL
 function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
 
+// Extraction des metafields checkboxes
 function extractCheckboxMetafields(row: any): any[] {
   const metafields: any[] = [];
   if (row["Checkbox 1 (product.metafields.custom.checkbox_1)"] !== undefined) {
@@ -86,45 +84,115 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
-// Upload image en media produit Shopify
-async function attachImageToProduct(shop: string, token: string, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
+// Upload image en media produit Shopify (SDK GraphQL)
+async function attachImageToProductWithSDK(session: any, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+      productCreateMedia(productId: $productId, media: $media) {
+        media {
+          ... on MediaImage { id image { url } }
+        }
+        mediaUserErrors { field message }
+      }
+    }
+  `;
   const media = [{
     originalSource: imageUrl,
     mediaContentType: "IMAGE",
     alt: altText
   }];
-  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-    body: JSON.stringify({
-      query: `
-        mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-          productCreateMedia(productId: $productId, media: $media) {
-            media {
-              ... on MediaImage { id image { url } }
-            }
-            mediaUserErrors { field message }
-          }
-        }
-      `,
+  const data = await client.query({
+    data: {
+      query,
       variables: { productId, media }
-    })
+    },
   });
-  const json = await res.json();
-  return json?.data?.productCreateMedia?.media?.[0]?.id;
+  return data?.body?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
-export async function setupShop({ shop, token }: { shop: string; token: string; }) {
-  try {
-    // 1. Crée la page Livraison au tout début
-    await createLivraisonPage(shop, token);
+// Crée un produit avec une mutation GraphQL via SDK
+async function createProductWithSDK(session: any, product: any) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productCreate($product: ProductCreateInput!) {
+      productCreate(product: $product) {
+        product {
+          id
+          handle
+          variants(first: 50) {
+            edges { node { id sku title selectedOptions { name value } } }
+          }
+        }
+        userErrors { field message }
+      }
+    }
+  `;
+  const data = await client.query({
+    data: {
+      query,
+      variables: { product }
+    }
+  });
+  return data?.body?.data?.productCreate;
+}
 
-    // 2. Import CSV produits/variants (reste inchangé)
+// Création bulk des variantes via SDK
+async function bulkCreateVariantsWithSDK(session: any, productId: string, variants: any[]) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+      productVariantsBulkCreate(productId: $productId, variants: $variants) {
+        productVariants { id sku price }
+        userErrors { field message }
+      }
+    }
+  `;
+  const data = await client.query({
+    data: {
+      query,
+      variables: { productId, variants },
+    },
+  });
+  return data?.body?.data?.productVariantsBulkCreate;
+}
+
+// Update variant price via SDK
+async function updateVariantPriceWithSDK(session: any, variantId: string, price: string, compareAtPrice?: string) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productVariantUpdate($id: ID!, $price: Money!, $compareAtPrice: Money) {
+      productVariantUpdate(id: $id, price: $price, compareAtPrice: $compareAtPrice) {
+        productVariant { id price compareAtPrice }
+        userErrors { field message }
+      }
+    }
+  `;
+  const variables: any = { id: variantId, price };
+  if (compareAtPrice !== undefined) {
+    variables.compareAtPrice = compareAtPrice;
+  }
+  await client.query({
+    data: {
+      query,
+      variables,
+    },
+  });
+}
+
+// Fonction principale utilisant UNIQUEMENT le SDK Shopify
+export async function setupShop({ session }: { session: any }) {
+  try {
+    // Crée la page Livraison via le SDK
+    await createLivraisonPageWithSDK(session);
+
+    // Import et création des produits depuis le CSV
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
     const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: ";" });
 
+    // Regroupement des produits par handle
     const productsByHandle: Record<string, any[]> = {};
     for (const row of records) {
       if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
@@ -140,7 +208,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string; 
         const optionName = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
         if (optionName) {
           const optionValues = [
-            ...new Set(group.map(row => row[`Option${i} Value`] ? row[`Option${i} Value`].trim() : "").filter(v => !!v && v !== "Default Title"))
+            ...new Set(group.map(row => row[`Option${i} Value`] ? row[`Option${i} Value`].trim() : "")
+              .filter(v => !!v && v !== "Default Title"))
           ].map(v => ({ name: v }));
           if (optionValues.length) {
             productOptions.push({ name: optionName, values: optionValues });
@@ -165,40 +234,17 @@ export async function setupShop({ shop, token }: { shop: string; token: string; 
       };
 
       try {
-        const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Shopify-Access-Token": token,
-          },
-          body: JSON.stringify({
-            query: `
-              mutation productCreate($product: ProductCreateInput!) {
-                productCreate(product: $product) {
-                  product {
-                    id
-                    handle
-                    variants(first: 50) {
-                      edges { node { id sku title selectedOptions { name value } } }
-                    }
-                  }
-                  userErrors { field message }
-                }
-              }
-            `,
-            variables: { product },
-          }),
-        });
-        const gqlJson = await gqlRes.json();
-        const productData = gqlJson?.data?.productCreate?.product;
+        // Création du produit via SDK
+        const productCreateData = await createProductWithSDK(session, product);
+        const productData = productCreateData?.product;
         const productId = productData?.id;
         if (!productId) {
-          console.error("Aucun productId généré.", JSON.stringify(gqlJson, null, 2));
+          console.error("Aucun productId généré.", JSON.stringify(productCreateData, null, 2));
           continue;
         }
         console.log("Product créé avec id:", productId);
 
-        // Upload des images
+        // Upload des images via SDK
         const allImagesToAttach = [
           ...new Set([
             ...group.map(row => row["Image Src"]).filter(Boolean),
@@ -207,7 +253,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string; 
         ];
         for (const imgUrl of allImagesToAttach) {
           const normalizedUrl = normalizeImageUrl(imgUrl);
-          await attachImageToProduct(shop, token, productId, normalizedUrl, "");
+          await attachImageToProductWithSDK(session, productId, normalizedUrl, "");
         }
 
         // Création des variantes supplémentaires
@@ -236,28 +282,10 @@ export async function setupShop({ shop, token }: { shop: string; token: string; 
           .filter(v => v && v.optionValues && v.optionValues.length);
 
         let allVariantIds: string[] = [];
-        if (variants.length > 1) {
-          const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Shopify-Access-Token": token,
-            },
-            body: JSON.stringify({
-              query: `
-                mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-                  productVariantsBulkCreate(productId: $productId, variants: $variants) {
-                    productVariants { id sku price }
-                    userErrors { field message }
-                  }
-                }
-              `,
-              variables: { productId, variants: variants.slice(1) },
-            }),
-          });
-          const bulkJson = await bulkRes.json();
-          if (bulkJson?.data?.productVariantsBulkCreate?.productVariants) {
-            allVariantIds = bulkJson.data.productVariantsBulkCreate.productVariants.map((v: { id: string }) => v.id);
+        if (variants.length > 1) { // bulk/create SDK
+          const bulkData = await bulkCreateVariantsWithSDK(session, productId, variants.slice(1));
+          if (bulkData?.productVariants) {
+            allVariantIds = bulkData.productVariants.map((v: { id: string }) => v.id);
           }
         }
 
