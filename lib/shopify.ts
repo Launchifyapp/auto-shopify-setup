@@ -1,4 +1,4 @@
-import { shopifyApi, Session } from "@shopify/shopify-api";
+import { shopifyApi, Session, ApiVersion } from "@shopify/shopify-api";
 
 // Sécurisation du hostName depuis SHOPIFY_APP_URL
 function getHostName() {
