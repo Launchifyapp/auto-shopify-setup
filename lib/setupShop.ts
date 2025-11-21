@@ -1,4 +1,4 @@
- { parse } from "csv-parse/sync";
+import { parse } from "csv-parse/sync";
 
 function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
