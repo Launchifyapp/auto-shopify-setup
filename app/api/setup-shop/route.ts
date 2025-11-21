@@ -1,12 +1,10 @@
 import { NextRequest } from "next/server";
 import { setupShop } from "@/lib/setupShop";
-import shopify from "@shopify/shopify-api";
+import { Session } from "@shopify/shopify-api";
 
-// Fonction utilitaire pour récupérer la session Shopify à partir du token et shop (adapté pour une app publique)
 async function getSession(shop: string, accessToken: string) {
-  // Si tu utilises des installations persistées/middleware Shopify, adapte cette logique.
-  // Ici, on crée une session simple pour usage avec le client SDK.
-  return new shopify.auth.Session({
+  // Crée une session Shopify valide pour le SDK
+  return new Session({
     id: `${shop}_${Date.now()}`,
     shop,
     state: "",
