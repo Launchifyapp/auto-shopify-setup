@@ -1,3 +1,5 @@
+import { parse } from "csv-parse/sync";
+
 function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
@@ -33,7 +35,13 @@ function extractCheckboxMetafields(row: any): any[] {
 }
 
 // Upload image en media produit Shopify
-async function attachImageToProduct(shop: string, token: string, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
+async function attachImageToProduct(
+  shop: string,
+  token: string,
+  productId: string,
+  imageUrl: string,
+  altText: string = ""
+): Promise<string | undefined> {
   const media = [{
     originalSource: imageUrl,
     mediaContentType: "IMAGE",
@@ -60,6 +68,59 @@ async function attachImageToProduct(shop: string, token: string, productId: stri
   return json?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
+// PATCH: Met à jour le prix et compareAtPrice d'une variante existante
+async function updateVariantPrice(
+  shop: string,
+  token: string,
+  variantId: string,
+  price: string,
+  compareAtPrice?: string
+) {
+  if (!variantId || price == undefined) return;
+  const variables: any = { id: variantId, price };
+  if (compareAtPrice !== undefined) {
+    variables.compareAtPrice = compareAtPrice;
+  }
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        mutation productVariantUpdate($id: ID!, $price: Money!, $compareAtPrice: Money) {
+          productVariantUpdate(id: $id, price: $price, compareAtPrice: $compareAtPrice) {
+            productVariant { id price compareAtPrice }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables,
+    }),
+  });
+  return await res.json();
+}
+
+// PATCH: Création bulk des variantes (si > 1 variant)
+async function bulkCreateVariants(shop: string, token: string, productId: string, variants: any[]) {
+  if (!productId || !variants?.length) return;
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+          productVariantsBulkCreate(productId: $productId, variants: $variants) {
+            productVariants { id sku price compareAtPrice }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: { productId, variants },
+    }),
+  });
+  return await res.json();
+}
+
+// Le PATCH central compatible multi/single variante/prix produit
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
@@ -82,7 +143,8 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         const optionName = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
         if (optionName) {
           const optionValues = [
-            ...new Set(group.map(row => row[`Option${i} Value`] ? row[`Option${i} Value`].trim() : "").filter(v => !!v && v !== "Default Title"))
+            ...new Set(group.map(row => row[`Option${i} Value`] ? row[`Option${i} Value`].trim() : "")
+              .filter(v => !!v && v !== "Default Title"))
           ].map(v => ({ name: v }));
           if (optionValues.length) {
             productOptions.push({ name: optionName, values: optionValues });
@@ -94,7 +156,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
 
       const productMetafields = extractCheckboxMetafields(main);
 
-      // Construction du payload produit
       const product: any = {
         title: main.Title,
         descriptionHtml: main["Body (HTML)"] || "",
@@ -107,7 +168,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
       };
 
       try {
-        // MUTATION CORRECTE : PAS de query sur product.metafields !
         const gqlRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
           method: "POST",
           headers: {
@@ -139,7 +199,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           console.error("Aucun productId généré.", JSON.stringify(gqlJson, null, 2));
           continue;
         }
-        console.log("Product créé avec id:", productId);
 
         // Upload des images
         const allImagesToAttach = [
@@ -148,17 +207,12 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             ...group.map(row => row["Variant Image"]).filter(Boolean),
           ])
         ];
-        const mediaMap: Record<string, string> = {};
         for (const imgUrl of allImagesToAttach) {
           const normalizedUrl = normalizeImageUrl(imgUrl);
-          const mediaId = await attachImageToProduct(shop, token, productId, normalizedUrl, "");
-          if (mediaId) {
-            mediaMap[normalizedUrl] = mediaId;
-            console.log(`Media importé (${mediaId}) pour ${normalizedUrl}`);
-          }
+          await attachImageToProduct(shop, token, productId, normalizedUrl, "");
         }
 
-        // Création des variantes supplémentaires
+        // Création des variantes (PATCH compatible produit simple & multi variantes)
         const seen = new Set<string>();
         const variants = group
           .map(row => {
@@ -172,6 +226,17 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             const key = optionValues.map(ov => ov.name).join('|');
             if (seen.has(key)) return undefined;
             seen.add(key);
+            // Cas produit simple SANS options : une ligne
+            if (!optionValues.length && group.length === 1) {
+              return {
+                price: row["Variant Price"] || main["Variant Price"] || "0",
+                compareAtPrice: row["Variant Compare At Price"] || undefined,
+                sku: row["Variant SKU"] || undefined,
+                barcode: row["Variant Barcode"] || undefined,
+                optionValues: []
+              };
+            }
+            // Cas multi variantes/options
             if (!optionValues.length) return undefined;
             return {
               price: row["Variant Price"] || main["Variant Price"] || "0",
@@ -181,40 +246,44 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
               optionValues
             };
           })
-          .filter(v => v && v.optionValues && v.optionValues.length);
+          .filter(v => v);
 
-        let allVariantIds: string[] = [];
         if (variants.length > 1) {
-          const bulkRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Shopify-Access-Token": token,
-            },
-            body: JSON.stringify({
-              query: `
-                mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-                  productVariantsBulkCreate(productId: $productId, variants: $variants) {
-                    productVariants { id sku price }
-                    userErrors { field message }
+          // Supprime la variante "Default Title" créée automatiquement par Shopify
+          const defaultVariantId = productData?.variants?.edges?.[0]?.node?.id;
+          if (defaultVariantId) {
+            await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+              body: JSON.stringify({
+                query: `
+                  mutation productVariantDelete($id: ID!) {
+                    productVariantDelete(id: $id) {
+                      deletedProductVariantId
+                      userErrors { field message }
+                    }
                   }
-                }
-              `,
-              variables: { productId, variants: variants.slice(1) },
-            }),
-          });
-          const bulkJson = await bulkRes.json();
-          if (bulkJson?.data?.productVariantsBulkCreate?.productVariants) {
-            allVariantIds = bulkJson.data.productVariantsBulkCreate.productVariants.map((v: { id: string }) => v.id);
+                `,
+                variables: { id: defaultVariantId }
+              }),
+            });
           }
-        }
+          await bulkCreateVariants(shop, token, productId, variants);
 
-        // Ajoute les variantes de la création du produit (toujours présentes dans productData.variants.edges)
-        if (productData?.variants?.edges) {
-          allVariantIds = [
-            ...allVariantIds,
-            ...productData.variants.edges.map((edge: { node: { id: string } }) => edge.node.id)
-          ];
+        } else if (variants.length === 1) {
+          const defaultVariantId = productData?.variants?.edges?.[0]?.node?.id;
+          if (
+            defaultVariantId &&
+            typeof variants[0]?.price !== "undefined"
+          ) {
+            await updateVariantPrice(
+              shop,
+              token,
+              defaultVariantId,
+              variants[0].price,
+              variants[0].compareAtPrice
+            );
+          }
         }
 
         await new Promise(res => setTimeout(res, 300));
@@ -225,4 +294,4 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
   } catch (err) {
     console.error("Erreur globale setupShop:", err);
   }
-} 
+}
