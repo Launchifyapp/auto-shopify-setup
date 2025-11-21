@@ -1,18 +1,17 @@
 import { shopifyApi, ApiVersion, Session } from "@shopify/shopify-api";
 
-// Configuration globale Shopify API v12+ (isCustomStoreApp ICI, pas dans Session)
+// PATCH pour Shopify API v12+
+// La config (tokens, isCustomStoreApp, apiVersion) est passée à la racine, PAS sous "api"
 export const shopify = shopifyApi({
-  api: {
-    apiVersion: ApiVersion.Latest, // Remplace LATEST_API_VERSION
-    isCustomStoreApp: true, // Important : ici, jamais dans Session !
-    adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!,
-    privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!,
-    // Ajoute d'autres options si nécessaire
-  },
-  // sessionStorage: ... (optionnel, selon tes besoins)
+  apiVersion: ApiVersion.Latest,           // ← PAS dans un bloc "api"
+  isCustomStoreApp: true,                  // ← à la racine
+  adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!,
+  privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!,
+  // Ajoute ici ton sessionStorage si tu utilises une persistance custom
+  // sessionStorage: ...
 });
 
-// Appel Shopify GraphQL universel (toujours via le client du shopifyApi !)
+// Fonction d'appel Shopify GraphQL via l'API officielle (client global !)
 export async function shopifyGraphQL(
   shop: string,
   token: string,
@@ -30,7 +29,7 @@ export async function shopifyGraphQL(
     onlineAccessInfo: undefined,
   });
 
-  // PATCH : Utilise le client GraphQL du shopifyApi global
+  // Utilise le client GraphQL du shopifyApi global
   const client = new shopify.clients.Graphql({ session });
 
   const response: any = await client.query({
