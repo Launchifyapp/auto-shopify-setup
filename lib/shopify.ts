@@ -1,16 +1,19 @@
-import { shopifyApi, Session } from "@shopify/shopify-api";
+import { shopifyApi, Session, ApiVersion } from "@shopify/shopify-api";
 
-// Remplace ApiVersion.Latest par la chaîne de la version API actuelle, ex: "2023-10"
+// Utilise la bonne constante du type ApiVersion
+// S'il n'existe pas ApiVersion.October25, regarde l'export de "@shopify/shopify-api" ou ta version installée
+// Pour 2025-10 : ce sera probablement ApiVersion.October25 ou un nom équivalent
+
 export const shopify = shopifyApi({
   apiKey: process.env.SHOPIFY_API_KEY!,
   apiSecretKey: process.env.SHOPIFY_API_SECRET!,
-  apiVersion: "2025-10", // ← Mets ici ta version API Shopify !
+  apiVersion: ApiVersion.October25, // PATCH : version 2025-10, syntaxe correcte attendue par le type
   isCustomStoreApp: true,
   adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!,
   privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!,
   hostName: process.env.SHOPIFY_APP_HOST!.replace(/^https?:\/\//, ""),
-  isEmbeddedApp: false, // ou true si ton app est embedded
-  // sessionStorage: ... (si tu utilises une persistance custom)
+  isEmbeddedApp: false,
+  // sessionStorage: ... (optionnel)
 });
 
 // Fonction d'appel Shopify GraphQL via clients du SDK officiel
