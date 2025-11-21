@@ -1,10 +1,10 @@
 import { parse } from "csv-parse/sync";
-import { GraphqlClient } from "@shopify/shopify-api";
+import { shopify } from "@/lib/shopify"; // PATCH : utilise la config globale Shopify API
 import { Session } from "@shopify/shopify-api";
 
-// Fonction pour créer la page Livraison via SDK Shopify
+// Fonction pour créer la page Livraison via Shopify API
 async function createLivraisonPageWithSDK(session: Session) {
-  const client = new GraphqlClient({ session });
+  const client = new shopify.clients.Graphql({ session }); // PATCH ici
   const query = `
     mutation CreatePage($page: PageCreateInput!) {
       pageCreate(page: $page) {
@@ -82,7 +82,7 @@ function extractCheckboxMetafields(row: any): any[] {
 
 // Upload image en media produit Shopify (SDK GraphQL)
 async function attachImageToProductWithSDK(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
-  const client = new GraphqlClient({ session });
+  const client = new shopify.clients.Graphql({ session }); // PATCH ici
   const query = `
     mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
       productCreateMedia(productId: $productId, media: $media) {
@@ -108,9 +108,9 @@ async function attachImageToProductWithSDK(session: Session, productId: string, 
   return data?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
-// Crée un produit avec une mutation GraphQL via SDK
+// Crée un produit avec une mutation GraphQL via Shopify API
 async function createProductWithSDK(session: Session, product: any) {
-  const client = new GraphqlClient({ session });
+  const client = new shopify.clients.Graphql({ session }); // PATCH ici
   const query = `
     mutation productCreate($product: ProductCreateInput!) {
       productCreate(product: $product) {
@@ -135,9 +135,9 @@ async function createProductWithSDK(session: Session, product: any) {
   return data?.data?.productCreate;
 }
 
-// Création bulk des variantes via SDK
+// Création bulk des variantes via Shopify API
 async function bulkCreateVariantsWithSDK(session: Session, productId: string, variants: any[]) {
-  const client = new GraphqlClient({ session });
+  const client = new shopify.clients.Graphql({ session }); // PATCH ici
   const query = `
     mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
       productVariantsBulkCreate(productId: $productId, variants: $variants) {
@@ -156,9 +156,9 @@ async function bulkCreateVariantsWithSDK(session: Session, productId: string, va
   return data?.data?.productVariantsBulkCreate;
 }
 
-// Update variant price via SDK
+// Update variant price via Shopify API
 async function updateVariantPriceWithSDK(session: Session, variantId: string, price: string, compareAtPrice?: string) {
-  const client = new GraphqlClient({ session });
+  const client = new shopify.clients.Graphql({ session }); // PATCH ici
   const query = `
     mutation productVariantUpdate($id: ID!, $price: Money!, $compareAtPrice: Money) {
       productVariantUpdate(id: $id, price: $price, compareAtPrice: $compareAtPrice) {
@@ -182,7 +182,7 @@ async function updateVariantPriceWithSDK(session: Session, variantId: string, pr
 // Fonction principale utilisant UNIQUEMENT le SDK Shopify
 export async function setupShop({ session }: { session: Session }) {
   try {
-    // Crée la page Livraison via le SDK
+    // Crée la page Livraison via Shopify API
     await createLivraisonPageWithSDK(session);
 
     // Import et création des produits depuis le CSV
@@ -233,7 +233,7 @@ export async function setupShop({ session }: { session: Session }) {
       };
 
       try {
-        // Création du produit via SDK
+        // Création du produit via Shopify API
         const productCreateData = await createProductWithSDK(session, product);
         const productData = productCreateData?.product;
         const productId = productData?.id;
@@ -243,7 +243,7 @@ export async function setupShop({ session }: { session: Session }) {
         }
         console.log("Product créé avec id:", productId);
 
-        // Upload des images via SDK
+        // Upload des images via Shopify API
         const allImagesToAttach = [
           ...new Set([
             ...group.map(row => row["Image Src"]).filter(Boolean),
@@ -281,7 +281,7 @@ export async function setupShop({ session }: { session: Session }) {
           .filter(v => v && v.optionValues && v.optionValues.length);
 
         let allVariantIds: string[] = [];
-        if (variants.length > 1) { // bulk/create SDK
+        if (variants.length > 1) {
           const bulkData = await bulkCreateVariantsWithSDK(session, productId, variants.slice(1));
           if (bulkData?.productVariants) {
             allVariantIds = bulkData.productVariants.map((v: { id: string }) => v.id);
