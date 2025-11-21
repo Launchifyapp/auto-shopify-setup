@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { setupShop } from "@/lib/setupShop";
 import { Session } from "@shopify/shopify-api";
 
-// PATCH complet : le champ isCustomStoreApp est OBLIGATOIRE pour Shopify API v12+
+// PATCH complet : on passe TOUS les champs requis par Shopify API v12+
 function getSession(shop: string, accessToken: string): Session {
   if (!shop || typeof shop !== "string") {
     throw new Error("Paramètre shop manquant ou invalide !");
@@ -11,17 +11,15 @@ function getSession(shop: string, accessToken: string): Session {
     throw new Error("Paramètre token/accessToken manquant ou invalide !");
   }
 
-  // Scopes de ton appli Shopify (adapte selon ton OAuth)
   const scope = "read_products,write_products,write_files,read_files,write_online_store_pages,read_online_store_pages,write_content,read_content,write_themes,read_themes";
 
-  // Objet session complet : tous les champs requis Shopify API v12+
   return new Session({
     id: `${shop}_${Date.now()}`,
     shop: shop,
     state: "setup-shop", // string non vide
     isOnline: true,
     accessToken: accessToken,
-    isCustomStoreApp: false, // PATCH principal
+    isCustomStoreApp: false,
     scope,
     expires: undefined,
     onlineAccessInfo: undefined
@@ -40,7 +38,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Débogage ultra défensif :
+  // Débogage ultra défensif :
   console.log("[DEBUG setup-shop] shop:", shop, "token:", !!token);
 
   try {
