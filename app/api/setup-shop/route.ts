@@ -19,7 +19,7 @@ function getSession(shop: string, accessToken: string): Session {
     state: "setup-shop", // string non vide
     isOnline: true,
     accessToken: accessToken,
-    isCustomStoreApp: false,
+    isCustomStoreApp: true,
     scope,
     expires: undefined,
     onlineAccessInfo: undefined
