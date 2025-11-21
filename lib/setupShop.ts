@@ -1,38 +1,34 @@
 import { parse } from "csv-parse/sync";
-import fs from "fs";
-import path from "path";
 
+// --- Utilities ---
 function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
 
-// Fonction d'extraction des metafields (checkboxes du CSV, format Shopify attendu)
+// Extraction des metafields "checkbox" du CSV, au format attendu par Shopify
 function extractCheckboxMetafields(row: any): any[] {
   const metafields: any[] = [];
-  if (row["Checkbox 1 (product.metafields.custom.checkbox_1)"] !== undefined) {
+  if (row["Checkbox 1 (product.metafields.custom.checkbox_1)"] !== undefined)
     metafields.push({
       namespace: "custom",
       key: "checkbox_1",
       type: "single_line_text_field",
       value: row["Checkbox 1 (product.metafields.custom.checkbox_1)"].toString()
     });
-  }
-  if (row["Checkbox 2 (product.metafields.custom.checkbox_2)"] !== undefined) {
+  if (row["Checkbox 2 (product.metafields.custom.checkbox_2)"] !== undefined)
     metafields.push({
       namespace: "custom",
       key: "checkbox_2",
       type: "single_line_text_field",
       value: row["Checkbox 2 (product.metafields.custom.checkbox_2)"].toString()
     });
-  }
-  if (row["Checkbox 3 (product.metafields.custom.checkbox_3)"] !== undefined) {
+  if (row["Checkbox 3 (product.metafields.custom.checkbox_3)"] !== undefined)
     metafields.push({
       namespace: "custom",
       key: "checkbox_3",
       type: "single_line_text_field",
       value: row["Checkbox 3 (product.metafields.custom.checkbox_3)"].toString()
     });
-  }
   return metafields;
 }
 
@@ -70,6 +66,60 @@ async function attachImageToProduct(
   return json?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
+// Upload "Files" à la boutique Shopify (non lié à un produit)
+async function uploadShopFile(shop: string, token: string, fileUrl: string, alt: string) {
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        mutation fileCreate($files: [FileCreateInput!]!) {
+          fileCreate(files: $files) {
+            files {
+              createdAt
+              id
+              alt
+              url
+            }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: {
+        files: [
+          {
+            alt,
+            originalSource: fileUrl,
+          }
+        ]
+      }
+    })
+  });
+  const json = await res.json();
+  return json?.data?.fileCreate?.files?.[0];
+}
+
+// Création bulk des variantes (si > 1 variant)
+async function bulkCreateVariants(shop: string, token: string, productId: string, variants: any[]) {
+  if (!productId || !variants?.length) return;
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+          productVariantsBulkCreate(productId: $productId, variants: $variants) {
+            productVariants { id sku price compareAtPrice }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: { productId, variants },
+    }),
+  });
+  return await res.json();
+}
+
 // PATCH: Met à jour le prix et compareAtPrice d'une variante existante
 async function updateVariantPrice(
   shop: string,
@@ -101,40 +151,19 @@ async function updateVariantPrice(
   return await res.json();
 }
 
-// PATCH: Création bulk des variantes (si > 1 variant)
-async function bulkCreateVariants(shop: string, token: string, productId: string, variants: any[]) {
-  if (!productId || !variants?.length) return;
-  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-    body: JSON.stringify({
-      query: `
-        mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-          productVariantsBulkCreate(productId: $productId, variants: $variants) {
-            productVariants { id sku price compareAtPrice }
-            userErrors { field message }
-          }
-        }
-      `,
-      variables: { productId, variants },
-    }),
-  });
-  return await res.json();
-}
-
-// Add a new "Livraison" page to Shopify
-async function createShopifyPage(shop: string, token: string) {
+// Crée la page Livraison
+async function createLivraisonPage(shop: string, token: string) {
   const pageTitle = "Livraison";
   const pageContent = `
-    <h1>Livraison GRATUITE</h1>
-    <p>Le traitement des commandes prend de 1 à 3 jours ouvrables avant l'expédition. Une fois l'article expédié, le délai de livraison estimé est le suivant:</p>
-    <ul>
-      <li>France : 4-10 jours ouvrables</li>
-      <li>Belgique: 4-10 jours ouvrables</li>
-      <li>Suisse : 7-12 jours ouvrables</li>
-      <li>Canada : 7-12 jours ouvrables</li>
-      <li>Reste du monde : 7-14 jours</li>
-    </ul>
+<h1>Livraison GRATUITE</h1>
+<p>Le traitement des commandes prend de 1 à 3 jours ouvrables avant l'expédition. Une fois l'article expédié, le délai de livraison estimé est le suivant:</p>
+<ul>
+  <li>France : 4-10 jours ouvrables</li>
+  <li>Belgique: 4-10 jours ouvrables</li>
+  <li>Suisse : 7-12 jours ouvrables</li>
+  <li>Canada : 7-12 jours ouvrables</li>
+  <li>Reste du monde : 7-14 jours</li>
+</ul>
   `;
 
   const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
@@ -144,20 +173,13 @@ async function createShopifyPage(shop: string, token: string) {
       query: `
         mutation pageCreate($input: PageInput!) {
           pageCreate(input: $input) {
-            page {
-              id
-              handle
-              title
-            }
+            page { id handle title }
             userErrors { field message }
           }
         }
       `,
       variables: {
-        input: {
-          title: pageTitle,
-          bodyHtml: pageContent,
-        }
+        input: { title: pageTitle, bodyHtml: pageContent }
       }
     })
   });
@@ -165,28 +187,26 @@ async function createShopifyPage(shop: string, token: string) {
   return json?.data?.pageCreate?.page?.id;
 }
 
-// Upload from local "public" folder to Shopify product media (image1.jpg...image4.webp)
-async function uploadPublicImagesToProduct(shop: string, token: string, productId: string) {
-  const publicImages = [
-    "public/image1.jpg",
-    "public/image2.jpg",
-    "public/image3.jpg",
-    "public/image4.webp"
-  ];
-
-  for (const imageName of publicImages) {
-    // You need a public image URL accessible by Shopify.
-    // If using a static host, construct with your domain.
-    // Otherwise, read as base64 and upload with Shopify Admin REST API, which is not supported directly by GraphQL.
-    // Here, we assume you have a public URL (change if needed):
-    const publicBaseUrl = "https://auto-shopify-setup.vercel.app";
-    const publicUrl = `${publicBaseUrl}/${imageName.replace(/^public\//, "")}`;
-    await attachImageToProduct(shop, token, productId, publicUrl, "");
-  }
-}
-
+// Fonction principale
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
+    // 1. Upload des images dans Shopify Files (une fois, non liées à des produits)
+    // Adapte le domaine à ton vrai publicBaseUrl si différent
+    const publicBaseUrl = "https://auto-shopify-setup.vercel.app";
+    const publicImages = [
+      { url: `${publicBaseUrl}/image1.jpg`, alt: "Image 1" },
+      { url: `${publicBaseUrl}/image2.jpg`, alt: "Image 2" },
+      { url: `${publicBaseUrl}/image3.jpg`, alt: "Image 3" },
+      { url: `${publicBaseUrl}/image4.webp`, alt: "Image 4" }
+    ];
+    for (const img of publicImages) {
+      await uploadShopFile(shop, token, img.url, img.alt);
+    }
+
+    // 2. Crée la page Livraison
+    await createLivraisonPage(shop, token);
+
+    // 3. Import produits et variantes (ta logique précédente inchangée)
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
@@ -264,10 +284,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           continue;
         }
 
-        // Upload des images / du dossier public/image{1,2,3}.jpg et image4.webp
-        await uploadPublicImagesToProduct(shop, token, productId);
-
-        // Upload des images defined dans CSV (remise à jour si existantes dans le CSV)
+        // Upload des images CSV liées au produit
         const allImagesToAttach = [
           ...new Set([
             ...group.map(row => row["Image Src"]).filter(Boolean),
@@ -279,7 +296,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           await attachImageToProduct(shop, token, productId, normalizedUrl, "");
         }
 
-        // Création des variantes (compatible produit simple & multi variantes)
+        // Création des variantes
         const seen = new Set<string>();
         const variants = group
           .map(row => {
@@ -314,7 +331,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           .filter(v => v);
 
         if (variants.length > 1) {
-          // Supprime la variante "Default Title" créée automatiquement par Shopify
+          // Supprime la variante "Default Title"
           const defaultVariantId = productData?.variants?.edges?.[0]?.node?.id;
           if (defaultVariantId) {
             await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
@@ -356,10 +373,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         console.error('Erreur création produit GraphQL', handleUnique, err);
       }
     }
-
-    // Création de la page Livraison
-    await createShopifyPage(shop, token);
-
   } catch (err) {
     console.error("Erreur globale setupShop:", err);
   }
