@@ -1,17 +1,14 @@
+import '@shopify/shopify-api/adapters/node'; // ← PATCH CRUCIAL pour le runtime Node.js !
 import { shopifyApi, Session, ApiVersion } from "@shopify/shopify-api";
 
 // Sécurisation du hostName depuis SHOPIFY_APP_URL
 function getHostName() {
   const appUrl = process.env.SHOPIFY_APP_URL;
   if (!appUrl) throw new Error("Variable d'environnement SHOPIFY_APP_URL manquante !");
-  // Si tu as https://monapp.vercel.app ou http://..., on retire le protocole ET le slash final
-  // et on prend seulement le hostname
-  let url;
   try {
-    url = new URL(appUrl);
-    return url.host;
+    const parsedUrl = new URL(appUrl);
+    return parsedUrl.host;
   } catch (e) {
-    // Si pas une vraie URL, fallback sur le replace simple:
     return appUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
   }
 }
@@ -19,7 +16,7 @@ function getHostName() {
 export const shopify = shopifyApi({
   apiKey: process.env.SHOPIFY_API_KEY!,
   apiSecretKey: process.env.SHOPIFY_API_SECRET!,
-  apiVersion: ApiVersion.October23, // adapte selon SDK, ou ApiVersion.October25
+  apiVersion: ApiVersion.October23, // ← adapte selon ce que ton SDK supporte
   isCustomStoreApp: true,
   adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!,
   privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!,
@@ -28,7 +25,7 @@ export const shopify = shopifyApi({
   // sessionStorage: ... (optionnel)
 });
 
-// Fonction GraphQL inchangée
+// Fonction GraphQL compatible SDK et Node
 export async function shopifyGraphQL(
   shop: string,
   token: string,
