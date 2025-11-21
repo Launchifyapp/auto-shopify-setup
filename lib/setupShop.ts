@@ -1,4 +1,6 @@
 import { parse } from "csv-parse/sync";
+import fs from "fs";
+import path from "path";
 
 function normalizeImageUrl(url: string): string {
   return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
@@ -120,7 +122,69 @@ async function bulkCreateVariants(shop: string, token: string, productId: string
   return await res.json();
 }
 
-// Le PATCH central compatible multi/single variante/prix produit
+// Add a new "Livraison" page to Shopify
+async function createShopifyPage(shop: string, token: string) {
+  const pageTitle = "Livraison";
+  const pageContent = `
+    <h1>Livraison GRATUITE</h1>
+    <p>Le traitement des commandes prend de 1 à 3 jours ouvrables avant l'expédition. Une fois l'article expédié, le délai de livraison estimé est le suivant:</p>
+    <ul>
+      <li>France : 4-10 jours ouvrables</li>
+      <li>Belgique: 4-10 jours ouvrables</li>
+      <li>Suisse : 7-12 jours ouvrables</li>
+      <li>Canada : 7-12 jours ouvrables</li>
+      <li>Reste du monde : 7-14 jours</li>
+    </ul>
+  `;
+
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        mutation pageCreate($input: PageInput!) {
+          pageCreate(input: $input) {
+            page {
+              id
+              handle
+              title
+            }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: {
+        input: {
+          title: pageTitle,
+          bodyHtml: pageContent,
+        }
+      }
+    })
+  });
+  const json = await res.json();
+  return json?.data?.pageCreate?.page?.id;
+}
+
+// Upload from local "public" folder to Shopify product media (image1.jpg...image4.webp)
+async function uploadPublicImagesToProduct(shop: string, token: string, productId: string) {
+  const publicImages = [
+    "public/image1.jpg",
+    "public/image2.jpg",
+    "public/image3.jpg",
+    "public/image4.webp"
+  ];
+
+  for (const imageName of publicImages) {
+    // You need a public image URL accessible by Shopify.
+    // If using a static host, construct with your domain.
+    // Otherwise, read as base64 and upload with Shopify Admin REST API, which is not supported directly by GraphQL.
+    // Here, we assume you have a public URL (change if needed):
+    const publicBaseUrl = "https://auto-shopify-setup.vercel.app";
+    const publicUrl = `${publicBaseUrl}/${imageName.replace(/^public\//, "")}`;
+    await attachImageToProduct(shop, token, productId, publicUrl, "");
+  }
+}
+
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
@@ -200,7 +264,10 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           continue;
         }
 
-        // Upload des images
+        // Upload des images / du dossier public/image{1,2,3}.jpg et image4.webp
+        await uploadPublicImagesToProduct(shop, token, productId);
+
+        // Upload des images defined dans CSV (remise à jour si existantes dans le CSV)
         const allImagesToAttach = [
           ...new Set([
             ...group.map(row => row["Image Src"]).filter(Boolean),
@@ -212,7 +279,7 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
           await attachImageToProduct(shop, token, productId, normalizedUrl, "");
         }
 
-        // Création des variantes (PATCH compatible produit simple & multi variantes)
+        // Création des variantes (compatible produit simple & multi variantes)
         const seen = new Set<string>();
         const variants = group
           .map(row => {
@@ -226,7 +293,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
             const key = optionValues.map(ov => ov.name).join('|');
             if (seen.has(key)) return undefined;
             seen.add(key);
-            // Cas produit simple SANS options : une ligne
             if (!optionValues.length && group.length === 1) {
               return {
                 price: row["Variant Price"] || main["Variant Price"] || "0",
@@ -236,7 +302,6 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
                 optionValues: []
               };
             }
-            // Cas multi variantes/options
             if (!optionValues.length) return undefined;
             return {
               price: row["Variant Price"] || main["Variant Price"] || "0",
@@ -291,6 +356,10 @@ export async function setupShop({ shop, token }: { shop: string; token: string }
         console.error('Erreur création produit GraphQL', handleUnique, err);
       }
     }
+
+    // Création de la page Livraison
+    await createShopifyPage(shop, token);
+
   } catch (err) {
     console.error("Erreur globale setupShop:", err);
   }
