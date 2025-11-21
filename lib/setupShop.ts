@@ -1,13 +1,13 @@
 import { parse } from "csv-parse/sync";
-import { shopify } from "@/lib/shopify"; // PATCH : utilise la config globale Shopify API
+import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
 
 // Fonction pour créer la page Livraison via Shopify API
 async function createLivraisonPageWithSDK(session: Session) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    mutation CreatePage($page: PageCreateInput!) {
-      pageCreate(page: $page) {
+    mutation CreatePage($input: PageCreateInput!) {
+      pageCreate(page: $input) {
         page {
           id
           title
@@ -17,7 +17,7 @@ async function createLivraisonPageWithSDK(session: Session) {
       }
     }
   `;
-  const livraisonVars = {
+  const variables = { input: {
     title: "Livraison",
     handle: "livraison",
     body: `Livraison GRATUITE
@@ -31,10 +31,10 @@ Reste du monde : 7-14 jours
 `,
     isPublished: true,
     templateSuffix: "custom"
-  };
+  }};
 
-  // PATCH v12+ : utilise .request() au lieu de .query()
-  const response: any = await client.request(query, { page: livraisonVars });
+  // PATCH : transpose vers $input et non $page !
+  const response: any = await client.request(query, variables);
   const data = response;
   if (data?.data?.pageCreate?.userErrors?.length) {
     console.error("Erreur création page Livraison:", data.data.pageCreate.userErrors);
@@ -89,13 +89,12 @@ async function attachImageToProductWithSDK(session: Session, productId: string, 
       }
     }
   `;
-  const media = [{
+  const variables = { productId, media: [{
     originalSource: imageUrl,
     mediaContentType: "IMAGE",
     alt: altText
-  }];
-  // PATCH v12+ : utilise .request() directement
-  const response: any = await client.request(query, { productId, media });
+  }]};
+  const response: any = await client.request(query, variables);
   const data = response;
   return data?.data?.productCreateMedia?.media?.[0]?.id;
 }
@@ -104,8 +103,8 @@ async function attachImageToProductWithSDK(session: Session, productId: string, 
 async function createProductWithSDK(session: Session, product: any) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    mutation productCreate($product: ProductCreateInput!) {
-      productCreate(product: $product) {
+    mutation productCreate($input: ProductCreateInput!) {
+      productCreate(product: $input) {
         product {
           id
           handle
@@ -117,8 +116,8 @@ async function createProductWithSDK(session: Session, product: any) {
       }
     }
   `;
-  // PATCH v12+ : utilise .request(), pas .query()
-  const response: any = await client.request(query, { product });
+  const variables = { input: product };
+  const response: any = await client.request(query, variables);
   const data = response;
   return data?.data?.productCreate;
 }
@@ -134,8 +133,8 @@ async function bulkCreateVariantsWithSDK(session: Session, productId: string, va
       }
     }
   `;
-  // PATCH v12+ : .request()
-  const response: any = await client.request(query, { productId, variants });
+  const variables = { productId, variants };
+  const response: any = await client.request(query, variables);
   const data = response;
   return data?.data?.productVariantsBulkCreate;
 }
@@ -155,7 +154,6 @@ async function updateVariantPriceWithSDK(session: Session, variantId: string, pr
   if (compareAtPrice !== undefined) {
     variables.compareAtPrice = compareAtPrice;
   }
-  // PATCH v12+ : .request()
   await client.request(query, variables);
 }
 
