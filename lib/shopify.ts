@@ -1,7 +1,7 @@
-import '@shopify/shopify-api/adapters/node'; // ← PATCH CRUCIAL pour le runtime Node.js !
+import '@shopify/shopify-api/adapters/node'; // ← Adapter Node obligatoire
 import { shopifyApi, Session, ApiVersion } from "@shopify/shopify-api";
 
-// Sécurisation du hostName depuis SHOPIFY_APP_URL
+// Host extraction sécurisé
 function getHostName() {
   const appUrl = process.env.SHOPIFY_APP_URL;
   if (!appUrl) throw new Error("Variable d'environnement SHOPIFY_APP_URL manquante !");
@@ -16,7 +16,7 @@ function getHostName() {
 export const shopify = shopifyApi({
   apiKey: process.env.SHOPIFY_API_KEY!,
   apiSecretKey: process.env.SHOPIFY_API_SECRET!,
-  apiVersion: ApiVersion.October23, // ← adapte selon ce que ton SDK supporte
+  apiVersion: ApiVersion.October23, // Adapte selon le support du SDK
   isCustomStoreApp: true,
   adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!,
   privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!,
@@ -25,7 +25,7 @@ export const shopify = shopifyApi({
   // sessionStorage: ... (optionnel)
 });
 
-// Fonction GraphQL compatible SDK et Node
+// Fonction GraphQL - PATCH v12+ : utilise .request() au lieu de .query()
 export async function shopifyGraphQL(
   shop: string,
   token: string,
@@ -45,15 +45,8 @@ export async function shopifyGraphQL(
 
   const client = new shopify.clients.Graphql({ session });
 
-  const response: any = await client.query({
-    data: {
-      query,
-      variables,
-    },
-  });
+  // Utilise .request(), pas .query() (corrigé v12+)
+  const response: any = await client.request(query, variables);
 
-  if (response?.body) {
-    return response.body;
-  }
   return response;
 }
