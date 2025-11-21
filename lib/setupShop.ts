@@ -4,7 +4,7 @@ import { Session } from "@shopify/shopify-api";
 
 // Fonction pour créer la page Livraison via Shopify API
 async function createLivraisonPageWithSDK(session: Session) {
-  const client = new shopify.clients.Graphql({ session }); // PATCH ici
+  const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation CreatePage($page: PageCreateInput!) {
       pageCreate(page: $page) {
@@ -33,13 +33,9 @@ Reste du monde : 7-14 jours
     templateSuffix: "custom"
   };
 
-  const response: any = await client.query({
-    data: {
-      query,
-      variables: { page: livraisonVars },
-    },
-  });
-  const data = response.body;
+  // PATCH v12+ : utilise .request() au lieu de .query()
+  const response: any = await client.request(query, { page: livraisonVars });
+  const data = response;
   if (data?.data?.pageCreate?.userErrors?.length) {
     console.error("Erreur création page Livraison:", data.data.pageCreate.userErrors);
   } else {
@@ -82,7 +78,7 @@ function extractCheckboxMetafields(row: any): any[] {
 
 // Upload image en media produit Shopify (SDK GraphQL)
 async function attachImageToProductWithSDK(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
-  const client = new shopify.clients.Graphql({ session }); // PATCH ici
+  const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
       productCreateMedia(productId: $productId, media: $media) {
@@ -98,19 +94,15 @@ async function attachImageToProductWithSDK(session: Session, productId: string, 
     mediaContentType: "IMAGE",
     alt: altText
   }];
-  const response: any = await client.query({
-    data: {
-      query,
-      variables: { productId, media }
-    },
-  });
-  const data = response.body;
+  // PATCH v12+ : utilise .request() directement
+  const response: any = await client.request(query, { productId, media });
+  const data = response;
   return data?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
 // Crée un produit avec une mutation GraphQL via Shopify API
 async function createProductWithSDK(session: Session, product: any) {
-  const client = new shopify.clients.Graphql({ session }); // PATCH ici
+  const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation productCreate($product: ProductCreateInput!) {
       productCreate(product: $product) {
@@ -125,19 +117,15 @@ async function createProductWithSDK(session: Session, product: any) {
       }
     }
   `;
-  const response: any = await client.query({
-    data: {
-      query,
-      variables: { product }
-    }
-  });
-  const data = response.body;
+  // PATCH v12+ : utilise .request(), pas .query()
+  const response: any = await client.request(query, { product });
+  const data = response;
   return data?.data?.productCreate;
 }
 
 // Création bulk des variantes via Shopify API
 async function bulkCreateVariantsWithSDK(session: Session, productId: string, variants: any[]) {
-  const client = new shopify.clients.Graphql({ session }); // PATCH ici
+  const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
       productVariantsBulkCreate(productId: $productId, variants: $variants) {
@@ -146,19 +134,15 @@ async function bulkCreateVariantsWithSDK(session: Session, productId: string, va
       }
     }
   `;
-  const response: any = await client.query({
-    data: {
-      query,
-      variables: { productId, variants },
-    },
-  });
-  const data = response.body;
+  // PATCH v12+ : .request()
+  const response: any = await client.request(query, { productId, variants });
+  const data = response;
   return data?.data?.productVariantsBulkCreate;
 }
 
 // Update variant price via Shopify API
 async function updateVariantPriceWithSDK(session: Session, variantId: string, price: string, compareAtPrice?: string) {
-  const client = new shopify.clients.Graphql({ session }); // PATCH ici
+  const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation productVariantUpdate($id: ID!, $price: Money!, $compareAtPrice: Money) {
       productVariantUpdate(id: $id, price: $price, compareAtPrice: $compareAtPrice) {
@@ -171,12 +155,8 @@ async function updateVariantPriceWithSDK(session: Session, variantId: string, pr
   if (compareAtPrice !== undefined) {
     variables.compareAtPrice = compareAtPrice;
   }
-  await client.query({
-    data: {
-      query,
-      variables,
-    },
-  });
+  // PATCH v12+ : .request()
+  await client.request(query, variables);
 }
 
 // Fonction principale utilisant UNIQUEMENT le SDK Shopify
