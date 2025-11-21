@@ -1,8 +1,9 @@
 import { parse } from "csv-parse/sync";
 import { GraphqlClient } from "@shopify/shopify-api";
+import { Session } from "@shopify/shopify-api";
 
 // Fonction pour créer la page Livraison via SDK Shopify
-async function createLivraisonPageWithSDK(session: any) {
+async function createLivraisonPageWithSDK(session: Session) {
   const client = new GraphqlClient({ session });
   const query = `
     mutation CreatePage($page: PageCreateInput!) {
@@ -80,7 +81,7 @@ function extractCheckboxMetafields(row: any): any[] {
 }
 
 // Upload image en media produit Shopify (SDK GraphQL)
-async function attachImageToProductWithSDK(session: any, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
+async function attachImageToProductWithSDK(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
   const client = new GraphqlClient({ session });
   const query = `
     mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
@@ -108,7 +109,7 @@ async function attachImageToProductWithSDK(session: any, productId: string, imag
 }
 
 // Crée un produit avec une mutation GraphQL via SDK
-async function createProductWithSDK(session: any, product: any) {
+async function createProductWithSDK(session: Session, product: any) {
   const client = new GraphqlClient({ session });
   const query = `
     mutation productCreate($product: ProductCreateInput!) {
@@ -135,7 +136,7 @@ async function createProductWithSDK(session: any, product: any) {
 }
 
 // Création bulk des variantes via SDK
-async function bulkCreateVariantsWithSDK(session: any, productId: string, variants: any[]) {
+async function bulkCreateVariantsWithSDK(session: Session, productId: string, variants: any[]) {
   const client = new GraphqlClient({ session });
   const query = `
     mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
@@ -156,7 +157,7 @@ async function bulkCreateVariantsWithSDK(session: any, productId: string, varian
 }
 
 // Update variant price via SDK
-async function updateVariantPriceWithSDK(session: any, variantId: string, price: string, compareAtPrice?: string) {
+async function updateVariantPriceWithSDK(session: Session, variantId: string, price: string, compareAtPrice?: string) {
   const client = new GraphqlClient({ session });
   const query = `
     mutation productVariantUpdate($id: ID!, $price: Money!, $compareAtPrice: Money) {
@@ -179,7 +180,7 @@ async function updateVariantPriceWithSDK(session: any, variantId: string, price:
 }
 
 // Fonction principale utilisant UNIQUEMENT le SDK Shopify
-export async function setupShop({ session }: { session: any }) {
+export async function setupShop({ session }: { session: Session }) {
   try {
     // Crée la page Livraison via le SDK
     await createLivraisonPageWithSDK(session);
