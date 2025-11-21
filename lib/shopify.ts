@@ -1,21 +1,19 @@
-import { shopifyApi, ApiVersion, Session } from "@shopify/shopify-api";
+import { shopifyApi, Session } from "@shopify/shopify-api";
 
-// Configuration complète requise pour shopifyApi v12+
-// Ajoute bien les champs obligatoires : apiKey, apiSecretKey, hostName, isEmbeddedApp...
+// Remplace ApiVersion.Latest par la chaîne de la version API actuelle, ex: "2023-10"
 export const shopify = shopifyApi({
-  apiKey: process.env.SHOPIFY_API_KEY!,                  // clé publique de ton app
-  apiSecretKey: process.env.SHOPIFY_API_SECRET!,         // clé secrète de ton app
-  apiVersion: ApiVersion.Latest,                         // version API
-  isCustomStoreApp: true,                                // ← important ici
-  adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!, // token Admin API
-  privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!, // token Storefront API pour apps custom/private
-  hostName: process.env.SHOPIFY_APP_HOST!.replace(/^https?:\/\//, ""),   // nom d'hôte sans https://
-  isEmbeddedApp: false,                                  // ou true selon ton app
-  // ... Ajoute sessionStorage ici si tu utilises une persistance custom
-  // sessionStorage: ...
+  apiKey: process.env.SHOPIFY_API_KEY!,
+  apiSecretKey: process.env.SHOPIFY_API_SECRET!,
+  apiVersion: "2025-10", // ← Mets ici ta version API Shopify !
+  isCustomStoreApp: true,
+  adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!,
+  privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!,
+  hostName: process.env.SHOPIFY_APP_HOST!.replace(/^https?:\/\//, ""),
+  isEmbeddedApp: false, // ou true si ton app est embedded
+  // sessionStorage: ... (si tu utilises une persistance custom)
 });
 
-// Fonction d'appel Shopify GraphQL via l'API officielle (client global)
+// Fonction d'appel Shopify GraphQL via clients du SDK officiel
 export async function shopifyGraphQL(
   shop: string,
   token: string,
@@ -33,7 +31,6 @@ export async function shopifyGraphQL(
     onlineAccessInfo: undefined,
   });
 
-  // Utilise le client GraphQL du shopifyApi global
   const client = new shopify.clients.Graphql({ session });
 
   const response: any = await client.query({
