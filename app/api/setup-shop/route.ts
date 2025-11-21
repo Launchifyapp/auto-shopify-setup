@@ -2,18 +2,25 @@ import { NextRequest } from "next/server";
 import { setupShop } from "@/lib/setupShop";
 import { Session } from "@shopify/shopify-api";
 
-// Fonction pour créer la session Shopify > v12, compatible tous contextes
+// PATCH pour Shopify API v12+ : tous les champs explicitement définis et NON undefined
 function getSession(shop: string, accessToken: string): Session {
+  if (!shop || !accessToken) {
+    throw new Error("Paramètres shop/token manquants !");
+  }
+
+  // Scopes : adapte selon ton app. Ne laisse pas ce champ vide !
+  const scope = "write_products,write_content";
+
   return new Session({
-    id: `${shop}_${Date.now()}`,
-    shop: shop ?? "",
-    state: "setup-shop",      // doit être une string non vide
-    isOnline: true,
-    accessToken: accessToken ?? "",
-    isCustomStoreApp: false,  // Obligatoire pour apps publiques Shopify
-    scope: "write_products,write_content", // adapte selon tes scopes
-    expires: undefined,       // optionnel (si tu utilises offline)
-    onlineAccessInfo: undefined // optionnel
+    id: `${shop}_${Date.now()}`,         // chaîne non vide
+    shop: shop,                         // chaîne non vide
+    state: "setup-shop",                // chaîne non vide
+    isOnline: true,                     // ou false si offline
+    accessToken: accessToken,           // chaîne non vide
+    isCustomStoreApp: false,            // obligatoire pour v12+
+    scope,                              // chaîne non vide
+    expires: undefined,                 // optionnel
+    onlineAccessInfo: undefined,        // optionnel
   });
 }
 
@@ -29,6 +36,9 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // Log défense
+  console.log("setup-shop API: shop:", shop, "token:", !!token);
+
   try {
     const session = getSession(shop, token);
     await setupShop({ session });
@@ -38,6 +48,7 @@ export async function GET(req: NextRequest) {
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (err: any) {
+    console.error("Erreur globale setupShop:", err);
     return new Response(
       JSON.stringify({
         ok: false,
