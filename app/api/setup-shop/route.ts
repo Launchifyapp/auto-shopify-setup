@@ -2,17 +2,18 @@ import { NextRequest } from "next/server";
 import { setupShop } from "@/lib/setupShop";
 import { Session } from "@shopify/shopify-api";
 
+// Fonction pour créer la session Shopify > v12, compatible tous contextes
 function getSession(shop: string, accessToken: string): Session {
   return new Session({
     id: `${shop}_${Date.now()}`,
-    shop,
-    state: "setup-shop",      // met un string non vide (important)
-    isOnline: true,           // ou false selon ton usage (connexion offline/online)
-    accessToken,              // ton token OAuth/boutique
-    isCustomStoreApp: false,  // ou true si tu es une custom app
-    scope: "write_products,write_content,new_permissions", // permissions (met celles dont tu as besoin)
-    expires: undefined,       // tu peux mettre une date ou undefined selon le contexte
-    onlineAccessInfo: undefined, // optionnel
+    shop: shop ?? "",
+    state: "setup-shop",      // doit être une string non vide
+    isOnline: true,
+    accessToken: accessToken ?? "",
+    isCustomStoreApp: false,  // Obligatoire pour apps publiques Shopify
+    scope: "write_products,write_content", // adapte selon tes scopes
+    expires: undefined,       // optionnel (si tu utilises offline)
+    onlineAccessInfo: undefined // optionnel
   });
 }
 
