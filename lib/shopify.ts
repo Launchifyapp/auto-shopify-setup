@@ -10,7 +10,7 @@ function getHostName() {
 export const shopify = shopifyApi({
   apiKey: process.env.SHOPIFY_API_KEY!,
   apiSecretKey: process.env.SHOPIFY_API_SECRET!,
-  apiVersion: "2025-10", // ← string si la constante n'existe pas
+  apiVersion: "^12.1.2", // ← string si la constante n'existe pas
   isCustomStoreApp: true,
   adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!,
   privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!,
