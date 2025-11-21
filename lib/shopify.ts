@@ -1,24 +1,34 @@
-import { shopifyApi, Session, ApiVersion } from "@shopify/shopify-api";
+import { shopifyApi, Session } from "@shopify/shopify-api";
 
-// Sécurisation + fallback pour hostName
+// Sécurisation du hostName depuis SHOPIFY_APP_URL
 function getHostName() {
-  const host = process.env.SHOPIFY_APP_HOST;
-  if (!host) throw new Error("Variable d'environnement SHOPIFY_APP_HOST manquante !");
-  return host.replace(/^https?:\/\//, "");
+  const appUrl = process.env.SHOPIFY_APP_URL;
+  if (!appUrl) throw new Error("Variable d'environnement SHOPIFY_APP_URL manquante !");
+  // Si tu as https://monapp.vercel.app ou http://..., on retire le protocole ET le slash final
+  // et on prend seulement le hostname
+  let url;
+  try {
+    url = new URL(appUrl);
+    return url.host;
+  } catch (e) {
+    // Si pas une vraie URL, fallback sur le replace simple:
+    return appUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  }
 }
 
 export const shopify = shopifyApi({
   apiKey: process.env.SHOPIFY_API_KEY!,
   apiSecretKey: process.env.SHOPIFY_API_SECRET!,
-  apiVersion:  ApiVersion.October23, // ← string si la constante n'existe pas
+  apiVersion: ApiVersion.October23, // adapte selon SDK, ou ApiVersion.October25
   isCustomStoreApp: true,
   adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!,
   privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!,
   hostName: getHostName(),
   isEmbeddedApp: false,
+  // sessionStorage: ... (optionnel)
 });
 
-// Fonction GraphQL : inchangée
+// Fonction GraphQL inchangée
 export async function shopifyGraphQL(
   shop: string,
   token: string,
