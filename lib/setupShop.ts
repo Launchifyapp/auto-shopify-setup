@@ -35,7 +35,13 @@ function extractCheckboxMetafields(row: any): any[] {
 }
 
 // Upload image en media produit Shopify
-async function attachImageToProduct(shop: string, token: string, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
+async function attachImageToProduct(
+  shop: string,
+  token: string,
+  productId: string,
+  imageUrl: string,
+  altText: string = ""
+): Promise<string | undefined> {
   const media = [{
     originalSource: imageUrl,
     mediaContentType: "IMAGE",
@@ -62,8 +68,45 @@ async function attachImageToProduct(shop: string, token: string, productId: stri
   return json?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
+// Fonction pour créer la page Livraison au début du script
+async function createLivraisonPage(shop: string, token: string) {
+  const pageTitle = "Livraison";
+  const pageContent = `
+Livraison GRATUITE
+Le traitement des commandes prend de 1 à 3 jours ouvrables avant l'expédition. Une fois l'article expédié, le délai de livraison estimé est le suivant:
+
+France : 4-10 jours ouvrables
+Belgique: 4-10 jours ouvrables
+Suisse : 7-12 jours ouvrables
+Canada : 7-12 jours ouvrables
+Reste du monde : 7-14 jours
+  `;
+  const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        mutation pageCreate($input: PageInput!) {
+          pageCreate(input: $input) {
+            page { id handle title }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: {
+        input: { title: pageTitle, bodyHtml: pageContent }
+      }
+    })
+  });
+  const json = await res.json();
+  return json?.data?.pageCreate?.page?.id;
+}
+
 export async function setupShop({ shop, token }: { shop: string; token: string }) {
   try {
+    // Création de la page Livraison AVANT l'import des produits
+    await createLivraisonPage(shop, token);
+
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
