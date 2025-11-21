@@ -1,17 +1,21 @@
 import { shopifyApi, ApiVersion, Session } from "@shopify/shopify-api";
 
-// PATCH pour Shopify API v12+
-// La config (tokens, isCustomStoreApp, apiVersion) est passée à la racine, PAS sous "api"
+// Configuration complète requise pour shopifyApi v12+
+// Ajoute bien les champs obligatoires : apiKey, apiSecretKey, hostName, isEmbeddedApp...
 export const shopify = shopifyApi({
-  apiVersion: ApiVersion.Latest,           // ← PAS dans un bloc "api"
-  isCustomStoreApp: true,                  // ← à la racine
-  adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!,
-  privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!,
-  // Ajoute ici ton sessionStorage si tu utilises une persistance custom
+  apiKey: process.env.SHOPIFY_API_KEY!,                  // clé publique de ton app
+  apiSecretKey: process.env.SHOPIFY_API_SECRET!,         // clé secrète de ton app
+  apiVersion: ApiVersion.Latest,                         // version API
+  isCustomStoreApp: true,                                // ← important ici
+  adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!, // token Admin API
+  privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!, // token Storefront API pour apps custom/private
+  hostName: process.env.SHOPIFY_APP_HOST!.replace(/^https?:\/\//, ""),   // nom d'hôte sans https://
+  isEmbeddedApp: false,                                  // ou true selon ton app
+  // ... Ajoute sessionStorage ici si tu utilises une persistance custom
   // sessionStorage: ...
 });
 
-// Fonction d'appel Shopify GraphQL via l'API officielle (client global !)
+// Fonction d'appel Shopify GraphQL via l'API officielle (client global)
 export async function shopifyGraphQL(
   shop: string,
   token: string,
