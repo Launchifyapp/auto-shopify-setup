@@ -112,7 +112,8 @@ async function waitForMediaReady(session: Session, mediaId: string, timeoutMs = 
   `;
   const start = Date.now();
   while (true) {
-    const response: any = await client.request(query, { id: mediaId });
+    // PATCH : on passe bien variables: { id: mediaId }
+    const response: any = await client.request(query, { variables: { id: mediaId } });
     const status = response?.data?.media?.status;
     if (status === "READY") return true;
     if (Date.now() - start > timeoutMs) return false;
@@ -120,7 +121,7 @@ async function waitForMediaReady(session: Session, mediaId: string, timeoutMs = 
   }
 }
 
-// Rattache le média uploadé à la variante via productVariantAppendMedia (PATCH: mediaIds en tableau)
+// Rattache le média uploadé à la variante via productVariantAppendMedia (mediaIds en tableau)
 async function appendMediaToVariant(session: Session, productId: string, variantId: string, mediaId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -151,7 +152,7 @@ async function appendMediaToVariant(session: Session, productId: string, variant
     variantMedia: [
       {
         variantId,
-        mediaIds: [mediaId]
+        mediaIds: [mediaId] // PATCH respecte le schéma d'input
       }
     ],
   };
@@ -417,7 +418,6 @@ export async function setupShop({ session }: { session: Session }) {
             }
           }
         }
-
         await new Promise((res) => setTimeout(res, 300));
       } catch (err) {
         console.error("Erreur création produit GraphQL", handleUnique, err);
