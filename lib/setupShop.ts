@@ -108,7 +108,8 @@ async function createProductWithSDK(session: Session, product: any) {
           id
           handle
           variants(first: 50) {
-            edges { node { id sku title selectedOptions { name value } price compareAtPrice } }
+            edges { node { id sku title selectedOptions { name value } price compareAtPrice barcode }
+            }
           }
         }
         userErrors { field message }
@@ -121,33 +122,37 @@ async function createProductWithSDK(session: Session, product: any) {
   return data?.data?.productCreate;
 }
 
-// Crée la première variante pour un produit sans variantes : utilise productVariantsBulkCreate !
-async function createFirstVariantWithBulkCreate(session: Session, productId: string, main: any) {
+// Crée la première variante pour un produit sans variantes, accepte sku/barcode/compareAtPrice si dispo !
+async function createFirstVariantWithBulkCreate(
+  session: Session,
+  productId: string,
+  main: any
+) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
       productVariantsBulkCreate(productId: $productId, variants: $variants) {
-        productVariants { id price sku }
+        productVariants { id price sku barcode compareAtPrice }
         userErrors { field message }
       }
     }
   `;
+  const firstVariant: any = {
+    price: main["Variant Price"] ?? "0",
+    optionValues: [
+      {
+        name: "Default Title",
+        optionName: "Title",
+      },
+    ],
+  };
+  if (main["Variant SKU"]) firstVariant.sku = main["Variant SKU"];
+  if (main["Variant Barcode"]) firstVariant.barcode = main["Variant Barcode"];
+  if (main["Variant Compare At Price"]) firstVariant.compareAtPrice = main["Variant Compare At Price"];
+
   const variables = {
     productId,
-    variants: [
-      {
-        price: main["Variant Price"] ?? "0",
-        compareAtPrice: main["Variant Compare At Price"] ?? undefined,
-        sku: main["Variant SKU"] ?? undefined,
-        barcode: main["Variant Barcode"] ?? undefined,
-        optionValues: [
-          {
-            name: "Default Title",
-            optionName: "Title",
-          }
-        ],
-      }
-    ]
+    variants: [firstVariant],
   };
   const response: any = await client.request(query, { variables });
   const data = response;
@@ -160,24 +165,36 @@ async function createFirstVariantWithBulkCreate(session: Session, productId: str
 }
 
 // Création bulk des variantes via Shopify API (pour produits avec options)
-async function bulkCreateVariantsWithSDK(session: Session, productId: string, variants: any[]) {
+async function bulkCreateVariantsWithSDK(
+  session: Session,
+  productId: string,
+  variants: any[]
+) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
       productVariantsBulkCreate(productId: $productId, variants: $variants) {
-        productVariants { id sku price }
+        productVariants { id price sku barcode compareAtPrice }
         userErrors { field message }
       }
     }
   `;
-  const variables = { productId, variants };
+  const variables = {
+    productId,
+    variants,
+  };
   const response: any = await client.request(query, { variables });
   const data = response;
   return data?.data?.productVariantsBulkCreate;
 }
 
 // Update variant price via Shopify API
-async function updateVariantPriceWithSDK(session: Session, variantId: string, price: string, compareAtPrice?: string) {
+async function updateVariantPriceWithSDK(
+  session: Session,
+  variantId: string,
+  price: string,
+  compareAtPrice?: string
+) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation productVariantUpdate($id: ID!, $price: Money!, $compareAtPrice: Money) {
@@ -222,16 +239,21 @@ export async function setupShop({ session }: { session: Session }) {
         const optionName = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
         if (optionName) {
           const optionValues = [
-            ...new Set(group.map(row => row[`Option${i} Value`] ? row[`Option${i} Value`].trim() : "")
-              .filter(v => !!v && v !== "Default Title"))
-          ].map(v => ({ name: v }));
+            ...new Set(
+              group
+                .map((row) => (row[`Option${i} Value`] ? row[`Option${i} Value`].trim() : ""))
+                .filter((v) => !!v && v !== "Default Title")
+            ),
+          ].map((v) => ({ name: v }));
           if (optionValues.length) {
             productOptions.push({ name: optionName, values: optionValues });
           }
         }
       }
-      const productOptionsOrUndefined = productOptions.length ? productOptions : undefined;
-      const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
+      const productOptionsOrUndefined =
+        productOptions.length ? productOptions : undefined;
+      const handleUnique =
+        handle + "-" + Math.random().toString(16).slice(2, 7);
 
       const productMetafields = extractCheckboxMetafields(main);
 
@@ -244,7 +266,8 @@ export async function setupShop({ session }: { session: Session }) {
         productType: main.Type,
         tags: main.Tags?.split(",").map((t: string) => t.trim()),
         productOptions: productOptionsOrUndefined,
-        metafields: productMetafields.length > 0 ? productMetafields : undefined,
+        metafields:
+          productMetafields.length > 0 ? productMetafields : undefined,
       };
 
       try {
@@ -253,7 +276,10 @@ export async function setupShop({ session }: { session: Session }) {
         const productData = productCreateData?.product;
         const productId = productData?.id;
         if (!productId) {
-          console.error("Aucun productId généré.", JSON.stringify(productCreateData, null, 2));
+          console.error(
+            "Aucun productId généré.",
+            JSON.stringify(productCreateData, null, 2)
+          );
           continue;
         }
         console.log("Product créé avec id:", productId);
@@ -261,51 +287,66 @@ export async function setupShop({ session }: { session: Session }) {
         // Upload des images via Shopify API
         const allImagesToAttach = [
           ...new Set([
-            ...group.map(row => row["Image Src"]).filter(Boolean),
-            ...group.map(row => row["Variant Image"]).filter(Boolean),
-          ])
+            ...group.map((row) => row["Image Src"]).filter(Boolean),
+            ...group.map((row) => row["Variant Image"]).filter(Boolean),
+          ]),
         ];
         for (const imgUrl of allImagesToAttach) {
           const normalizedUrl = normalizeImageUrl(imgUrl);
-          await attachImageToProductWithSDK(session, productId, normalizedUrl, "");
+          await attachImageToProductWithSDK(
+            session,
+            productId,
+            normalizedUrl,
+            ""
+          );
         }
 
-        // PATCH : S'il n'y a PAS d'options/variantes, on crée la variante par défaut via bulkCreate avec option default !
+        // S'il n'y a PAS d'options/variantes, crée la variante via bulkCreate avec les bons champs !
         if (!productOptionsOrUndefined || productOptionsOrUndefined.length === 0) {
           await createFirstVariantWithBulkCreate(session, productId, main);
         }
 
-        // PATCH : Création bulk des variantes - seulement si produit AVEC options
+        // Création bulk des variantes - seulement si produit AVEC options
         let allVariantIds: string[] = [];
         if (productOptionsOrUndefined && productOptionsOrUndefined.length > 0) {
           const seen = new Set<string>();
           const variants = group
-            .map(row => {
+            .map((row) => {
               const optionValues: { name: string; optionName: string }[] = [];
               productOptions.forEach((opt, idx) => {
-                const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
+                const value =
+                  row[`Option${idx + 1} Value`] &&
+                  row[`Option${idx + 1} Value`].trim();
                 if (value && value !== "Default Title") {
                   optionValues.push({ name: value, optionName: opt.name });
                 }
               });
-              const key = optionValues.map(ov => ov.name).join('|');
+              const key = optionValues.map((ov) => ov.name).join("|");
               if (seen.has(key)) return undefined;
               seen.add(key);
               if (!optionValues.length) return undefined;
-              return {
+
+              const variant: any = {
                 price: row["Variant Price"] || main["Variant Price"] || "0",
-                compareAtPrice: row["Variant Compare At Price"] || undefined,
-                sku: row["Variant SKU"] || undefined,
-                barcode: row["Variant Barcode"] || undefined,
-                optionValues
+                optionValues,
               };
+              if (row["Variant SKU"]) variant.sku = row["Variant SKU"];
+              if (row["Variant Barcode"]) variant.barcode = row["Variant Barcode"];
+              if (row["Variant Compare At Price"]) variant.compareAtPrice = row["Variant Compare At Price"];
+              return variant;
             })
-            .filter(v => v && v.optionValues && v.optionValues.length);
+            .filter((v) => v && v.optionValues && v.optionValues.length);
 
           if (variants.length > 1) {
-            const bulkData = await bulkCreateVariantsWithSDK(session, productId, variants.slice(1));
+            const bulkData = await bulkCreateVariantsWithSDK(
+              session,
+              productId,
+              variants.slice(1)
+            );
             if (bulkData?.productVariants) {
-              allVariantIds = bulkData.productVariants.map((v: { id: string }) => v.id);
+              allVariantIds = bulkData.productVariants.map(
+                (v: { id: string }) => v.id
+              );
             }
           }
 
@@ -313,14 +354,16 @@ export async function setupShop({ session }: { session: Session }) {
           if (productData?.variants?.edges) {
             allVariantIds = [
               ...allVariantIds,
-              ...productData.variants.edges.map((edge: { node: { id: string } }) => edge.node.id)
+              ...productData.variants.edges.map(
+                (edge: { node: { id: string } }) => edge.node.id
+              ),
             ];
           }
         }
 
-        await new Promise(res => setTimeout(res, 300));
+        await new Promise((res) => setTimeout(res, 300));
       } catch (err) {
-        console.error('Erreur création produit GraphQL', handleUnique, err);
+        console.error("Erreur création produit GraphQL", handleUnique, err);
       }
     }
   } catch (err) {
