@@ -74,6 +74,7 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
+// PATCH: mise à jour de la variante par défaut avec compareAtPrice (et autres)
 async function updateDefaultVariantWithSDK(
   session: Session,
   productId: string,
@@ -84,29 +85,29 @@ async function updateDefaultVariantWithSDK(
   const query = `
     mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
       productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants { id price sku barcode compareAtPrice }
+        productVariants { id price compareAtPrice sku barcode }
         userErrors { field message }
       }
     }
   `;
-  // Le bon input c'est ProductVariantsBulkInput, donc :
   const variant: any = {
     id: variantId,
     price: main["Variant Price"] ?? "0",
+    // PATCH: Ajout compareAtPrice s'il est présent
+    ...(main["Variant Compare At Price"] ? { compareAtPrice: main["Variant Compare At Price"] } : {}),
+    ...(main["Variant SKU"] ? { sku: main["Variant SKU"] } : {}),
+    ...(main["Variant Barcode"] ? { barcode: main["Variant Barcode"] } : {}),
   };
-  if (main["Variant SKU"]) variant.sku = main["Variant SKU"];
-  if (main["Variant Barcode"]) variant.barcode = main["Variant Barcode"];
-  if (main["Variant Compare At Price"]) variant.compareAtPrice = main["Variant Compare At Price"];
   const variables = {
     productId,
-    variants: [variant], // tableau de ProductVariantsBulkInput
+    variants: [variant],
   };
   const response: any = await client.request(query, { variables });
   const data = response?.data?.productVariantsBulkUpdate;
   if (data?.userErrors?.length) {
-    console.error("Erreur mise à jour variante par défaut :", data.userErrors);
+    console.error("Erreur maj variante par défaut (bulkUpdate):", data.userErrors);
   } else {
-    console.log("Variante par défaut mise à jour :", data.productVariants?.[0]);
+    console.log("Variante par défaut maj (bulkUpdate):", data.productVariants?.[0]);
   }
   return data?.productVariants?.[0]?.id;
 }
