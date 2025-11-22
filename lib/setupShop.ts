@@ -81,7 +81,7 @@ async function createProductMedia(session: Session, productId: string, imageUrl:
     mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
       productCreateMedia(productId: $productId, media: $media) {
         media {
-          ... on MediaImage { id image { url } }
+          ... on MediaImage { id image { url } status }
         }
         mediaUserErrors { field message }
       }
@@ -94,6 +94,30 @@ async function createProductMedia(session: Session, productId: string, imageUrl:
   }]};
   const response: any = await client.request(query, { variables });
   return response?.data?.productCreateMedia?.media?.[0]?.id;
+}
+
+// Poll: attendre que le media soit READY
+async function waitForMediaReady(session: Session, mediaId: string, timeoutMs = 15000) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    query getMedia($id: ID!) {
+      media(id: $id) {
+        ... on MediaImage {
+          id
+          status
+          image { url }
+        }
+      }
+    }
+  `;
+  const start = Date.now();
+  while (true) {
+    const response: any = await client.request(query, { id: mediaId });
+    const status = response?.data?.media?.status;
+    if (status === "READY") return true;
+    if (Date.now() - start > timeoutMs) return false;
+    await new Promise(res => setTimeout(res, 1500));
+  }
 }
 
 // Rattache le média uploadé à la variante via productVariantAppendMedia (PATCH: mediaIds en tableau)
@@ -309,7 +333,13 @@ export async function setupShop({ session }: { session: Session }) {
               const normalizedUrl = normalizeImageUrl(variantImageUrl);
               const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
               if (mediaId) {
-                await appendMediaToVariant(session, productId, defaultVariantId, mediaId);
+                // PATCH polling "READY"
+                const ready = await waitForMediaReady(session, mediaId, 20000);
+                if (ready) {
+                  await appendMediaToVariant(session, productId, defaultVariantId, mediaId);
+                } else {
+                  console.error("Media non READY après upload : pas de rattachement", mediaId);
+                }
               }
             }
           }
@@ -377,7 +407,12 @@ export async function setupShop({ session }: { session: Session }) {
               const normalizedUrl = normalizeImageUrl(variantImageUrl);
               const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
               if (mediaId) {
-                await appendMediaToVariant(session, productId, variantId, mediaId);
+                const ready = await waitForMediaReady(session, mediaId, 20000);
+                if (ready) {
+                  await appendMediaToVariant(session, productId, variantId, mediaId);
+                } else {
+                  console.error("Media non READY après upload : pas de rattachement", mediaId);
+                }
               }
             }
           }
