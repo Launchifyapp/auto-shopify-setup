@@ -74,7 +74,6 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
-// Met à jour la variante par défaut d'un produit via productVariantsBulkUpdate
 async function updateDefaultVariantWithSDK(
   session: Session,
   productId: string,
@@ -83,13 +82,14 @@ async function updateDefaultVariantWithSDK(
 ) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkUpdateInput!]!) {
+    mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
       productVariantsBulkUpdate(productId: $productId, variants: $variants) {
         productVariants { id price sku barcode compareAtPrice }
         userErrors { field message }
       }
     }
   `;
+  // Le bon input c'est ProductVariantsBulkInput, donc :
   const variant: any = {
     id: variantId,
     price: main["Variant Price"] ?? "0",
@@ -99,7 +99,7 @@ async function updateDefaultVariantWithSDK(
   if (main["Variant Compare At Price"]) variant.compareAtPrice = main["Variant Compare At Price"];
   const variables = {
     productId,
-    variants: [variant],
+    variants: [variant], // tableau de ProductVariantsBulkInput
   };
   const response: any = await client.request(query, { variables });
   const data = response?.data?.productVariantsBulkUpdate;
