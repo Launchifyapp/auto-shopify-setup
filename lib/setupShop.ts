@@ -109,7 +109,7 @@ async function createProductWithSDK(session: Session, product: any) {
           id
           handle
           variants(first: 50) {
-            edges { node { id sku title selectedOptions { name value } } }
+            edges { node { id sku title selectedOptions { name value } price compareAtPrice } }
           }
         }
         userErrors { field message }
@@ -210,6 +210,19 @@ export async function setupShop({ session }: { session: Session }) {
         metafields: productMetafields.length > 0 ? productMetafields : undefined,
       };
 
+      // PATCH : ajoute variante par défaut (prix, compareAtPrice) pour produit SANS options (donc sans variantes)
+      if (!productOptionsOrUndefined || productOptionsOrUndefined.length === 0) {
+        product.variants = [
+          {
+            price: main["Variant Price"] ?? "0",
+            compareAtPrice: main["Variant Compare At Price"] ?? undefined,
+            sku: main["Variant SKU"] ?? undefined,
+            barcode: main["Variant Barcode"] ?? undefined,
+            // Ajoute ici d'autres champs si utile
+          }
+        ];
+      }
+
       try {
         // Création du produit via Shopify API
         const productCreateData = await createProductWithSDK(session, product);
@@ -233,45 +246,47 @@ export async function setupShop({ session }: { session: Session }) {
           await attachImageToProductWithSDK(session, productId, normalizedUrl, "");
         }
 
-        // Création des variantes supplémentaires
-        const seen = new Set<string>();
-        const variants = group
-          .map(row => {
-            const optionValues: { name: string; optionName: string }[] = [];
-            productOptions.forEach((opt, idx) => {
-              const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
-              if (value && value !== "Default Title") {
-                optionValues.push({ name: value, optionName: opt.name });
-              }
-            });
-            const key = optionValues.map(ov => ov.name).join('|');
-            if (seen.has(key)) return undefined;
-            seen.add(key);
-            if (!optionValues.length) return undefined;
-            return {
-              price: row["Variant Price"] || main["Variant Price"] || "0",
-              compareAtPrice: row["Variant Compare At Price"] || undefined,
-              sku: row["Variant SKU"] || undefined,
-              barcode: row["Variant Barcode"] || undefined,
-              optionValues
-            };
-          })
-          .filter(v => v && v.optionValues && v.optionValues.length);
-
+        // Création des variantes supplémentaires - PATCH: seulement si il y a des options
         let allVariantIds: string[] = [];
-        if (variants.length > 1) {
-          const bulkData = await bulkCreateVariantsWithSDK(session, productId, variants.slice(1));
-          if (bulkData?.productVariants) {
-            allVariantIds = bulkData.productVariants.map((v: { id: string }) => v.id);
-          }
-        }
+        if (productOptionsOrUndefined && variants.length > 1) {
+          const seen = new Set<string>();
+          const variants = group
+            .map(row => {
+              const optionValues: { name: string; optionName: string }[] = [];
+              productOptions.forEach((opt, idx) => {
+                const value = row[`Option${idx + 1} Value`] && row[`Option${idx + 1} Value`].trim();
+                if (value && value !== "Default Title") {
+                  optionValues.push({ name: value, optionName: opt.name });
+                }
+              });
+              const key = optionValues.map(ov => ov.name).join('|');
+              if (seen.has(key)) return undefined;
+              seen.add(key);
+              if (!optionValues.length) return undefined;
+              return {
+                price: row["Variant Price"] || main["Variant Price"] || "0",
+                compareAtPrice: row["Variant Compare At Price"] || undefined,
+                sku: row["Variant SKU"] || undefined,
+                barcode: row["Variant Barcode"] || undefined,
+                optionValues
+              };
+            })
+            .filter(v => v && v.optionValues && v.optionValues.length);
 
-        // Ajoute les variantes de la création du produit (toujours présentes dans productData.variants.edges)
-        if (productData?.variants?.edges) {
-          allVariantIds = [
-            ...allVariantIds,
-            ...productData.variants.edges.map((edge: { node: { id: string } }) => edge.node.id)
-          ];
+          if (variants.length > 1) {
+            const bulkData = await bulkCreateVariantsWithSDK(session, productId, variants.slice(1));
+            if (bulkData?.productVariants) {
+              allVariantIds = bulkData.productVariants.map((v: { id: string }) => v.id);
+            }
+          }
+
+          // Ajoute les variantes de la création du produit (toujours présentes dans productData.variants.edges)
+          if (productData?.variants?.edges) {
+            allVariantIds = [
+              ...allVariantIds,
+              ...productData.variants.edges.map((edge: { node: { id: string } }) => edge.node.id)
+            ];
+          }
         }
 
         await new Promise(res => setTimeout(res, 300));
