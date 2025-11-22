@@ -2,7 +2,7 @@ import { parse } from "csv-parse/sync";
 import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
 
-// Fonction pour créer la page Livraison via Shopify API
+// Création de la page Livraison
 async function createLivraisonPageWithSDK(session: Session) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -337,12 +337,14 @@ export async function setupShop({ session }: { session: Session }) {
             if (variantImageUrl && variantImageUrl.trim() && variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
               const normalizedUrl = normalizeImageUrl(variantImageUrl);
               const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
-if (mediaId) {
-  const ready = await waitForMediaReady(session, productId, mediaId, 20000);
-  if (ready) {
-    mediaMap[normalizedUrl] = mediaId;
-  }
-}
+              if (mediaId) { // PATCH type safety!
+                const ready = await waitForMediaReady(session, productId, mediaId, 20000);
+                if (ready) {
+                  mediaMap[normalizedUrl] = mediaId;
+                }
+              }
+            }
+          }
 
           // Pour chaque ligne, mappe optionsKey -> variantId + image
           const variantMedia: any[] = [];
