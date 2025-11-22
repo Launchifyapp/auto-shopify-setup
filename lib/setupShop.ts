@@ -74,55 +74,29 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
-// Upload image en media produit Shopify (SDK GraphQL)
-async function attachImageToProductWithSDK(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
+// Supprime une variante via Shopify GraphQL
+async function deleteVariantWithSDK(session: Session, variantId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-      productCreateMedia(productId: $productId, media: $media) {
-        media {
-          ... on MediaImage { id image { url } }
-        }
-        mediaUserErrors { field message }
-      }
-    }
-  `;
-  const variables = { productId, media: [{
-    originalSource: imageUrl,
-    mediaContentType: "IMAGE",
-    alt: altText
-  }]};
-
-  const response: any = await client.request(query, { variables });
-  const data = response;
-  return data?.data?.productCreateMedia?.media?.[0]?.id;
-}
-
-// Crée un produit avec une mutation GraphQL via Shopify API
-async function createProductWithSDK(session: Session, product: any) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation productCreate($input: ProductCreateInput!) {
-      productCreate(product: $input) {
-        product {
-          id
-          handle
-          variants(first: 50) {
-            edges { node { id sku title selectedOptions { name value } price compareAtPrice barcode }
-            }
-          }
-        }
+    mutation productVariantDelete($id: ID!) {
+      productVariantDelete(id: $id) {
+        deletedProductVariantId
         userErrors { field message }
       }
     }
   `;
-  const variables = { input: product };
+  const variables = { id: variantId };
   const response: any = await client.request(query, { variables });
-  const data = response;
-  return data?.data?.productCreate;
+  const data = response?.data?.productVariantDelete;
+  if (data?.userErrors?.length) {
+    console.error("Erreur suppression de la variante par défaut :", data.userErrors);
+  } else {
+    console.log("Variante par défaut supprimée :", data.deletedProductVariantId);
+  }
+  return data?.deletedProductVariantId;
 }
 
-// Crée la première variante pour un produit sans variantes, accepte sku/barcode/compareAtPrice si dispo !
+// Crée une variante personnalisée pour un produit sans variante
 async function createFirstVariantWithBulkCreate(
   session: Session,
   productId: string,
@@ -186,6 +160,54 @@ async function bulkCreateVariantsWithSDK(
   const response: any = await client.request(query, { variables });
   const data = response;
   return data?.data?.productVariantsBulkCreate;
+}
+
+// Upload image en media produit Shopify (SDK GraphQL)
+async function attachImageToProductWithSDK(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+      productCreateMedia(productId: $productId, media: $media) {
+        media {
+          ... on MediaImage { id image { url } }
+        }
+        mediaUserErrors { field message }
+      }
+    }
+  `;
+  const variables = { productId, media: [{
+    originalSource: imageUrl,
+    mediaContentType: "IMAGE",
+    alt: altText
+  }]};
+
+  const response: any = await client.request(query, { variables });
+  const data = response;
+  return data?.data?.productCreateMedia?.media?.[0]?.id;
+}
+
+// Crée un produit avec une mutation GraphQL via Shopify API
+async function createProductWithSDK(session: Session, product: any) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productCreate($input: ProductCreateInput!) {
+      productCreate(product: $input) {
+        product {
+          id
+          handle
+          variants(first: 50) {
+            edges { node { id sku title selectedOptions { name value } price compareAtPrice barcode }
+            }
+          }
+        }
+        userErrors { field message }
+      }
+    }
+  `;
+  const variables = { input: product };
+  const response: any = await client.request(query, { variables });
+  const data = response;
+  return data?.data?.productCreate;
 }
 
 // Update variant price via Shopify API
@@ -301,8 +323,15 @@ export async function setupShop({ session }: { session: Session }) {
           );
         }
 
-        // S'il n'y a PAS d'options/variantes, crée la variante via bulkCreate avec les bons champs !
+        // S'il n'y a PAS d'options/variantes, patch Shopify : supprime la variante par défaut, puis ajoute ta variante
         if (!productOptionsOrUndefined || productOptionsOrUndefined.length === 0) {
+          // Récupérer l’ID de la variante par défaut créée automatiquement par Shopify
+          const edges = productData?.variants?.edges;
+          const defaultVariantId = edges && edges.length ? edges[0]?.node?.id : undefined;
+          if (defaultVariantId) {
+            await deleteVariantWithSDK(session, defaultVariantId);
+          }
+          // Ajoute ta variante personnalisée
           await createFirstVariantWithBulkCreate(session, productId, main);
         }
 
