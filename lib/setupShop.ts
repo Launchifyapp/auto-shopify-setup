@@ -175,6 +175,43 @@ async function appendMediaToVariant(session: Session, productId: string, variant
   return response?.data?.productVariantAppendMedia?.productVariants;
 }
 
+// Met à jour la variante d'un produit via productVariantsBulkUpdate
+async function updateDefaultVariantWithSDK(
+  session: Session,
+  productId: string,
+  variantId: string,
+  main: any
+) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+        productVariants { id price compareAtPrice sku barcode }
+        userErrors { field message }
+      }
+    }
+  `;
+  const variant: any = {
+    id: variantId,
+    price: main["Variant Price"] ?? "0",
+    ...(main["Variant Compare At Price"] ? { compareAtPrice: main["Variant Compare At Price"] } : {}),
+    ...(main["Variant SKU"] ? { sku: main["Variant SKU"] } : {}),
+    ...(main["Variant Barcode"] ? { barcode: main["Variant Barcode"] } : {}),
+  };
+  const variables = {
+    productId,
+    variants: [variant],
+  };
+  const response: any = await client.request(query, { variables });
+  const data = response?.data?.productVariantsBulkUpdate;
+  if (data?.userErrors?.length) {
+    console.error("Erreur maj variante (bulkUpdate):", data.userErrors);
+  } else {
+    console.log("Variante maj (bulkUpdate):", data.productVariants?.[0]);
+  }
+  return data?.productVariants?.[0]?.id;
+}
+
 // Création bulk des variantes via Shopify API (pour produits avec options)
 async function bulkCreateVariantsWithSDK(
   session: Session,
