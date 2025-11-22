@@ -74,7 +74,7 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
-// PATCH: mise à jour de la variante par défaut avec compareAtPrice (et autres)
+// Met à jour la variante par défaut d'un produit via productVariantsBulkUpdate
 async function updateDefaultVariantWithSDK(
   session: Session,
   productId: string,
@@ -297,9 +297,8 @@ export async function setupShop({ session }: { session: Session }) {
           );
         }
 
-        // S'il n'y a PAS d'options/variantes, PATCH : update la variante par défaut
+        // Produit sans options/variantes : update variante par défaut
         if (!productOptionsOrUndefined || productOptionsOrUndefined.length === 0) {
-          // Récupérer l’ID de la variante par défaut créée automatiquement par Shopify
           const edges = productData?.variants?.edges;
           const defaultVariantId = edges && edges.length ? edges[0]?.node?.id : undefined;
           if (defaultVariantId) {
@@ -307,17 +306,16 @@ export async function setupShop({ session }: { session: Session }) {
           }
         }
 
-        // Création bulk des variantes - seulement si produit AVEC options
-        let allVariantIds: string[] = [];
+        // Produit AVEC options : bulkCreate toutes les variantes SAUF la première, puis update la première pour lui donner le bon prix/compareAtPrice/etc.
         if (productOptionsOrUndefined && productOptionsOrUndefined.length > 0) {
           const seen = new Set<string>();
           const variants = group
-            .map((row) => {
+            .map((row, idx) => {
               const optionValues: { name: string; optionName: string }[] = [];
-              productOptions.forEach((opt, idx) => {
+              productOptions.forEach((opt, optIdx) => {
                 const value =
-                  row[`Option${idx + 1} Value`] &&
-                  row[`Option${idx + 1} Value`].trim();
+                  row[`Option${optIdx + 1} Value`] &&
+                  row[`Option${optIdx + 1} Value`].trim();
                 if (value && value !== "Default Title") {
                   optionValues.push({ name: value, optionName: opt.name });
                 }
@@ -338,27 +336,20 @@ export async function setupShop({ session }: { session: Session }) {
             })
             .filter((v) => v && v.optionValues && v.optionValues.length);
 
+          // On skip la variante déjà existante pour bulkCreate (Shopify la crée à la création du produit)
           if (variants.length > 1) {
             const bulkData = await bulkCreateVariantsWithSDK(
               session,
               productId,
               variants.slice(1)
             );
-            if (bulkData?.productVariants) {
-              allVariantIds = bulkData.productVariants.map(
-                (v: { id: string }) => v.id
-              );
-            }
           }
 
-          // Ajoute les variantes de la création du produit (toujours présentes dans productData.variants.edges)
-          if (productData?.variants?.edges) {
-            allVariantIds = [
-              ...allVariantIds,
-              ...productData.variants.edges.map(
-                (edge: { node: { id: string } }) => edge.node.id
-              ),
-            ];
+          // PATCH : update la première variante Shopify
+          const edges = productData?.variants?.edges;
+          if (edges && edges.length) {
+            const firstVariantId = edges[0].node.id;
+            await updateDefaultVariantWithSDK(session, productId, firstVariantId, main);
           }
         }
 
