@@ -202,11 +202,7 @@ export async function setupShop({ session }: { session: Session }) {
         }
         console.log("Product créé avec id:", productId);
 
-        // Upload images produit (hors variantes)
-        const allImagesToAttach = [...new Set([...group.map(row => row["Image Src"]).filter(Boolean)])];
-        for (const imgUrl of allImagesToAttach) {
-          // Shopify upload déjà ces images au moment de la création (via product.ImageSrc), donc pas besoin de createProductMedia ici !
-        }
+        // Upload images produit (hors variantes) déjà géré par Shopify via Image Src au moment de la création
 
         // Produit AVEC ou SANS options/variantes
         const mediaEdges = productData.media?.edges ?? [];
