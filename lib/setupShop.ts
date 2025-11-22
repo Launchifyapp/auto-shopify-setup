@@ -96,24 +96,37 @@ async function createProductMedia(session: Session, productId: string, imageUrl:
   return response?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
-// Poll: attendre que le media soit READY
-async function waitForMediaReady(session: Session, mediaId: string, timeoutMs = 15000) {
+// PATCH: get media status from product.media via productId
+async function getProductMediaStatus(session: Session, productId: string, mediaId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    query getMedia($id: ID!) {
-      media(id: $id) {
-        ... on MediaImage {
-          id
-          status
-          image { url }
+    query getProductMedia($id: ID!) {
+      product(id: $id) {
+        media(first: 20) {
+          edges {
+            node {
+              ... on MediaImage {
+                id
+                status
+                image { url }
+              }
+            }
+          }
         }
       }
     }
   `;
+  const response: any = await client.request(query, { variables: { id: productId } });
+  const edges = response?.data?.product?.media?.edges ?? [];
+  const node = edges.find((e: any) => e?.node?.id === mediaId)?.node;
+  return node ? node.status : undefined;
+}
+
+// Poll: attente que le media soit READY en utilisant getProductMediaStatus
+async function waitForMediaReady(session: Session, productId: string, mediaId: string, timeoutMs = 15000) {
   const start = Date.now();
   while (true) {
-    const response: any = await client.request(query, { variables: { id: mediaId } });
-    const status = response?.data?.media?.status;
+    const status = await getProductMediaStatus(session, productId, mediaId);
     if (status === "READY") return true;
     if (Date.now() - start > timeoutMs) return false;
     await new Promise(res => setTimeout(res, 1500));
@@ -151,7 +164,7 @@ async function appendMediaToVariant(session: Session, productId: string, variant
     variantMedia: [
       {
         variantId,
-        mediaIds: [mediaId] // PATCH: respecte l'input attendu Shopify
+        mediaIds: [mediaId] // PATCH: tableau obligatoire
       }
     ],
   };
@@ -333,7 +346,8 @@ export async function setupShop({ session }: { session: Session }) {
               const normalizedUrl = normalizeImageUrl(variantImageUrl);
               const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
               if (mediaId) {
-                const ready = await waitForMediaReady(session, mediaId, 20000);
+                // polling "READY" sur media du produit
+                const ready = await waitForMediaReady(session, productId, mediaId, 20000);
                 if (ready) {
                   await appendMediaToVariant(session, productId, defaultVariantId, mediaId);
                 } else {
@@ -391,7 +405,7 @@ export async function setupShop({ session }: { session: Session }) {
           }
         }
 
-        // Boucle : upload media + rattachement pour chaque variante existante (avec productVariantAppendMedia)
+        // Boucle : upload media + rattachement pour chaque variante existante (productVariantAppendMedia mediaIds tableau)
         const edges = productData?.variants?.edges;
         if (edges && edges.length) {
           for (const edge of edges) {
@@ -406,9 +420,9 @@ export async function setupShop({ session }: { session: Session }) {
               const normalizedUrl = normalizeImageUrl(variantImageUrl);
               const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
               if (mediaId) {
-                const ready = await waitForMediaReady(session, mediaId, 20000);
+                const ready = await waitForMediaReady(session, productId, mediaId, 20000);
                 if (ready) {
-                  await appendMediaToVariant(session, productId, variantId, mediaId); // PATCH: mediaIds tableau
+                  await appendMediaToVariant(session, productId, variantId, mediaId); // mediaIds (array)
                 } else {
                   console.error("Media non READY après upload : pas de rattachement", mediaId);
                 }
