@@ -121,6 +121,42 @@ async function createProductWithSDK(session: Session, product: any) {
   return data?.data?.productCreate;
 }
 
+// Crée une variante pour un produit sans variante
+async function createProductDefaultVariantWithSDK(session: Session, productId: string, main: any) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productVariantCreate($input: ProductVariantCreateInput!) {
+      productVariantCreate(input: $input) {
+        productVariant {
+          id
+          price
+          compareAtPrice
+          sku
+          barcode
+        }
+        userErrors { field message }
+      }
+    }
+  `;
+  const variables = {
+    input: {
+      productId,
+      price: main["Variant Price"] ?? "0",
+      compareAtPrice: main["Variant Compare At Price"] ?? undefined,
+      sku: main["Variant SKU"] ?? undefined,
+      barcode: main["Variant Barcode"] ?? undefined,
+    }
+  };
+  const response: any = await client.request(query, { variables });
+  const data = response;
+  if (data?.data?.productVariantCreate?.userErrors?.length) {
+    console.error("Erreur création variante défaut:", data.data.productVariantCreate.userErrors);
+  } else {
+    console.log("Variante défaut créée :", data.data.productVariantCreate.productVariant);
+  }
+  return data?.data?.productVariantCreate?.productVariant?.id;
+}
+
 // Création bulk des variantes via Shopify API
 async function bulkCreateVariantsWithSDK(session: Session, productId: string, variants: any[]) {
   const client = new shopify.clients.Graphql({ session });
@@ -209,22 +245,9 @@ export async function setupShop({ session }: { session: Session }) {
         metafields: productMetafields.length > 0 ? productMetafields : undefined,
       };
 
-      // PATCH : ajoute variante par défaut (prix, compareAtPrice) pour produit SANS options (donc sans variantes)
-      let createdDefaultVariant = false;
-      if (!productOptionsOrUndefined || productOptionsOrUndefined.length === 0) {
-        product.variants = [
-          {
-            price: main["Variant Price"] ?? "0",
-            compareAtPrice: main["Variant Compare At Price"] ?? undefined,
-            sku: main["Variant SKU"] ?? undefined,
-            barcode: main["Variant Barcode"] ?? undefined,
-          }
-        ];
-        createdDefaultVariant = true;
-      }
-
+      // PATCH : ne PAS inclure de variantes dans productCreate
       try {
-        // Création du produit via Shopify API
+        // Création du produit via Shopify API (SANS variants!)
         const productCreateData = await createProductWithSDK(session, product);
         const productData = productCreateData?.product;
         const productId = productData?.id;
@@ -246,7 +269,12 @@ export async function setupShop({ session }: { session: Session }) {
           await attachImageToProductWithSDK(session, productId, normalizedUrl, "");
         }
 
-        // PATCH : Création des variantes supplémentaires - seulement si produit AVEC options
+        // PATCH : S'il n'y a PAS d'options/variantes, on crée la variante défaut juste après le produit
+        if (!productOptionsOrUndefined || productOptionsOrUndefined.length === 0) {
+          await createProductDefaultVariantWithSDK(session, productId, main);
+        }
+
+        // PATCH : Création bulk des variantes (pipeline original) - seulement si produit AVEC options
         let allVariantIds: string[] = [];
         if (productOptionsOrUndefined && productOptionsOrUndefined.length > 0) {
           const seen = new Set<string>();
