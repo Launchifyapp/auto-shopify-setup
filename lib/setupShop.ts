@@ -32,7 +32,6 @@ Reste du monde : 7-14 jours
     isPublished: true,
     templateSuffix: "custom"
   }};
-  // PATCH : passe les variables dans { variables }
   const response: any = await client.request(query, { variables });
   const data = response;
   if (data?.data?.pageCreate?.userErrors?.length) {
@@ -211,6 +210,7 @@ export async function setupShop({ session }: { session: Session }) {
       };
 
       // PATCH : ajoute variante par défaut (prix, compareAtPrice) pour produit SANS options (donc sans variantes)
+      let createdDefaultVariant = false;
       if (!productOptionsOrUndefined || productOptionsOrUndefined.length === 0) {
         product.variants = [
           {
@@ -218,9 +218,9 @@ export async function setupShop({ session }: { session: Session }) {
             compareAtPrice: main["Variant Compare At Price"] ?? undefined,
             sku: main["Variant SKU"] ?? undefined,
             barcode: main["Variant Barcode"] ?? undefined,
-            // Ajoute ici d'autres champs si utile
           }
         ];
+        createdDefaultVariant = true;
       }
 
       try {
@@ -246,9 +246,9 @@ export async function setupShop({ session }: { session: Session }) {
           await attachImageToProductWithSDK(session, productId, normalizedUrl, "");
         }
 
-        // Création des variantes supplémentaires - PATCH: seulement si il y a des options
+        // PATCH : Création des variantes supplémentaires - seulement si produit AVEC options
         let allVariantIds: string[] = [];
-        if (productOptionsOrUndefined && variants.length > 1) {
+        if (productOptionsOrUndefined && productOptionsOrUndefined.length > 0) {
           const seen = new Set<string>();
           const variants = group
             .map(row => {
