@@ -175,43 +175,6 @@ async function appendMediaToVariant(session: Session, productId: string, variant
   return response?.data?.productVariantAppendMedia?.productVariants;
 }
 
-// Met à jour la variante d'un produit via productVariantsBulkUpdate
-async function updateDefaultVariantWithSDK(
-  session: Session,
-  productId: string,
-  variantId: string,
-  main: any
-) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants { id price compareAtPrice sku barcode }
-        userErrors { field message }
-      }
-    }
-  `;
-  const variant: any = {
-    id: variantId,
-    price: main["Variant Price"] ?? "0",
-    ...(main["Variant Compare At Price"] ? { compareAtPrice: main["Variant Compare At Price"] } : {}),
-    ...(main["Variant SKU"] ? { sku: main["Variant SKU"] } : {}),
-    ...(main["Variant Barcode"] ? { barcode: main["Variant Barcode"] } : {}),
-  };
-  const variables = {
-    productId,
-    variants: [variant],
-  };
-  const response: any = await client.request(query, { variables });
-  const data = response?.data?.productVariantsBulkUpdate;
-  if (data?.userErrors?.length) {
-    console.error("Erreur maj variante (bulkUpdate):", data.userErrors);
-  } else {
-    console.log("Variante maj (bulkUpdate):", data.productVariants?.[0]);
-  }
-  return data?.productVariants?.[0]?.id;
-}
-
 // Création bulk des variantes via Shopify API (pour produits avec options)
 async function bulkCreateVariantsWithSDK(
   session: Session,
@@ -333,32 +296,7 @@ export async function setupShop({ session }: { session: Session }) {
           await createProductMedia(session, productId, normalizedUrl, "");
         }
 
-        // Produit sans options/variantes
-        if (!productOptionsOrUndefined || productOptionsOrUndefined.length === 0) {
-          const edges = productData?.variants?.edges;
-          const defaultVariantId = edges && edges.length ? edges[0]?.node?.id : undefined;
-          if (defaultVariantId) {
-            await updateDefaultVariantWithSDK(session, productId, defaultVariantId, main);
-            // PATCH : rattachement image à variante simple
-            const variantImageUrl = main["Variant Image"];
-            if (variantImageUrl && variantImageUrl.trim() &&
-                variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
-              const normalizedUrl = normalizeImageUrl(variantImageUrl);
-              const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
-              if (mediaId) {
-                // polling "READY" sur media du produit
-                const ready = await waitForMediaReady(session, productId, mediaId, 20000);
-                if (ready) {
-                  await appendMediaToVariant(session, productId, defaultVariantId, mediaId);
-                } else {
-                  console.error("Media non READY après upload : pas de rattachement", mediaId);
-                }
-              }
-            }
-          }
-        }
-
-        // Produit AVEC options
+        // Produit avec variantes (options)
         if (productOptionsOrUndefined && productOptionsOrUndefined.length > 0) {
           const seen = new Set<string>();
           const variants = group
@@ -388,7 +326,7 @@ export async function setupShop({ session }: { session: Session }) {
             })
             .filter((v) => v && v.optionValues && v.optionValues.length);
 
-          // On skip la variante déjà existante pour bulkCreate (Shopify la crée à la création du produit)
+          // Création des variantes en bulk
           if (variants.length > 1) {
             await bulkCreateVariantsWithSDK(
               session,
@@ -397,7 +335,7 @@ export async function setupShop({ session }: { session: Session }) {
             );
           }
 
-          // PATCH : update la première variante Shopify
+          // Update de la première variante Shopify
           const edges = productData?.variants?.edges;
           if (edges && edges.length) {
             const firstVariantId = edges[0].node.id;
@@ -410,9 +348,11 @@ export async function setupShop({ session }: { session: Session }) {
         if (edges && edges.length) {
           for (const edge of edges) {
             const variantId = edge.node.id;
-            // Recherche la row du CSV correspondant à cette variante (SKU ou fallback 1ère ligne)
+            // Recherche la row du CSV correspondant à cette variante via les options
             const matchingRow = group.find(row =>
-              row["Variant SKU"] && edge.node.sku && row["Variant SKU"] === edge.node.sku
+              edge.node.selectedOptions.every((opt: any) =>
+                row[`Option${opt.index + 1} Value`] === opt.value
+              )
             ) || group[0];
             const variantImageUrl = matchingRow["Variant Image"];
             if (variantImageUrl && variantImageUrl.trim() &&
