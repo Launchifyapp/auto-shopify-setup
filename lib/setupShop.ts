@@ -343,7 +343,6 @@ if (mediaId) {
     mediaMap[normalizedUrl] = mediaId;
   }
 }
-              }
 
           // Pour chaque ligne, mappe optionsKey -> variantId + image
           const variantMedia: any[] = [];
