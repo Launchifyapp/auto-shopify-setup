@@ -337,12 +337,13 @@ export async function setupShop({ session }: { session: Session }) {
             if (variantImageUrl && variantImageUrl.trim() && variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
               const normalizedUrl = normalizeImageUrl(variantImageUrl);
               const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
-              const ready = await waitForMediaReady(session, productId, mediaId, 20000);
-              if (ready && mediaId) {
-                mediaMap[normalizedUrl] = mediaId;
+if (mediaId) {
+  const ready = await waitForMediaReady(session, productId, mediaId, 20000);
+  if (ready) {
+    mediaMap[normalizedUrl] = mediaId;
+  }
+}
               }
-            }
-          }
 
           // Pour chaque ligne, mappe optionsKey -> variantId + image
           const variantMedia: any[] = [];
