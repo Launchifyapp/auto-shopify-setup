@@ -74,68 +74,41 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
-// Supprime une variante via Shopify GraphQL
-async function deleteVariantWithSDK(session: Session, variantId: string) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation productVariantDelete($id: ID!) {
-      productVariantDelete(id: $id) {
-        deletedProductVariantId
-        userErrors { field message }
-      }
-    }
-  `;
-  const variables = { id: variantId };
-  const response: any = await client.request(query, { variables });
-  const data = response?.data?.productVariantDelete;
-  if (data?.userErrors?.length) {
-    console.error("Erreur suppression de la variante par défaut :", data.userErrors);
-  } else {
-    console.log("Variante par défaut supprimée :", data.deletedProductVariantId);
-  }
-  return data?.deletedProductVariantId;
-}
-
-// Crée une variante personnalisée pour un produit sans variante
-async function createFirstVariantWithBulkCreate(
+// Met à jour la variante par défaut d'un produit via productVariantsBulkUpdate
+async function updateDefaultVariantWithSDK(
   session: Session,
   productId: string,
+  variantId: string,
   main: any
 ) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkCreate(productId: $productId, variants: $variants) {
+    mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkUpdateInput!]!) {
+      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
         productVariants { id price sku barcode compareAtPrice }
         userErrors { field message }
       }
     }
   `;
-  const firstVariant: any = {
+  const variant: any = {
+    id: variantId,
     price: main["Variant Price"] ?? "0",
-    optionValues: [
-      {
-        name: "Default Title",
-        optionName: "Title",
-      },
-    ],
   };
-  if (main["Variant SKU"]) firstVariant.sku = main["Variant SKU"];
-  if (main["Variant Barcode"]) firstVariant.barcode = main["Variant Barcode"];
-  if (main["Variant Compare At Price"]) firstVariant.compareAtPrice = main["Variant Compare At Price"];
-
+  if (main["Variant SKU"]) variant.sku = main["Variant SKU"];
+  if (main["Variant Barcode"]) variant.barcode = main["Variant Barcode"];
+  if (main["Variant Compare At Price"]) variant.compareAtPrice = main["Variant Compare At Price"];
   const variables = {
     productId,
-    variants: [firstVariant],
+    variants: [variant],
   };
   const response: any = await client.request(query, { variables });
-  const data = response;
-  if (data?.data?.productVariantsBulkCreate?.userErrors?.length) {
-    console.error("Erreur création variante par bulkCreate:", data.data.productVariantsBulkCreate.userErrors);
+  const data = response?.data?.productVariantsBulkUpdate;
+  if (data?.userErrors?.length) {
+    console.error("Erreur mise à jour variante par défaut :", data.userErrors);
   } else {
-    console.log("Variante créée (bulkCreate) :", data.data.productVariantsBulkCreate.productVariants?.[0]);
+    console.log("Variante par défaut mise à jour :", data.productVariants?.[0]);
   }
-  return data?.data?.productVariantsBulkCreate?.productVariants?.[0]?.id;
+  return data?.productVariants?.[0]?.id;
 }
 
 // Création bulk des variantes via Shopify API (pour produits avec options)
@@ -210,7 +183,7 @@ async function createProductWithSDK(session: Session, product: any) {
   return data?.data?.productCreate;
 }
 
-// Update variant price via Shopify API
+// Update variant price via Shopify API (used if needed)
 async function updateVariantPriceWithSDK(
   session: Session,
   variantId: string,
@@ -323,16 +296,14 @@ export async function setupShop({ session }: { session: Session }) {
           );
         }
 
-        // S'il n'y a PAS d'options/variantes, patch Shopify : supprime la variante par défaut, puis ajoute ta variante
+        // S'il n'y a PAS d'options/variantes, PATCH : update la variante par défaut
         if (!productOptionsOrUndefined || productOptionsOrUndefined.length === 0) {
           // Récupérer l’ID de la variante par défaut créée automatiquement par Shopify
           const edges = productData?.variants?.edges;
           const defaultVariantId = edges && edges.length ? edges[0]?.node?.id : undefined;
           if (defaultVariantId) {
-            await deleteVariantWithSDK(session, defaultVariantId);
+            await updateDefaultVariantWithSDK(session, productId, defaultVariantId, main);
           }
-          // Ajoute ta variante personnalisée
-          await createFirstVariantWithBulkCreate(session, productId, main);
         }
 
         // Création bulk des variantes - seulement si produit AVEC options
