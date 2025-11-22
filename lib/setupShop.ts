@@ -121,43 +121,45 @@ async function createProductWithSDK(session: Session, product: any) {
   return data?.data?.productCreate;
 }
 
-// Crée une variante pour un produit sans variante
-async function createProductDefaultVariantWithSDK(session: Session, productId: string, main: any) {
+// Crée la première variante pour un produit sans variantes : utilise productVariantsBulkCreate !
+async function createFirstVariantWithBulkCreate(session: Session, productId: string, main: any) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    mutation productVariantCreate($input: ProductVariantCreateInput!) {
-      productVariantCreate(input: $input) {
-        productVariant {
-          id
-          price
-          compareAtPrice
-          sku
-          barcode
-        }
+    mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+      productVariantsBulkCreate(productId: $productId, variants: $variants) {
+        productVariants { id price sku }
         userErrors { field message }
       }
     }
   `;
   const variables = {
-    input: {
-      productId,
-      price: main["Variant Price"] ?? "0",
-      compareAtPrice: main["Variant Compare At Price"] ?? undefined,
-      sku: main["Variant SKU"] ?? undefined,
-      barcode: main["Variant Barcode"] ?? undefined,
-    }
+    productId,
+    variants: [
+      {
+        price: main["Variant Price"] ?? "0",
+        compareAtPrice: main["Variant Compare At Price"] ?? undefined,
+        sku: main["Variant SKU"] ?? undefined,
+        barcode: main["Variant Barcode"] ?? undefined,
+        optionValues: [
+          {
+            name: "Default Title",
+            optionName: "Title",
+          }
+        ],
+      }
+    ]
   };
   const response: any = await client.request(query, { variables });
   const data = response;
-  if (data?.data?.productVariantCreate?.userErrors?.length) {
-    console.error("Erreur création variante défaut:", data.data.productVariantCreate.userErrors);
+  if (data?.data?.productVariantsBulkCreate?.userErrors?.length) {
+    console.error("Erreur création variante par bulkCreate:", data.data.productVariantsBulkCreate.userErrors);
   } else {
-    console.log("Variante défaut créée :", data.data.productVariantCreate.productVariant);
+    console.log("Variante créée (bulkCreate) :", data.data.productVariantsBulkCreate.productVariants?.[0]);
   }
-  return data?.data?.productVariantCreate?.productVariant?.id;
+  return data?.data?.productVariantsBulkCreate?.productVariants?.[0]?.id;
 }
 
-// Création bulk des variantes via Shopify API
+// Création bulk des variantes via Shopify API (pour produits avec options)
 async function bulkCreateVariantsWithSDK(session: Session, productId: string, variants: any[]) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -245,7 +247,6 @@ export async function setupShop({ session }: { session: Session }) {
         metafields: productMetafields.length > 0 ? productMetafields : undefined,
       };
 
-      // PATCH : ne PAS inclure de variantes dans productCreate
       try {
         // Création du produit via Shopify API (SANS variants!)
         const productCreateData = await createProductWithSDK(session, product);
@@ -269,12 +270,12 @@ export async function setupShop({ session }: { session: Session }) {
           await attachImageToProductWithSDK(session, productId, normalizedUrl, "");
         }
 
-        // PATCH : S'il n'y a PAS d'options/variantes, on crée la variante défaut juste après le produit
+        // PATCH : S'il n'y a PAS d'options/variantes, on crée la variante par défaut via bulkCreate avec option default !
         if (!productOptionsOrUndefined || productOptionsOrUndefined.length === 0) {
-          await createProductDefaultVariantWithSDK(session, productId, main);
+          await createFirstVariantWithBulkCreate(session, productId, main);
         }
 
-        // PATCH : Création bulk des variantes (pipeline original) - seulement si produit AVEC options
+        // PATCH : Création bulk des variantes - seulement si produit AVEC options
         let allVariantIds: string[] = [];
         if (productOptionsOrUndefined && productOptionsOrUndefined.length > 0) {
           const seen = new Set<string>();
