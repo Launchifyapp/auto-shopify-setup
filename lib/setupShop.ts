@@ -2,7 +2,7 @@ import { parse } from "csv-parse/sync";
 import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
 
-// Création de la page Livraison
+// Fonction pour créer la page Livraison via Shopify API
 async function createLivraisonPageWithSDK(session: Session) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -73,7 +73,7 @@ async function createProductMedia(session: Session, productId: string, imageUrl:
   return response?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
-// Récupérer le status d'un media d'un produit à partir de sa connexion media
+// Récupérer le status d’un media d’un produit à partir de sa connexion media
 async function getProductMediaStatus(session: Session, productId: string, mediaId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -99,7 +99,7 @@ async function getProductMediaStatus(session: Session, productId: string, mediaI
   return node ? node.status : undefined;
 }
 
-// Poll jusqu'à ce que le média soit READY (sur le produit)
+// Poll jusqu’à ce que le média soit READY (sur le produit)
 async function waitForMediaReady(session: Session, productId: string, mediaId: string, timeoutMs = 15000) {
   const start = Date.now();
   while (true) {
@@ -110,37 +110,26 @@ async function waitForMediaReady(session: Session, productId: string, mediaId: s
   }
 }
 
-// Rattache le média à la variante via productVariantAppendMedia (mediaIds tableau)
-async function appendMediaToVariant(session: Session, productId: string, variantId: string, mediaId: string) {
+// Mutation batch pour rattacher plusieurs images à variants
+async function appendMediaToVariantsBatch(session: Session, productId: string, variantMedia: any[]) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation productVariantAppendMedia($productId: ID!, $variantMedia: [ProductVariantAppendMediaInput!]!) {
       productVariantAppendMedia(productId: $productId, variantMedia: $variantMedia) {
-        product { id }
         productVariants {
           id
           media(first: 10) {
-            edges {
-              node {
-                mediaContentType
-                preview { image { url } }
-              }
-            }
+            edges { node { ... on MediaImage { id preview { image { url } } } } }
           }
         }
-        userErrors { code field message }
+        userErrors { field message }
       }
     }
   `;
-  const variables = {
-    productId,
-    variantMedia: [
-      { variantId, mediaIds: [mediaId] }
-    ],
-  };
+  const variables = { productId, variantMedia };
   const response: any = await client.request(query, { variables });
   if (response?.data?.productVariantAppendMedia?.userErrors?.length) {
-    console.error("Erreur rattachement media à variante :", response.data.productVariantAppendMedia.userErrors);
+    console.error("Erreur batch rattachement media à variantes :", response.data.productVariantAppendMedia.userErrors);
   }
   return response?.data?.productVariantAppendMedia?.productVariants;
 }
@@ -222,7 +211,6 @@ export async function setupShop({ session }: { session: Session }) {
     const csvText = await response.text();
     const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: ";" });
 
-    // Regroupement des lignes par handle
     const productsByHandle: Record<string, any[]> = {};
     for (const row of records) {
       if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
@@ -286,7 +274,7 @@ export async function setupShop({ session }: { session: Session }) {
               if (mediaId) {
                 const ready = await waitForMediaReady(session, productId, mediaId, 20000);
                 if (ready) {
-                  await appendMediaToVariant(session, productId, defaultVariantId, mediaId);
+                  await appendMediaToVariantsBatch(session, productId, [{ variantId: defaultVariantId, mediaIds: [mediaId] }]);
                 } else {
                   console.error("Media non READY après upload : pas de rattachement", mediaId);
                 }
@@ -297,6 +285,7 @@ export async function setupShop({ session }: { session: Session }) {
 
         // Produit AVEC options/variantes
         if (productOptionsOrUndefined && productOptionsOrUndefined.length > 0) {
+          // Bulk create, skip 1ère variante déjà existante
           const seen = new Set<string>();
           const variants = group
             .map((row, idx) => {
@@ -320,7 +309,6 @@ export async function setupShop({ session }: { session: Session }) {
             })
             .filter(v => v && v.optionValues && v.optionValues.length);
 
-          // Bulk create, skip 1ère variante déjà existante
           if (variants.length > 1) {
             await bulkCreateVariantsWithSDK(session, productId, variants.slice(1));
           }
@@ -332,42 +320,47 @@ export async function setupShop({ session }: { session: Session }) {
             await updateDefaultVariantWithSDK(session, productId, firstVariantId, group[0]);
           }
 
-          // === Nouvelle boucle d'association images variantes ===
-          if (edges && edges.length) {
-            for (const edge of edges) {
-              const variantId = edge.node.id;
+          // -- MAPPING precise pour chaque image/variante --
+          const variantIdMap: Record<string, string> = {};
+          for (const edge of productData.variants.edges) {
+            const node = edge.node;
+            const optionsKey = (node.selectedOptions || [])
+              .map((o: any) => o.value.trim()).filter(Boolean)
+              .join('|');
+            variantIdMap[optionsKey] = node.id;
+          }
 
-              // Matching ligne du CSV par SKU, puis par options, puis fallback 1ère ligne
-              let matchingRow = group.find(row => row["Variant SKU"] && edge.node.sku && row["Variant SKU"] === edge.node.sku);
-              if (!matchingRow && edge.node.selectedOptions) {
-                matchingRow = group.find(row => {
-                  for (let i = 1; i <= 3; i++) {
-                    const optName = row[`Option${i} Name`];
-                    const optValue = row[`Option${i} Value`];
-                    if (optName && optValue) {
-                      const match = edge.node.selectedOptions?.find((o: any) => o.name === optName && o.value === optValue);
-                      if (!match) return false;
-                    }
-                  }
-                  return true;
-                });
-              }
-              // fallback
-              if (!matchingRow) matchingRow = group[0];
-
-              const variantImageUrl = matchingRow["Variant Image"];
-              if (variantImageUrl && variantImageUrl.trim() && variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
-                const mediaId = await createProductMedia(session, productId, normalizeImageUrl(variantImageUrl), "");
-                if (mediaId) {
-                  const ready = await waitForMediaReady(session, productId, mediaId, 20000);
-                  if (ready) {
-                    await appendMediaToVariant(session, productId, variantId, mediaId);
-                  } else {
-                    console.error("Media non READY après upload : pas de rattachement", mediaId);
-                  }
-                }
+          // Génère les media (upload !) et mapping url -> mediaId
+          const mediaMap: Record<string, string> = {};
+          for (const row of group) {
+            const variantImageUrl = row["Variant Image"];
+            if (variantImageUrl && variantImageUrl.trim() && variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
+              const normalizedUrl = normalizeImageUrl(variantImageUrl);
+              const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
+              const ready = await waitForMediaReady(session, productId, mediaId, 20000);
+              if (ready && mediaId) {
+                mediaMap[normalizedUrl] = mediaId;
               }
             }
+          }
+
+          // Pour chaque ligne, mappe optionsKey -> variantId + image
+          const variantMedia: any[] = [];
+          for (const row of group) {
+            const variantImageUrl = row["Variant Image"];
+            if (variantImageUrl && variantImageUrl.trim() && variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
+              const optionsKey = [1,2,3].map(i => row[`Option${i} Value`] ? row[`Option${i} Value`].trim() : '').filter(Boolean).join('|');
+              const variantId = variantIdMap[optionsKey];
+              const normalizedUrl = normalizeImageUrl(variantImageUrl);
+              const mediaId = mediaMap[normalizedUrl];
+              if (variantId && mediaId) {
+                variantMedia.push({ variantId, mediaIds: [mediaId] });
+              }
+            }
+          }
+          // Mutation batch si au moins une image à relier
+          if (variantMedia.length > 0) {
+            await appendMediaToVariantsBatch(session, productId, variantMedia);
           }
         }
         await new Promise(res => setTimeout(res, 300));
