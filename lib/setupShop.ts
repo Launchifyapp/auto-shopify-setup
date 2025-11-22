@@ -74,6 +74,50 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
+// 1. Upload l'image comme média du produit
+async function createProductMedia(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+      productCreateMedia(productId: $productId, media: $media) {
+        media {
+          ... on MediaImage { id image { url } }
+        }
+        mediaUserErrors { field message }
+      }
+    }
+  `;
+  const variables = { productId, media: [{
+    originalSource: imageUrl,
+    mediaContentType: "IMAGE",
+    alt: altText
+  }]};
+  const response: any = await client.request(query, { variables });
+  return response?.data?.productCreateMedia?.media?.[0]?.id;
+}
+
+// 2. Rattache le média uploadé à la variante
+async function appendMediaToVariant(session: Session, variantId: string, mediaId: string) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productVariantAppendMedia($variantId: ID!, $mediaId: ID!) {
+      productVariantAppendMedia(variantId: $variantId, mediaId: $mediaId) {
+        media {
+          id
+          ... on MediaImage { image { url } }
+        }
+        userErrors { field message }
+      }
+    }
+  `;
+  const variables = { variantId, mediaId };
+  const response: any = await client.request(query, { variables });
+  if (response?.data?.productVariantAppendMedia?.userErrors?.length) {
+    console.error("Erreur rattachement media à variante :", response.data.productVariantAppendMedia.userErrors);
+  }
+  return response?.data?.productVariantAppendMedia?.media;
+}
+
 // Met à jour la variante d'un produit via productVariantsBulkUpdate
 async function updateDefaultVariantWithSDK(
   session: Session,
@@ -85,7 +129,7 @@ async function updateDefaultVariantWithSDK(
   const query = `
     mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
       productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants { id price compareAtPrice sku barcode image { id src altText } }
+        productVariants { id price compareAtPrice sku barcode }
         userErrors { field message }
       }
     }
@@ -97,13 +141,6 @@ async function updateDefaultVariantWithSDK(
     ...(main["Variant SKU"] ? { sku: main["Variant SKU"] } : {}),
     ...(main["Variant Barcode"] ? { barcode: main["Variant Barcode"] } : {}),
   };
-  // PATCH image : si main contient une image, rattache-la
-  if (main["Variant Image"] && main["Variant Image"].trim() && main["Variant Image"] !== "nan" && main["Variant Image"] !== "null" && main["Variant Image"] !== "undefined") {
-    variant.image = {
-      src: normalizeImageUrl(main["Variant Image"]),
-      altText: ""
-    };
-  }
   const variables = {
     productId,
     variants: [variant],
@@ -128,7 +165,7 @@ async function bulkCreateVariantsWithSDK(
   const query = `
     mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
       productVariantsBulkCreate(productId: $productId, variants: $variants) {
-        productVariants { id price sku barcode compareAtPrice image { id src altText } }
+        productVariants { id price sku barcode compareAtPrice }
         userErrors { field message }
       }
     }
@@ -142,62 +179,6 @@ async function bulkCreateVariantsWithSDK(
   return data?.data?.productVariantsBulkCreate;
 }
 
-// Upload image en media produit Shopify (SDK GraphQL Produit)
-async function attachImageToProductWithSDK(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-      productCreateMedia(productId: $productId, media: $media) {
-        media {
-          ... on MediaImage { id image { url } }
-        }
-        mediaUserErrors { field message }
-      }
-    }
-  `;
-  const variables = { productId, media: [{
-    originalSource: imageUrl,
-    mediaContentType: "IMAGE",
-    alt: altText
-  }]};
-
-  const response: any = await client.request(query, { variables });
-  const data = response;
-  return data?.data?.productCreateMedia?.media?.[0]?.id;
-}
-
-// Pour rattacher une image à une variante (en dehors du BulkUpdate : fallback)
-async function attachImageToVariantWithSDK(
-  session: Session,
-  variantId: string,
-  imageUrl: string,
-  altText: string = ""
-): Promise<any> {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation productVariantUpdate($input: ProductVariantUpdateInput!) {
-      productVariantUpdate(input: $input) {
-        productVariant {
-          id
-          image { id src altText }
-        }
-        userErrors { field message }
-      }
-    }
-  `;
-  const variables = {
-    input: {
-      id: variantId,
-      image: {
-        src: imageUrl,
-        altText
-      }
-    }
-  };
-  const response: any = await client.request(query, { variables });
-  return response?.data?.productVariantUpdate?.productVariant;
-}
-
 // Crée un produit avec une mutation GraphQL via Shopify API
 async function createProductWithSDK(session: Session, product: any) {
   const client = new shopify.clients.Graphql({ session });
@@ -208,7 +189,7 @@ async function createProductWithSDK(session: Session, product: any) {
           id
           handle
           variants(first: 50) {
-            edges { node { id sku title selectedOptions { name value } price compareAtPrice barcode image { id src altText } }
+            edges { node { id sku title selectedOptions { name value } price compareAtPrice barcode }
             }
           }
         }
@@ -222,19 +203,15 @@ async function createProductWithSDK(session: Session, product: any) {
   return data?.data?.productCreate;
 }
 
-// Fonction principale utilisant UNIQUEMENT le SDK Shopify
 export async function setupShop({ session }: { session: Session }) {
   try {
-    // Crée la page Livraison via Shopify API
     await createLivraisonPageWithSDK(session);
 
-    // Import et création des produits depuis le CSV
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
     const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: ";" });
 
-    // Regroupement des produits par handle
     const productsByHandle: Record<string, any[]> = {};
     for (const row of records) {
       if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
@@ -268,7 +245,6 @@ export async function setupShop({ session }: { session: Session }) {
 
       const productMetafields = extractCheckboxMetafields(main);
 
-      // Construction du payload produit
       const product: any = {
         title: main.Title,
         descriptionHtml: main["Body (HTML)"] || "",
@@ -281,7 +257,6 @@ export async function setupShop({ session }: { session: Session }) {
       };
 
       try {
-        // Création du produit via Shopify API (SANS variants!)
         const productCreateData = await createProductWithSDK(session, product);
         const productData = productCreateData?.product;
         const productId = productData?.id;
@@ -294,16 +269,15 @@ export async function setupShop({ session }: { session: Session }) {
         }
         console.log("Product créé avec id:", productId);
 
-        // Upload des images Produit via Shopify API
+        // Upload des images Produit (pas les variantes ici)
         const allImagesToAttach = [
           ...new Set([
             ...group.map((row) => row["Image Src"]).filter(Boolean),
-            ...group.map((row) => row["Variant Image"]).filter(Boolean),
           ]),
         ];
         for (const imgUrl of allImagesToAttach) {
           const normalizedUrl = normalizeImageUrl(imgUrl);
-          await attachImageToProductWithSDK(
+          await createProductMedia(
             session,
             productId,
             normalizedUrl,
@@ -317,10 +291,20 @@ export async function setupShop({ session }: { session: Session }) {
           const defaultVariantId = edges && edges.length ? edges[0]?.node?.id : undefined;
           if (defaultVariantId) {
             await updateDefaultVariantWithSDK(session, productId, defaultVariantId, main);
+            // PATCH: image de la variante simple
+            const variantImageUrl = main["Variant Image"];
+            if (variantImageUrl && variantImageUrl.trim() &&
+                variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
+              const normalizedUrl = normalizeImageUrl(variantImageUrl);
+              const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
+              if (mediaId) {
+                await appendMediaToVariant(session, defaultVariantId, mediaId);
+              }
+            }
           }
         }
 
-        // Produit AVEC options : bulkCreate toutes les variantes SAUF la première, puis update la première pour lui donner le bon prix/compareAtPrice/etc.
+        // Produit AVEC options : bulkCreate toutes les variantes SAUF la première, puis update la première pour lui donner le bon prix
         if (productOptionsOrUndefined && productOptionsOrUndefined.length > 0) {
           const seen = new Set<string>();
           const variants = group
@@ -346,13 +330,6 @@ export async function setupShop({ session }: { session: Session }) {
               if (row["Variant SKU"]) variant.sku = row["Variant SKU"];
               if (row["Variant Barcode"]) variant.barcode = row["Variant Barcode"];
               if (row["Variant Compare At Price"]) variant.compareAtPrice = row["Variant Compare At Price"];
-              // PATCH image : si row contient une image, rattache-la via BulkCreate
-              if (row["Variant Image"] && row["Variant Image"].trim() && row["Variant Image"] !== "nan" && row["Variant Image"] !== "null" && row["Variant Image"] !== "undefined") {
-                variant.image = {
-                  src: normalizeImageUrl(row["Variant Image"]),
-                  altText: ""
-                };
-              }
               return variant;
             })
             .filter((v) => v && v.optionValues && v.optionValues.length);
@@ -374,20 +351,23 @@ export async function setupShop({ session }: { session: Session }) {
           }
         }
 
-        // PATCH : Boucle - upload/rattache les IMAGE de chaque variante existante
+        // Boucle : upload/rattache l'image à chaque variante existante
         const edges = productData?.variants?.edges;
         if (edges && edges.length) {
           for (const edge of edges) {
             const variantId = edge.node.id;
-            // Recherche la row du CSV correspondant à cette variante (par SKU, ou fallback "Default Title"/première row)
+            // Recherche la row du CSV correspondant à cette variante (par SKU ou fallback 1ère ligne)
             const matchingRow = group.find(row =>
               row["Variant SKU"] && edge.node.sku && row["Variant SKU"] === edge.node.sku
-            ) || group[0]; // Fallback : la première ligne
+            ) || group[0];
             const variantImageUrl = matchingRow["Variant Image"];
-            if (variantImageUrl && variantImageUrl.trim() && variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
+            if (variantImageUrl && variantImageUrl.trim() &&
+                variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
               const normalizedUrl = normalizeImageUrl(variantImageUrl);
-              // Si l'image n'a pas été rattachée avant dans bulkCreate/update, tu peux faire un patch ici
-              await attachImageToVariantWithSDK(session, variantId, normalizedUrl, "");
+              const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
+              if (mediaId) {
+                await appendMediaToVariant(session, variantId, mediaId);
+              }
             }
           }
         }
