@@ -2,17 +2,13 @@ import { parse } from "csv-parse/sync";
 import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
 
-// Fonction pour créer la page Livraison via Shopify API
+// Création de la page Livraison
 async function createLivraisonPageWithSDK(session: Session) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation CreatePage($input: PageCreateInput!) {
       pageCreate(page: $input) {
-        page {
-          id
-          title
-          handle
-        }
+        page { id title handle }
         userErrors { code field message }
       }
     }
@@ -22,7 +18,6 @@ async function createLivraisonPageWithSDK(session: Session) {
     handle: "livraison",
     body: `Livraison GRATUITE
 Le traitement des commandes prend de 1 à 3 jours ouvrables avant l'expédition. Une fois l'article expédié, le délai de livraison estimé est le suivant:
-
 France : 4-10 jours ouvrables
 Belgique: 4-10 jours ouvrables
 Suisse : 7-12 jours ouvrables
@@ -33,11 +28,10 @@ Reste du monde : 7-14 jours
     templateSuffix: "custom"
   }};
   const response: any = await client.request(query, { variables });
-  const data = response;
-  if (data?.data?.pageCreate?.userErrors?.length) {
-    console.error("Erreur création page Livraison:", data.data.pageCreate.userErrors);
+  if (response?.data?.pageCreate?.userErrors?.length) {
+    console.error("Erreur création page Livraison:", response.data.pageCreate.userErrors);
   } else {
-    console.log("Page Livraison créée :", data.data.pageCreate.page);
+    console.log("Page Livraison créée :", response.data.pageCreate.page);
   }
 }
 
@@ -48,28 +42,13 @@ function normalizeImageUrl(url: string): string {
 function extractCheckboxMetafields(row: any): any[] {
   const metafields: any[] = [];
   if (row["Checkbox 1 (product.metafields.custom.checkbox_1)"] !== undefined) {
-    metafields.push({
-      namespace: "custom",
-      key: "checkbox_1",
-      type: "single_line_text_field",
-      value: row["Checkbox 1 (product.metafields.custom.checkbox_1)"].toString()
-    });
+    metafields.push({ namespace: "custom", key: "checkbox_1", type: "single_line_text_field", value: row["Checkbox 1 (product.metafields.custom.checkbox_1)"].toString() });
   }
   if (row["Checkbox 2 (product.metafields.custom.checkbox_2)"] !== undefined) {
-    metafields.push({
-      namespace: "custom",
-      key: "checkbox_2",
-      type: "single_line_text_field",
-      value: row["Checkbox 2 (product.metafields.custom.checkbox_2)"].toString()
-    });
+    metafields.push({ namespace: "custom", key: "checkbox_2", type: "single_line_text_field", value: row["Checkbox 2 (product.metafields.custom.checkbox_2)"].toString() });
   }
   if (row["Checkbox 3 (product.metafields.custom.checkbox_3)"] !== undefined) {
-    metafields.push({
-      namespace: "custom",
-      key: "checkbox_3",
-      type: "single_line_text_field",
-      value: row["Checkbox 3 (product.metafields.custom.checkbox_3)"].toString()
-    });
+    metafields.push({ namespace: "custom", key: "checkbox_3", type: "single_line_text_field", value: row["Checkbox 3 (product.metafields.custom.checkbox_3)"].toString() });
   }
   return metafields;
 }
@@ -80,9 +59,7 @@ async function createProductMedia(session: Session, productId: string, imageUrl:
   const query = `
     mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
       productCreateMedia(productId: $productId, media: $media) {
-        media {
-          ... on MediaImage { id image { url } status }
-        }
+        media { ... on MediaImage { id image { url } status } }
         mediaUserErrors { field message }
       }
     }
@@ -96,7 +73,7 @@ async function createProductMedia(session: Session, productId: string, imageUrl:
   return response?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
-// PATCH: get media status from product.media via productId
+// Récupérer le status d'un media d'un produit à partir de sa connexion media
 async function getProductMediaStatus(session: Session, productId: string, mediaId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -122,7 +99,7 @@ async function getProductMediaStatus(session: Session, productId: string, mediaI
   return node ? node.status : undefined;
 }
 
-// Poll: attente que le media soit READY en utilisant getProductMediaStatus
+// Poll jusqu'à ce que le média soit READY (sur le produit)
 async function waitForMediaReady(session: Session, productId: string, mediaId: string, timeoutMs = 15000) {
   const start = Date.now();
   while (true) {
@@ -133,7 +110,7 @@ async function waitForMediaReady(session: Session, productId: string, mediaId: s
   }
 }
 
-// Rattache le média uploadé à la variante via productVariantAppendMedia (mediaIds en tableau)
+// Rattache le média à la variante via productVariantAppendMedia (mediaIds tableau)
 async function appendMediaToVariant(session: Session, productId: string, variantId: string, mediaId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -146,11 +123,7 @@ async function appendMediaToVariant(session: Session, productId: string, variant
             edges {
               node {
                 mediaContentType
-                preview {
-                  image {
-                    url
-                  }
-                }
+                preview { image { url } }
               }
             }
           }
@@ -162,10 +135,7 @@ async function appendMediaToVariant(session: Session, productId: string, variant
   const variables = {
     productId,
     variantMedia: [
-      {
-        variantId,
-        mediaIds: [mediaId] // PATCH: tableau obligatoire
-      }
+      { variantId, mediaIds: [mediaId] }
     ],
   };
   const response: any = await client.request(query, { variables });
@@ -175,13 +145,8 @@ async function appendMediaToVariant(session: Session, productId: string, variant
   return response?.data?.productVariantAppendMedia?.productVariants;
 }
 
-// Met à jour la variante d'un produit via productVariantsBulkUpdate
-async function updateDefaultVariantWithSDK(
-  session: Session,
-  productId: string,
-  variantId: string,
-  main: any
-) {
+// Maj variante par défaut via productVariantsBulkUpdate
+async function updateDefaultVariantWithSDK(session: Session, productId: string, variantId: string, main: any) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
@@ -198,10 +163,7 @@ async function updateDefaultVariantWithSDK(
     ...(main["Variant SKU"] ? { sku: main["Variant SKU"] } : {}),
     ...(main["Variant Barcode"] ? { barcode: main["Variant Barcode"] } : {}),
   };
-  const variables = {
-    productId,
-    variants: [variant],
-  };
+  const variables = { productId, variants: [variant] };
   const response: any = await client.request(query, { variables });
   const data = response?.data?.productVariantsBulkUpdate;
   if (data?.userErrors?.length) {
@@ -212,12 +174,8 @@ async function updateDefaultVariantWithSDK(
   return data?.productVariants?.[0]?.id;
 }
 
-// Création bulk des variantes via Shopify API (pour produits avec options)
-async function bulkCreateVariantsWithSDK(
-  session: Session,
-  productId: string,
-  variants: any[]
-) {
+// Bulk create variants via Shopify API
+async function bulkCreateVariantsWithSDK(session: Session, productId: string, variants: any[]) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
@@ -227,16 +185,13 @@ async function bulkCreateVariantsWithSDK(
       }
     }
   `;
-  const variables = {
-    productId,
-    variants,
-  };
+  const variables = { productId, variants };
   const response: any = await client.request(query, { variables });
   const data = response;
   return data?.data?.productVariantsBulkCreate;
 }
 
-// Crée un produit avec une mutation GraphQL via Shopify API
+// Crée un produit via Shopify API
 async function createProductWithSDK(session: Session, product: any) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -246,8 +201,7 @@ async function createProductWithSDK(session: Session, product: any) {
           id
           handle
           variants(first: 50) {
-            edges { node { id sku title selectedOptions { name value } price compareAtPrice barcode }
-            }
+            edges { node { id sku title selectedOptions { name value } price compareAtPrice barcode } }
           }
         }
         userErrors { field message }
@@ -256,8 +210,7 @@ async function createProductWithSDK(session: Session, product: any) {
   `;
   const variables = { input: product };
   const response: any = await client.request(query, { variables });
-  const data = response;
-  return data?.data?.productCreate;
+  return response?.data?.productCreate;
 }
 
 export async function setupShop({ session }: { session: Session }) {
@@ -269,6 +222,7 @@ export async function setupShop({ session }: { session: Session }) {
     const csvText = await response.text();
     const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: ";" });
 
+    // Regroupement des lignes par handle
     const productsByHandle: Record<string, any[]> = {};
     for (const row of records) {
       if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
@@ -277,25 +231,20 @@ export async function setupShop({ session }: { session: Session }) {
 
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
+
+      // Build product options array
       type ProductOption = { name: string, values: { name: string }[] };
       const productOptions: ProductOption[] = [];
       for (let i = 1; i <= 3; i++) {
         const optionName = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
         if (optionName) {
-          const optionValues = [
-            ...new Set(
-              group
-                .map((row) => (row[`Option${i} Value`] ? row[`Option${i} Value`].trim() : ""))
-                .filter((v) => !!v && v !== "Default Title")
-            ),
-          ].map((v) => ({ name: v }));
-          if (optionValues.length) {
-            productOptions.push({ name: optionName, values: optionValues });
-          }
+          const optionValues = [...new Set(group.map(row => (row[`Option${i} Value`] ? row[`Option${i} Value`].trim() : "")).filter(v => !!v && v !== "Default Title"))].map(v => ({ name: v }));
+          if (optionValues.length) productOptions.push({ name: optionName, values: optionValues });
         }
       }
       const productOptionsOrUndefined = productOptions.length ? productOptions : undefined;
       const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
+
       const productMetafields = extractCheckboxMetafields(main);
 
       const product: any = {
@@ -314,39 +263,27 @@ export async function setupShop({ session }: { session: Session }) {
         const productData = productCreateData?.product;
         const productId = productData?.id;
         if (!productId) {
-          console.error(
-            "Aucun productId généré.",
-            JSON.stringify(productCreateData, null, 2)
-          );
+          console.error("Aucun productId généré.", JSON.stringify(productCreateData, null, 2));
           continue;
         }
         console.log("Product créé avec id:", productId);
 
         // Upload images produit (hors variantes)
-        const allImagesToAttach = [
-          ...new Set([
-            ...group.map((row) => row["Image Src"]).filter(Boolean),
-          ]),
-        ];
+        const allImagesToAttach = [...new Set([...group.map(row => row["Image Src"]).filter(Boolean)])];
         for (const imgUrl of allImagesToAttach) {
-          const normalizedUrl = normalizeImageUrl(imgUrl);
-          await createProductMedia(session, productId, normalizedUrl, "");
+          await createProductMedia(session, productId, normalizeImageUrl(imgUrl), "");
         }
 
-        // Produit sans options/variantes
+        // Produit SANS options/variantes
         if (!productOptionsOrUndefined || productOptionsOrUndefined.length === 0) {
           const edges = productData?.variants?.edges;
           const defaultVariantId = edges && edges.length ? edges[0]?.node?.id : undefined;
           if (defaultVariantId) {
             await updateDefaultVariantWithSDK(session, productId, defaultVariantId, main);
-            // PATCH : rattachement image à variante simple
             const variantImageUrl = main["Variant Image"];
-            if (variantImageUrl && variantImageUrl.trim() &&
-                variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
-              const normalizedUrl = normalizeImageUrl(variantImageUrl);
-              const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
+            if (variantImageUrl && variantImageUrl.trim() && variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
+              const mediaId = await createProductMedia(session, productId, normalizeImageUrl(variantImageUrl), "");
               if (mediaId) {
-                // polling "READY" sur media du produit
                 const ready = await waitForMediaReady(session, productId, mediaId, 20000);
                 if (ready) {
                   await appendMediaToVariant(session, productId, defaultVariantId, mediaId);
@@ -358,25 +295,20 @@ export async function setupShop({ session }: { session: Session }) {
           }
         }
 
-        // Produit AVEC options
+        // Produit AVEC options/variantes
         if (productOptionsOrUndefined && productOptionsOrUndefined.length > 0) {
           const seen = new Set<string>();
           const variants = group
             .map((row, idx) => {
               const optionValues: { name: string; optionName: string }[] = [];
               productOptions.forEach((opt, optIdx) => {
-                const value =
-                  row[`Option${optIdx + 1} Value`] &&
-                  row[`Option${optIdx + 1} Value`].trim();
-                if (value && value !== "Default Title") {
-                  optionValues.push({ name: value, optionName: opt.name });
-                }
+                const value = row[`Option${optIdx + 1} Value`] && row[`Option${optIdx + 1} Value`].trim();
+                if (value && value !== "Default Title") optionValues.push({ name: value, optionName: opt.name });
               });
-              const key = optionValues.map((ov) => ov.name).join("|");
+              const key = optionValues.map(ov => ov.name).join("|");
               if (seen.has(key)) return undefined;
               seen.add(key);
               if (!optionValues.length) return undefined;
-
               const variant: any = {
                 price: row["Variant Price"] || main["Variant Price"] || "0",
                 optionValues,
@@ -386,15 +318,11 @@ export async function setupShop({ session }: { session: Session }) {
               if (row["Variant Compare At Price"]) variant.compareAtPrice = row["Variant Compare At Price"];
               return variant;
             })
-            .filter((v) => v && v.optionValues && v.optionValues.length);
+            .filter(v => v && v.optionValues && v.optionValues.length);
 
-          // On skip la variante déjà existante pour bulkCreate (Shopify la crée à la création du produit)
+          // Bulk create, skip 1ère variante déjà existante
           if (variants.length > 1) {
-            await bulkCreateVariantsWithSDK(
-              session,
-              productId,
-              variants.slice(1)
-            );
+            await bulkCreateVariantsWithSDK(session, productId, variants.slice(1));
           }
 
           // PATCH : update la première variante Shopify
@@ -403,34 +331,46 @@ export async function setupShop({ session }: { session: Session }) {
             const firstVariantId = edges[0].node.id;
             await updateDefaultVariantWithSDK(session, productId, firstVariantId, group[0]);
           }
-        }
 
-        // Boucle : upload media + rattachement pour chaque variante existante (productVariantAppendMedia mediaIds tableau)
-        const edges = productData?.variants?.edges;
-        if (edges && edges.length) {
-          for (const edge of edges) {
-            const variantId = edge.node.id;
-            // Recherche la row du CSV correspondant à cette variante (SKU ou fallback 1ère ligne)
-            const matchingRow = group.find(row =>
-              row["Variant SKU"] && edge.node.sku && row["Variant SKU"] === edge.node.sku
-            ) || group[0];
-            const variantImageUrl = matchingRow["Variant Image"];
-            if (variantImageUrl && variantImageUrl.trim() &&
-                variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
-              const normalizedUrl = normalizeImageUrl(variantImageUrl);
-              const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
-              if (mediaId) {
-                const ready = await waitForMediaReady(session, productId, mediaId, 20000);
-                if (ready) {
-                  await appendMediaToVariant(session, productId, variantId, mediaId); // mediaIds (array)
-                } else {
-                  console.error("Media non READY après upload : pas de rattachement", mediaId);
+          // === Nouvelle boucle d'association images variantes ===
+          if (edges && edges.length) {
+            for (const edge of edges) {
+              const variantId = edge.node.id;
+
+              // Matching ligne du CSV par SKU, puis par options, puis fallback 1ère ligne
+              let matchingRow = group.find(row => row["Variant SKU"] && edge.node.sku && row["Variant SKU"] === edge.node.sku);
+              if (!matchingRow && edge.node.selectedOptions) {
+                matchingRow = group.find(row => {
+                  for (let i = 1; i <= 3; i++) {
+                    const optName = row[`Option${i} Name`];
+                    const optValue = row[`Option${i} Value`];
+                    if (optName && optValue) {
+                      const match = edge.node.selectedOptions?.find((o: any) => o.name === optName && o.value === optValue);
+                      if (!match) return false;
+                    }
+                  }
+                  return true;
+                });
+              }
+              // fallback
+              if (!matchingRow) matchingRow = group[0];
+
+              const variantImageUrl = matchingRow["Variant Image"];
+              if (variantImageUrl && variantImageUrl.trim() && variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
+                const mediaId = await createProductMedia(session, productId, normalizeImageUrl(variantImageUrl), "");
+                if (mediaId) {
+                  const ready = await waitForMediaReady(session, productId, mediaId, 20000);
+                  if (ready) {
+                    await appendMediaToVariant(session, productId, variantId, mediaId);
+                  } else {
+                    console.error("Media non READY après upload : pas de rattachement", mediaId);
+                  }
                 }
               }
             }
           }
         }
-        await new Promise((res) => setTimeout(res, 300));
+        await new Promise(res => setTimeout(res, 300));
       } catch (err) {
         console.error("Erreur création produit GraphQL", handleUnique, err);
       }
