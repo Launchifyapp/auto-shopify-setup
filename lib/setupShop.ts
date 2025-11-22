@@ -74,7 +74,7 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
-// Met à jour la variante par défaut d'un produit via productVariantsBulkUpdate
+// Met à jour la variante d'un produit via productVariantsBulkUpdate
 async function updateDefaultVariantWithSDK(
   session: Session,
   productId: string,
@@ -85,7 +85,7 @@ async function updateDefaultVariantWithSDK(
   const query = `
     mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
       productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants { id price compareAtPrice sku barcode }
+        productVariants { id price compareAtPrice sku barcode image { id src altText } }
         userErrors { field message }
       }
     }
@@ -93,11 +93,17 @@ async function updateDefaultVariantWithSDK(
   const variant: any = {
     id: variantId,
     price: main["Variant Price"] ?? "0",
-    // PATCH: Ajout compareAtPrice s'il est présent
     ...(main["Variant Compare At Price"] ? { compareAtPrice: main["Variant Compare At Price"] } : {}),
     ...(main["Variant SKU"] ? { sku: main["Variant SKU"] } : {}),
     ...(main["Variant Barcode"] ? { barcode: main["Variant Barcode"] } : {}),
   };
+  // PATCH image : si main contient une image, rattache-la
+  if (main["Variant Image"] && main["Variant Image"].trim() && main["Variant Image"] !== "nan" && main["Variant Image"] !== "null" && main["Variant Image"] !== "undefined") {
+    variant.image = {
+      src: normalizeImageUrl(main["Variant Image"]),
+      altText: ""
+    };
+  }
   const variables = {
     productId,
     variants: [variant],
@@ -105,9 +111,9 @@ async function updateDefaultVariantWithSDK(
   const response: any = await client.request(query, { variables });
   const data = response?.data?.productVariantsBulkUpdate;
   if (data?.userErrors?.length) {
-    console.error("Erreur maj variante par défaut (bulkUpdate):", data.userErrors);
+    console.error("Erreur maj variante (bulkUpdate):", data.userErrors);
   } else {
-    console.log("Variante par défaut maj (bulkUpdate):", data.productVariants?.[0]);
+    console.log("Variante maj (bulkUpdate):", data.productVariants?.[0]);
   }
   return data?.productVariants?.[0]?.id;
 }
@@ -122,7 +128,7 @@ async function bulkCreateVariantsWithSDK(
   const query = `
     mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
       productVariantsBulkCreate(productId: $productId, variants: $variants) {
-        productVariants { id price sku barcode compareAtPrice }
+        productVariants { id price sku barcode compareAtPrice image { id src altText } }
         userErrors { field message }
       }
     }
@@ -136,7 +142,7 @@ async function bulkCreateVariantsWithSDK(
   return data?.data?.productVariantsBulkCreate;
 }
 
-// Upload image en media produit Shopify (SDK GraphQL)
+// Upload image en media produit Shopify (SDK GraphQL Produit)
 async function attachImageToProductWithSDK(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -160,6 +166,38 @@ async function attachImageToProductWithSDK(session: Session, productId: string, 
   return data?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
+// Pour rattacher une image à une variante (en dehors du BulkUpdate : fallback)
+async function attachImageToVariantWithSDK(
+  session: Session,
+  variantId: string,
+  imageUrl: string,
+  altText: string = ""
+): Promise<any> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productVariantUpdate($input: ProductVariantUpdateInput!) {
+      productVariantUpdate(input: $input) {
+        productVariant {
+          id
+          image { id src altText }
+        }
+        userErrors { field message }
+      }
+    }
+  `;
+  const variables = {
+    input: {
+      id: variantId,
+      image: {
+        src: imageUrl,
+        altText
+      }
+    }
+  };
+  const response: any = await client.request(query, { variables });
+  return response?.data?.productVariantUpdate?.productVariant;
+}
+
 // Crée un produit avec une mutation GraphQL via Shopify API
 async function createProductWithSDK(session: Session, product: any) {
   const client = new shopify.clients.Graphql({ session });
@@ -170,7 +208,7 @@ async function createProductWithSDK(session: Session, product: any) {
           id
           handle
           variants(first: 50) {
-            edges { node { id sku title selectedOptions { name value } price compareAtPrice barcode }
+            edges { node { id sku title selectedOptions { name value } price compareAtPrice barcode image { id src altText } }
             }
           }
         }
@@ -182,29 +220,6 @@ async function createProductWithSDK(session: Session, product: any) {
   const response: any = await client.request(query, { variables });
   const data = response;
   return data?.data?.productCreate;
-}
-
-// Update variant price via Shopify API (used if needed)
-async function updateVariantPriceWithSDK(
-  session: Session,
-  variantId: string,
-  price: string,
-  compareAtPrice?: string
-) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation productVariantUpdate($id: ID!, $price: Money!, $compareAtPrice: Money) {
-      productVariantUpdate(id: $id, price: $price, compareAtPrice: $compareAtPrice) {
-        productVariant { id price compareAtPrice }
-        userErrors { field message }
-      }
-    }
-  `;
-  const variables: any = { id: variantId, price };
-  if (compareAtPrice !== undefined) {
-    variables.compareAtPrice = compareAtPrice;
-  }
-  await client.request(query, { variables });
 }
 
 // Fonction principale utilisant UNIQUEMENT le SDK Shopify
@@ -262,8 +277,7 @@ export async function setupShop({ session }: { session: Session }) {
         productType: main.Type,
         tags: main.Tags?.split(",").map((t: string) => t.trim()),
         productOptions: productOptionsOrUndefined,
-        metafields:
-          productMetafields.length > 0 ? productMetafields : undefined,
+        metafields: productMetafields.length > 0 ? productMetafields : undefined,
       };
 
       try {
@@ -280,7 +294,7 @@ export async function setupShop({ session }: { session: Session }) {
         }
         console.log("Product créé avec id:", productId);
 
-        // Upload des images via Shopify API
+        // Upload des images Produit via Shopify API
         const allImagesToAttach = [
           ...new Set([
             ...group.map((row) => row["Image Src"]).filter(Boolean),
@@ -332,24 +346,49 @@ export async function setupShop({ session }: { session: Session }) {
               if (row["Variant SKU"]) variant.sku = row["Variant SKU"];
               if (row["Variant Barcode"]) variant.barcode = row["Variant Barcode"];
               if (row["Variant Compare At Price"]) variant.compareAtPrice = row["Variant Compare At Price"];
+              // PATCH image : si row contient une image, rattache-la via BulkCreate
+              if (row["Variant Image"] && row["Variant Image"].trim() && row["Variant Image"] !== "nan" && row["Variant Image"] !== "null" && row["Variant Image"] !== "undefined") {
+                variant.image = {
+                  src: normalizeImageUrl(row["Variant Image"]),
+                  altText: ""
+                };
+              }
               return variant;
             })
             .filter((v) => v && v.optionValues && v.optionValues.length);
 
           // On skip la variante déjà existante pour bulkCreate (Shopify la crée à la création du produit)
           if (variants.length > 1) {
-            const bulkData = await bulkCreateVariantsWithSDK(
+            await bulkCreateVariantsWithSDK(
               session,
               productId,
               variants.slice(1)
             );
           }
 
-          // PATCH : update la première variante Shopify
+          // PATCH : update la première variante Shopify (et rattache l'image si besoin)
           const edges = productData?.variants?.edges;
           if (edges && edges.length) {
             const firstVariantId = edges[0].node.id;
-            await updateDefaultVariantWithSDK(session, productId, firstVariantId, main);
+            await updateDefaultVariantWithSDK(session, productId, firstVariantId, group[0]);
+          }
+        }
+
+        // PATCH : Boucle - upload/rattache les IMAGE de chaque variante existante
+        const edges = productData?.variants?.edges;
+        if (edges && edges.length) {
+          for (const edge of edges) {
+            const variantId = edge.node.id;
+            // Recherche la row du CSV correspondant à cette variante (par SKU, ou fallback "Default Title"/première row)
+            const matchingRow = group.find(row =>
+              row["Variant SKU"] && edge.node.sku && row["Variant SKU"] === edge.node.sku
+            ) || group[0]; // Fallback : la première ligne
+            const variantImageUrl = matchingRow["Variant Image"];
+            if (variantImageUrl && variantImageUrl.trim() && variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
+              const normalizedUrl = normalizeImageUrl(variantImageUrl);
+              // Si l'image n'a pas été rattachée avant dans bulkCreate/update, tu peux faire un patch ici
+              await attachImageToVariantWithSDK(session, variantId, normalizedUrl, "");
+            }
           }
         }
 
