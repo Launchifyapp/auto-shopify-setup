@@ -321,46 +321,54 @@ export async function setupShop({ session }: { session: Session }) {
           }
 
           // -- MAPPING precise pour chaque image/variante --
+          // 1. Uploader chaque image de variante UNE SEULE FOIS et faire mapping
+          const variantsInCsv = [...group];
+          const uniqueImageUrls = [...new Set(
+            variantsInCsv
+              .map(row => row["Variant Image"])
+              .filter((url) => url && url.trim() && url !== "nan" && url !== "null" && url !== "undefined"))
+          ].map(normalizeImageUrl);
+
+          const mediaMap: Record<string, string> = {};
+          for (const imageUrl of uniqueImageUrls) {
+            const mediaId = await createProductMedia(session, productId, imageUrl, "");
+            if (mediaId) {
+              const ready = await waitForMediaReady(session, productId, mediaId, 20000);
+              if (ready) mediaMap[imageUrl] = mediaId;
+            }
+          }
+
+          // 2. Mapping clé d’options → variantId Shopify
           const variantIdMap: Record<string, string> = {};
           for (const edge of productData.variants.edges) {
-            const node = edge.node;
-            const optionsKey = (node.selectedOptions || [])
-              .map((o: any) => o.value.trim()).filter(Boolean)
+            const optionsKey = (edge.node.selectedOptions || [])
+              .map((o: any) => o.value.trim())
               .join('|');
-            variantIdMap[optionsKey] = node.id;
+            variantIdMap[optionsKey] = edge.node.id;
           }
 
-          // Génère les media (upload !) et mapping url -> mediaId
-          const mediaMap: Record<string, string> = {};
-          for (const row of group) {
-            const variantImageUrl = row["Variant Image"];
-            if (variantImageUrl && variantImageUrl.trim() && variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
-              const normalizedUrl = normalizeImageUrl(variantImageUrl);
-              const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
-              if (mediaId) { // PATCH type safety!
-                const ready = await waitForMediaReady(session, productId, mediaId, 20000);
-                if (ready) {
-                  mediaMap[normalizedUrl] = mediaId;
-                }
-              }
-            }
-          }
-
-          // Pour chaque ligne, mappe optionsKey -> variantId + image
+          // 3. tableau variantMedia complet
           const variantMedia: any[] = [];
-          for (const row of group) {
+          for (const row of variantsInCsv) {
             const variantImageUrl = row["Variant Image"];
             if (variantImageUrl && variantImageUrl.trim() && variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
-              const optionsKey = [1,2,3].map(i => row[`Option${i} Value`] ? row[`Option${i} Value`].trim() : '').filter(Boolean).join('|');
-              const variantId = variantIdMap[optionsKey];
               const normalizedUrl = normalizeImageUrl(variantImageUrl);
               const mediaId = mediaMap[normalizedUrl];
+              const optionsKey = [1,2,3]
+                .map(i => row[`Option${i} Value`] ? row[`Option${i} Value`].trim() : '')
+                .filter(Boolean)
+                .join('|');
+              const variantId = variantIdMap[optionsKey];
               if (variantId && mediaId) {
-                variantMedia.push({ variantId, mediaIds: [mediaId] });
+                variantMedia.push({
+                  variantId,
+                  mediaIds: [mediaId]
+                });
               }
             }
           }
-          // Mutation batch si au moins une image à relier
+
+          // 4. Appelle la mutation batch
           if (variantMedia.length > 0) {
             await appendMediaToVariantsBatch(session, productId, variantMedia);
           }
