@@ -74,7 +74,7 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
-// 1. Upload image comme média du produit
+// Upload image comme média du produit
 async function createProductMedia(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -96,14 +96,29 @@ async function createProductMedia(session: Session, productId: string, imageUrl:
   return response?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
-// 2. Rattache le média uploadé à la variante via productVariantAppendMedia
+// Rattache le média uploadé à la variante via productVariantAppendMedia (PATCH: mediaIds en tableau)
 async function appendMediaToVariant(session: Session, productId: string, variantId: string, mediaId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation productVariantAppendMedia($productId: ID!, $variantMedia: [ProductVariantAppendMediaInput!]!) {
       productVariantAppendMedia(productId: $productId, variantMedia: $variantMedia) {
         product { id }
-        userErrors { field message }
+        productVariants {
+          id
+          media(first: 10) {
+            edges {
+              node {
+                mediaContentType
+                preview {
+                  image {
+                    url
+                  }
+                }
+              }
+            }
+          }
+        }
+        userErrors { code field message }
       }
     }
   `;
@@ -111,8 +126,8 @@ async function appendMediaToVariant(session: Session, productId: string, variant
     productId,
     variantMedia: [
       {
-        mediaId,
-        variantId
+        variantId,
+        mediaIds: [mediaId]
       }
     ],
   };
@@ -120,7 +135,7 @@ async function appendMediaToVariant(session: Session, productId: string, variant
   if (response?.data?.productVariantAppendMedia?.userErrors?.length) {
     console.error("Erreur rattachement media à variante :", response.data.productVariantAppendMedia.userErrors);
   }
-  return response?.data?.productVariantAppendMedia?.product;
+  return response?.data?.productVariantAppendMedia?.productVariants;
 }
 
 // Met à jour la variante d'un produit via productVariantsBulkUpdate
