@@ -2,40 +2,474 @@ import { parse } from "csv-parse/sync";
 import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
 
-// ... (Toutes les fonctions utilitaires déjà dans ton script) ...
+// Recherche l'id de la collection principale ("all" ou titre "Produits" ou "All" ou "Tous les produits")
+async function getAllProductsCollectionId(session: Session): Promise<string | null> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    query Collections {
+      collections(first: 10) {
+        edges {
+          node {
+            id
+            handle
+            title
+          }
+        }
+      }
+    }
+  `;
+  const response: any = await client.request(query);
+  const edges = response?.data?.collections?.edges ?? [];
+  let coll = edges.find((e: any) => e?.node?.handle === "all");
+  if (!coll) coll = edges.find((e: any) => {
+    const title = e?.node?.title?.toLowerCase();
+    return title === "produits" || title === "all" || title === "tous les produits";
+  });
+  if (!coll && edges.length > 0) coll = edges[0];
+  if (coll) return coll.node.id;
+  return null;
+}
+
+// Recherche l'id d'une page par handle (filtrage côté client)
+async function getPageIdByHandle(session: Session, handle: string): Promise<string | null> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    query Pages {
+      pages(first: 10) {
+        edges {
+          node {
+            id
+            handle
+            title
+          }
+        }
+      }
+    }
+  `;
+  const response: any = await client.request(query);
+  const edges = response?.data?.pages?.edges ?? [];
+  const found = edges.find((e: any) => e.node.handle === handle);
+  return found ? found.node.id : null;
+}
+// Pour debug : liste toutes les pages existantes (handle, titre, id)
+async function debugListAllPages(session: Session) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    query {
+      pages(first: 30) {
+        edges {
+          node {
+            id
+            handle
+            title
+          }
+        }
+      }
+    }
+  `;
+  const response: any = await client.request(query);
+  const edges = response?.data?.pages?.edges ?? [];
+  console.log("Pages existantes:");
+  edges.forEach((e: any) => {
+    console.log(e.node.title, e.node.handle, e.node.id);
+  });
+}
+
+// Récupération menu principal : id + titre
+async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, title: string} | null> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    query GetMenus {
+      menus(first: 10) {
+        edges {
+          node {
+            id
+            title
+            handle
+          }
+        }
+      }
+    }
+  `;
+  const response: any = await client.request(query);
+  const edges = response?.data?.menus?.edges ?? [];
+  const mainMenu = edges.find((e: any) => e.node.handle === "main-menu");
+  if (mainMenu) return {id: mainMenu.node.id, title: mainMenu.node.title};
+  if (edges.length) return {id: edges[0].node.id, title: edges[0].node.title};
+  return null;
+}
+
+// Patch menu principal (title requis, destination=resourceId/url)
+// Utilise fallback HTTP si la page Contact n'est pas retrouvée
+async function updateMainMenu(
+  session: Session,
+  menuId: string,
+  menuTitle: string,
+  livraisonPageId: string | null,
+  collectionId: string | null,
+  contactPageId: string | null
+) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation UpdateMenu($id: ID!, $title: String!, $items: [MenuItemUpdateInput!]!) {
+      menuUpdate(
+        id: $id,
+        title: $title,
+        items: $items
+      ) {
+        menu {
+          id
+          title
+          items {
+            id
+            title
+            url
+            resourceId
+            type
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+  const items = [
+    {
+      title: "Accueil",
+      type: "FRONTPAGE",
+      url: "/"
+    },
+    collectionId && {
+      title: "Nos Produits",
+      type: "COLLECTION",
+      resourceId: collectionId
+    },
+    livraisonPageId && {
+      title: "Livraison",
+      type: "PAGE",
+      resourceId: livraisonPageId
+    },
+    contactPageId
+      ? {
+          title: "Contact",
+          type: "PAGE",
+          resourceId: contactPageId
+        }
+      : {
+          title: "Contact",
+          type: "HTTP",
+          url: "/pages/contact"
+        }
+  ].filter(Boolean);
+  const variables = {
+    id: menuId,
+    title: menuTitle,
+    items
+  };
+  const response: any = await client.request(query, { variables });
+  if (response?.data?.menuUpdate?.userErrors?.length) {
+    console.error("Erreur menuUpdate:", response.data.menuUpdate.userErrors);
+    // Diagnostic auto : liste toutes les pages si erreur sur Contact
+    if (
+      response.data.menuUpdate.userErrors.some((err: any) => (err.message || "").toLowerCase().includes("page not found"))
+    ) {
+      await debugListAllPages(session);
+    }
+  } else {
+    console.log("[Menu principal] Mis à jour :", response.data.menuUpdate.menu);
+  }
+}
+
+// Création page Livraison
+async function createLivraisonPageWithSDK(session: Session): Promise<string | null> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation CreatePage($input: PageCreateInput!) {
+      pageCreate(page: $input) {
+        page {
+          id
+          title
+          handle
+        }
+        userErrors { code field message }
+      }
+    }
+  `;
+  const variables = {
+    input: {
+      title: "Livraison",
+      handle: "livraison",
+      body: `Livraison GRATUITE
+Le traitement des commandes prend de 1 à 3 jours ouvrables avant l'expédition. Une fois l'article expédié, le délai de livraison estimé est le suivant:
+
+France : 4-10 jours ouvrables
+Belgique: 4-10 jours ouvrables
+Suisse : 7-12 jours ouvrables
+Canada : 7-12 jours ouvrables
+Reste du monde : 7-14 jours
+`,
+      isPublished: true,
+      templateSuffix: "custom"
+    }
+  };
+  const response: any = await client.request(query, { variables });
+  if (response?.data?.pageCreate?.userErrors?.length) {
+    console.error("Erreur création page Livraison:", response.data.pageCreate.userErrors);
+    return null;
+  }
+  const pageId = response?.data?.pageCreate?.page?.id ?? null;
+  if (pageId) console.log("Page Livraison créée :", response.data.pageCreate.page);
+  return pageId;
+}
+
+function normalizeImageUrl(url: string): string {
+  return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
+}
+
+function extractCheckboxMetafields(row: any): any[] {
+  const metafields: any[] = [];
+  if (row["Checkbox 1 (product.metafields.custom.checkbox_1)"] !== undefined) {
+    metafields.push({
+      namespace: "custom",
+      key: "checkbox_1",
+      type: "single_line_text_field",
+      value: row["Checkbox 1 (product.metafields.custom.checkbox_1)"].toString()
+    });
+  }
+  if (row["Checkbox 2 (product.metafields.custom.checkbox_2)"] !== undefined) {
+    metafields.push({
+      namespace: "custom",
+      key: "checkbox_2",
+      type: "single_line_text_field",
+      value: row["Checkbox 2 (product.metafields.custom.checkbox_2)"].toString()
+    });
+  }
+  if (row["Checkbox 3 (product.metafields.custom.checkbox_3)"] !== undefined) {
+    metafields.push({
+      namespace: "custom",
+      key: "checkbox_3",
+      type: "single_line_text_field",
+      value: row["Checkbox 3 (product.metafields.custom.checkbox_3)"].toString()
+    });
+  }
+  return metafields;
+}
+
+// Upload image comme média du produit
+async function createProductMedia(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+      productCreateMedia(productId: $productId, media: $media) {
+        media {
+          ... on MediaImage { id image { url } status }
+        }
+        mediaUserErrors { field message }
+      }
+    }
+  `;
+  const variables = { productId, media: [{
+    originalSource: imageUrl,
+    mediaContentType: "IMAGE",
+    alt: altText
+  }]};
+  const response: any = await client.request(query, { variables });
+  return response?.data?.productCreateMedia?.media?.[0]?.id;
+}
+
+async function getProductMediaStatus(session: Session, productId: string, mediaId: string) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    query getProductMedia($id: ID!) {
+      product(id: $id) {
+        media(first: 20) {
+          edges {
+            node {
+              ... on MediaImage {
+                id
+                status
+                image { url }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+  const response: any = await client.request(query, { variables: { id: productId } });
+  const edges = response?.data?.product?.media?.edges ?? [];
+  const node = edges.find((e: any) => e?.node?.id === mediaId)?.node;
+  return node ? node.status : undefined;
+}
+
+async function waitForMediaReady(session: Session, productId: string, mediaId: string, timeoutMs = 15000) {
+  const start = Date.now();
+  while (true) {
+    const status = await getProductMediaStatus(session, productId, mediaId);
+    if (status === "READY") return true;
+    if (Date.now() - start > timeoutMs) return false;
+    await new Promise(res => setTimeout(res, 1500));
+  }
+}
+
+async function appendMediaToVariant(session: Session, productId: string, variantId: string, mediaId: string) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productVariantAppendMedia($productId: ID!, $variantMedia: [ProductVariantAppendMediaInput!]!) {
+      productVariantAppendMedia(productId: $productId, variantMedia: $variantMedia) {
+        product { id }
+        productVariants {
+          id
+          media(first: 10) {
+            edges {
+              node {
+                mediaContentType
+                preview {
+                  image {
+                    url
+                  }
+                }
+              }
+            }
+          }
+        }
+        userErrors { code field message }
+      }
+    }
+  `;
+  const variables = {
+    productId,
+    variantMedia: [
+      {
+        variantId,
+        mediaIds: [mediaId]
+      }
+    ],
+  };
+  const response: any = await client.request(query, { variables });
+  if (response?.data?.productVariantAppendMedia?.userErrors?.length) {
+    console.error("Erreur rattachement media à variante :", response.data.productVariantAppendMedia.userErrors);
+  }
+  return response?.data?.productVariantAppendMedia?.productVariants;
+}
+
+async function updateDefaultVariantWithSDK(
+  session: Session,
+  productId: string,
+  variantId: string,
+  main: any
+) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+        productVariants { id price compareAtPrice sku barcode }
+        userErrors { field message }
+      }
+    }
+  `;
+  const variant: any = {
+    id: variantId,
+    price: main["Variant Price"] ?? "0",
+    ...(main["Variant Compare At Price"] ? { compareAtPrice: main["Variant Compare At Price"] } : {}),
+    ...(main["Variant SKU"] ? { sku: main["Variant SKU"] } : {}),
+    ...(main["Variant Barcode"] ? { barcode: main["Variant Barcode"] } : {}),
+  };
+  const variables = {
+    productId,
+    variants: [variant],
+  };
+  const response: any = await client.request(query, { variables });
+  const data = response?.data?.productVariantsBulkUpdate;
+  if (data?.userErrors?.length) {
+    console.error("Erreur maj variante (bulkUpdate):", data.userErrors);
+  } else {
+    console.log("Variante maj (bulkUpdate):", data.productVariants?.[0]);
+  }
+  return data?.productVariants?.[0]?.id;
+}
+
+async function bulkCreateVariantsWithSDK(
+  session: Session,
+  productId: string,
+  variants: any[]
+) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+      productVariantsBulkCreate(productId: $productId, variants: $variants) {
+        productVariants { id price sku barcode compareAtPrice }
+        userErrors { field message }
+      }
+    }
+  `;
+  const variables = {
+    productId,
+    variants,
+  };
+  const response: any = await client.request(query, { variables });
+  const data = response;
+  return data?.data?.productVariantsBulkCreate;
+}
+
+async function createProductWithSDK(session: Session, product: any) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productCreate($input: ProductCreateInput!) {
+      productCreate(product: $input) {
+        product {
+          id
+          handle
+          variants(first: 50) {
+            edges { node { id sku title selectedOptions { name value } price compareAtPrice barcode }
+            }
+          }
+        }
+        userErrors { field message }
+      }
+    }
+  `;
+  const variables = { input: product };
+  const response: any = await client.request(query, { variables });
+  const data = response;
+  return data?.data?.productCreate;
+}
 
 export async function setupShop({ session }: { session: Session }) {
   try {
-    // ==== 0. UPLOAD LES 4 IMAGES GÉNÉRIQUES AVANT TOUT ====
-    const genericImages = [
+    // --- UPLOAD DES 4 IMAGES GÉNÉRIQUES AU DÉBUT DU SCRIPT ---
+    const imagesUrls = [
       "https://auto-shopify-setup.vercel.app/image1.jpg",
       "https://auto-shopify-setup.vercel.app/image2.jpg",
       "https://auto-shopify-setup.vercel.app/image3.jpg",
       "https://auto-shopify-setup.vercel.app/image4.webp"
     ];
-    // Cet upload est "autonome" (pour la boutique, associée à rien)
-    // Tu peux, par exemple, créer un produit "images-generiques" pour les héberger, ou juste les uploader si Shopify autorise un upload indépendant :
-    // Ici, on montre un upload en produit factice :
-    const genericProduct = {
-      title: "Images Génériques",
-      handle: "images-generiques-" + Math.random().toString(16).slice(2, 7),
-      vendor: "auto",
-      descriptionHtml: "Images génériques uploadées au démarrage",
+
+    // On crée un produit temporaire "images-setup", pour héberger ces images.
+    const setupImagesProduct = {
+      title: "Images Setup Génériques",
+      handle: "images-setup-" + Math.random().toString(16).slice(2, 7),
+      vendor: "auto-setup",
+      descriptionHtml: "Images génériques obligatoires pour le setup Auto Shopify"
     };
-    let genericProductId: string | undefined;
+
+    let setupImagesProductId: string | undefined = undefined;
     try {
-      const productCreateData = await createProductWithSDK(session, genericProduct);
-      genericProductId = productCreateData?.product?.id;
-      if (genericProductId) {
-        for (const img of genericImages) {
-          await createProductMedia(session, genericProductId, img, "");
+      const res = await createProductWithSDK(session, setupImagesProduct);
+      setupImagesProductId = res?.product?.id;
+      if (setupImagesProductId) {
+        for (const url of imagesUrls) {
+          await createProductMedia(session, setupImagesProductId, url, "");
         }
-        console.log("Images génériques uploadées sur le produit Images Génériques.");
+        console.log("Images génériques uploadées.");
+      } else {
+        console.warn("Impossible de créer le produit temporaire pour images.");
       }
     } catch (err) {
-      console.error("Erreur upload images générales:", err);
+      console.error("Erreur lors de l'upload initial des images génériques", err);
     }
-
 
     // 1. Créer la page Livraison
     const livraisonPageId = await createLivraisonPageWithSDK(session)
