@@ -292,7 +292,7 @@ async function uploadImagesToShopifyFiles(session: Session, imageUrls: string[])
   if (response?.data?.fileCreate?.userErrors?.length) {
     console.error("Erreur upload Files:", response.data.fileCreate.userErrors);
   }
-  (response?.data?.fileCreate?.files || []).forEach(file => {
+  ((response?.data?.fileCreate?.files || []) as any[]).forEach((file: any) => {
     if(file.image?.url){
       console.log("Image Shopify File:", file.id, file.image.url);
     } else if(file.url) {
