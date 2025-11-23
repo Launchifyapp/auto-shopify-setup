@@ -1,11 +1,65 @@
 import { parse } from "csv-parse/sync";
 import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
+import fs from "fs";
+import path from "path";
+import axios from "axios";
+import FormData from "form-data";
 
-// === Ajout fonction d'upload d'image générique via fileCreate ===
-async function uploadShopifyFile(session: Session, fileUrl: string, filename: string) {
+// === Ajout fonction d'upload d'image locale via stagedUpload ===
+async function uploadImageStaged(session: Session, localPath: string, filename: string, mimeType: string) {
+  // 1. Get staged upload target (S3 pre-signed POST)
   const client = new shopify.clients.Graphql({ session });
   const query = `
+    mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+      stagedUploadsCreate(input: $input) {
+        stagedTargets {
+          url
+          resourceUrl
+          parameters {
+            name
+            value
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+  const variables = {
+    input: [
+      {
+        filename,
+        mimeType,
+        resource: "FILE"
+      }
+    ]
+  };
+  const response: any = await client.request(query, { variables });
+  if (response?.data?.stagedUploadsCreate?.userErrors?.length) {
+    console.error("Erreur stagedUploadsCreate:", response.data.stagedUploadsCreate.userErrors);
+    return null;
+  }
+  const target = response?.data?.stagedUploadsCreate?.stagedTargets[0];
+  if (!target) {
+    console.error("No staged target for upload.");
+    return null;
+  }
+  // 2. POST file to staged URL (AWS S3-style multipart/form-data)
+  const form = new FormData();
+  for (const param of target.parameters) {
+    form.append(param.name, param.value);
+  }
+  form.append("file", fs.createReadStream(localPath));
+
+  await axios.post(target.url, form, {
+    headers: { ...form.getHeaders() }
+  });
+
+  // 3. Create file entry via fileCreate
+  const mutation = `
     mutation fileCreate($files: [FileCreateInput!]!) {
       fileCreate(files: $files) {
         files {
@@ -21,24 +75,22 @@ async function uploadShopifyFile(session: Session, fileUrl: string, filename: st
       }
     }
   `;
-  const variables = {
-    files: [
-      {
-        originalSource: fileUrl,
-        contentType: "IMAGE",
-        alt: filename
-      }
-    ]
+  const createVars = {
+    files: [{
+      originalSource: target.resourceUrl,
+      contentType: "IMAGE",
+      alt: filename
+    }]
   };
-  const response: any = await client.request(query, { variables });
-  if (response?.data?.fileCreate?.userErrors?.length) {
-    console.error("Erreur upload image:", response.data.fileCreate.userErrors);
-  } else {
-    console.log(`[FileCreate] Uploadé :`, response.data.fileCreate.files);
+  const fileResp: any = await client.request(mutation, { variables: createVars });
+  if (fileResp?.data?.fileCreate?.userErrors?.length) {
+    console.error("Erreur fileCreate:", fileResp.data.fileCreate.userErrors);
+    return null;
   }
-  return response?.data?.fileCreate?.files?.[0]?.id ?? null;
+  console.log(`[StagedFile] Uploadé :`, fileResp.data.fileCreate.files);
+  return fileResp?.data?.fileCreate?.files?.[0]?.id ?? null;
 }
-// === Fin upload image fileCreate ===
+// === Fin upload image staged ===
 
 // Recherche l'id de la collection principale ("all" ou titre "Produits" ou "All" ou "Tous les produits")
 async function getAllProductsCollectionId(session: Session): Promise<string | null> {
@@ -162,7 +214,6 @@ async function updateMainMenu(
           items {
             id
             title
-            url
             resourceId
             type
           }
@@ -177,8 +228,7 @@ async function updateMainMenu(
   const items = [
     {
       title: "Accueil",
-      type: "FRONTPAGE",
-      url: "/"
+      type: "FRONTPAGE"
     },
     collectionId && {
       title: "Nos Produits",
@@ -199,6 +249,8 @@ async function updateMainMenu(
       : {
         title: "Contact",
         type: "HTTP",
+        // url field not supported on menu items for internal links
+        // so fallback is to HTTP type; click will lead to /pages/contact
         url: "/pages/contact"
       }
   ].filter(Boolean);
@@ -477,12 +529,16 @@ async function createProductWithSDK(session: Session, product: any) {
 
 export async function setupShop({ session }: { session: Session }) {
   try {
-    // 0. UPLOAD IMAGES GENERIQUES AVANT TOUT (fileCreate)
-    const publicBaseUrl = "https://ton-domaine.com/public/"; // <- adapte à ton vrai domaine
-    const filenames = ["image1.jpg", "image2.jpg", "image3.jpg", "image4.webp"];
-    for (const filename of filenames) {
-      const url = `${publicBaseUrl}${filename}`;
-      await uploadShopifyFile(session, url, filename);
+    // 0. UPLOAD IMAGES LOCALES VIA STAGEDUPLOAD (avant le reste Shopify)
+    const imagesToUpload = [
+      { file: "image1.jpg", mime: "image/jpeg" },
+      { file: "image2.jpg", mime: "image/jpeg" },
+      { file: "image3.jpg", mime: "image/jpeg" },
+      { file: "image4.webp", mime: "image/webp" }
+    ];
+    for (const img of imagesToUpload) {
+      const localPath = path.join(process.cwd(), "public", img.file);
+      await uploadImageStaged(session, localPath, img.file, img.mime);
     }
 
     // 1. Créer la page Livraison
