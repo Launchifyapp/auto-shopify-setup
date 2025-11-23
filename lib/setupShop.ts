@@ -2,8 +2,8 @@ import { parse } from "csv-parse/sync";
 import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
 
-// Fonction: récupère l'ID du menu principal par handle "main-menu"
-async function getMainMenuId(session: Session): Promise<string | null> {
+// Fonction: récupère l'ID et le titre du menu principal par handle "main-menu"
+async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, title: string} | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     query GetMenus {
@@ -22,19 +22,20 @@ async function getMainMenuId(session: Session): Promise<string | null> {
   const edges = response?.data?.menus?.edges ?? [];
   // Recherche menu avec handle 'main-menu'
   const mainMenu = edges.find((e: any) => e.node.handle === "main-menu");
-  if (mainMenu) return mainMenu.node.id;
+  if (mainMenu) return {id: mainMenu.node.id, title: mainMenu.node.title};
   // Si aucun handle 'main-menu', prend le premier
-  if (edges.length) return edges[0].node.id;
+  if (edges.length) return {id: edges[0].node.id, title: edges[0].node.title};
   return null;
 }
 
-// Fonction: update du menu principal (main menu) – MenuItemUpdateInput utilisé, pas "input"
-async function updateMainMenu(session: Session, menuId: string) {
+// Fonction: update du menu principal (main menu) – title requis !
+async function updateMainMenu(session: Session, menuId: string, menuTitle: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    mutation UpdateMenu($id: ID!, $items: [MenuItemUpdateInput!]!) {
+    mutation UpdateMenu($id: ID!, $title: String!, $items: [MenuItemUpdateInput!]!) {
       menuUpdate(
         id: $id,
+        title: $title,
         items: $items
       ) {
         menu {
@@ -52,7 +53,6 @@ async function updateMainMenu(session: Session, menuId: string) {
       }
     }
   `;
-  // Structure du menu à personnaliser
   const items = [
     {
       title: "Accueil",
@@ -78,6 +78,7 @@ async function updateMainMenu(session: Session, menuId: string) {
   ];
   const variables = {
     id: menuId,
+    title: menuTitle, // requis par Shopify !
     items
   };
   const response: any = await client.request(query, { variables });
@@ -352,9 +353,9 @@ export async function setupShop({ session }: { session: Session }) {
     await createLivraisonPageWithSDK(session);
 
     // 2. Mettre à jour le menu principal
-    const mainMenuId = await getMainMenuId(session);
-    if (mainMenuId) {
-      await updateMainMenu(session, mainMenuId);
+    const mainMenuResult = await getMainMenuIdAndTitle(session);
+    if (mainMenuResult) {
+      await updateMainMenu(session, mainMenuResult.id, mainMenuResult.title);
     } else {
       console.error("Main menu introuvable !");
     }
