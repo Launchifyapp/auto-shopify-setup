@@ -2,6 +2,98 @@ import { parse } from "csv-parse/sync";
 import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
 
+// --- AJOUT Shopify Menu Principal ---
+
+// Fonction: récupère l'ID du menu principal
+async function getMainMenuId(session: Session): Promise<string | null> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    query GetMenus {
+      menus(first: 10) {
+        edges {
+          node {
+            id
+            location
+            handle
+            title
+          }
+        }
+      }
+    }
+  `;
+  const response: any = await client.request(query);
+  const edges = response?.data?.menus?.edges ?? [];
+  // Recherche menu avec location MAIN_MENU
+  const mainMenu = edges.find((e: any) => e.node.location === "MAIN_MENU");
+  if (mainMenu) return mainMenu.node.id;
+  // Si aucun n'a location, prend le premier
+  if (edges.length) return edges[0].node.id;
+  return null;
+}
+
+// Fonction: update du menu principal (main menu)
+async function updateMainMenu(session: Session, menuId: string) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation UpdateMenu($id: ID!, $menu: MenuInput!) {
+      menuUpdate(
+        id: $id,
+        menu: $menu
+      ) {
+        menu {
+          id
+          title
+          items {
+            title
+            destination
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+  // Ex. : personnalise ici ta structure du menu
+  const variables = {
+    id: menuId,
+    menu: {
+      items: [
+        {
+          title: "Accueil",
+          type: "HOME",
+          destination: "/"
+        },
+        {
+          title: "Nos Produits",
+          type: "COLLECTION",
+          destination: "/collections/all"
+        },
+        {
+          title: "Livraison",
+          type: "PAGE",
+          destination: "/pages/livraison"
+        },
+        {
+          title: "Contact",
+          type: "PAGE",
+          destination: "/pages/contact"
+        }
+        // ajoute d'autres liens si besoin
+      ]
+    }
+  };
+  const response: any = await client.request(query, { variables });
+  if (response?.data?.menuUpdate?.userErrors?.length) {
+    console.error("Erreur menuUpdate:", response.data.menuUpdate.userErrors);
+  } else {
+    console.log("[Menu principal] Mis à jour :", response.data.menuUpdate.menu);
+  }
+}
+
+// --- Fin AJOUT Shopify Menu Principal ---
+
 // Fonction pour créer la page Livraison via Shopify API
 async function createLivraisonPageWithSDK(session: Session) {
   const client = new shopify.clients.Graphql({ session });
@@ -262,7 +354,17 @@ async function createProductWithSDK(session: Session, product: any) {
 
 export async function setupShop({ session }: { session: Session }) {
   try {
+    // --- Création de la page Livraison AVANT modification du menu ---
     await createLivraisonPageWithSDK(session);
+
+    // ------- AJOUT: Mise à jour du menu principal --------
+    const mainMenuId = await getMainMenuId(session);
+    if (mainMenuId) {
+      await updateMainMenu(session, mainMenuId);
+    } else {
+      console.error("Main menu introuvable !");
+    }
+    // ------- FIN AJOUT MENU --------
 
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
