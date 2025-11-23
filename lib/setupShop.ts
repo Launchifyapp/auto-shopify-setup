@@ -28,14 +28,14 @@ async function getMainMenuId(session: Session): Promise<string | null> {
   return null;
 }
 
-// Fonction: update du menu principal (main menu) – CORRECT : input, type MenuUpdateInput
+// Fonction: update du menu principal (main menu) – MenuItemUpdateInput utilisé, pas "input"
 async function updateMainMenu(session: Session, menuId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    mutation UpdateMenu($id: ID!, $input: MenuUpdateInput!) {
+    mutation UpdateMenu($id: ID!, $items: [MenuItemUpdateInput!]!) {
       menuUpdate(
         id: $id,
-        input: $input
+        items: $items
       ) {
         menu {
           id
@@ -53,33 +53,32 @@ async function updateMainMenu(session: Session, menuId: string) {
     }
   `;
   // Structure du menu à personnaliser
+  const items = [
+    {
+      title: "Accueil",
+      type: "HOME",
+      destination: "/"
+    },
+    {
+      title: "Nos Produits",
+      type: "COLLECTION",
+      destination: "/collections/all"
+    },
+    {
+      title: "Livraison",
+      type: "PAGE",
+      destination: "/pages/livraison"
+    },
+    {
+      title: "Contact",
+      type: "PAGE",
+      destination: "/pages/contact"
+    }
+    // Ajoute d'autres liens si besoin
+  ];
   const variables = {
     id: menuId,
-    input: {
-      items: [
-        {
-          title: "Accueil",
-          type: "HOME",
-          destination: "/"
-        },
-        {
-          title: "Nos Produits",
-          type: "COLLECTION",
-          destination: "/collections/all"
-        },
-        {
-          title: "Livraison",
-          type: "PAGE",
-          destination: "/pages/livraison"
-        },
-        {
-          title: "Contact",
-          type: "PAGE",
-          destination: "/pages/contact"
-        }
-        // Ajoute d'autres liens si besoin
-      ]
-    }
+    items
   };
   const response: any = await client.request(query, { variables });
   if (response?.data?.menuUpdate?.userErrors?.length) {
