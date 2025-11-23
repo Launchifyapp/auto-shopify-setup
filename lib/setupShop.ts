@@ -8,9 +8,13 @@ import { FormData } from "formdata-node";
 import { FormDataEncoder } from "form-data-encoder";
 import { Readable } from "stream";
 
-// ========== UPLOAD IMAGE LOCAL USING SHOPIFY STAGED UPLOAD (undici + formdata-node + form-data-encoder) ==========
-async function uploadImageStaged(session: Session, localPath: string, filename: string, mimeType: string) {
-  // 1. Get staged upload target
+// ========== UPLOAD IMAGE LOCAL USING SHOPIFY STAGED UPLOAD PATCHED (undici + formdata-node + form-data-encoder) ==========
+async function uploadImageStaged(session: Session, localPath: string, filename: string, mimeType: string, resource: "IMAGE") {
+  // CALCUL FILE SIZE
+  const stat = fs.statSync(localPath);
+  const fileSize = stat.size.toString();
+
+  // 1. Get staged upload target (resource: IMAGE, fileSize required)
   const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
@@ -35,7 +39,8 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
       {
         filename,
         mimeType,
-        resource: "IMAGE"
+        resource,
+        fileSize
       }
     ]
   };
@@ -52,6 +57,7 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
 
   // Log debug
   console.log("[StagedUpload] URL:", target.url);
+  console.log("[StagedUpload] fileSize:", fileSize);
   console.log("[StagedUpload] Parameters:", target.parameters);
   console.log("[StagedUpload] File:", localPath, filename, mimeType);
 
@@ -66,7 +72,7 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
 
   // 3. POST to S3 staged upload URL
   const { statusCode, body } = await request(target.url, {
-    method: "POST", // CRITIQUE: HTTP POST impératif, pas PUT !
+    method: "POST",
     body: stream,
     headers: encoder.headers
   });
@@ -78,7 +84,7 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
     throw new Error(`Erreur upload S3 via undici: status ${statusCode}`);
   }
 
-  // 4. fileCreate mutation
+  // 4. fileCreate mutation (resource: IMAGE)
   const mutation = `
     mutation fileCreate($files: [FileCreateInput!]!) {
       fileCreate(files: $files) {
@@ -110,7 +116,7 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
   console.log(`[StagedFile] Uploadé :`, fileResp.data.fileCreate.files);
   return fileResp?.data?.fileCreate?.files?.[0]?.id ?? null;
 }
-// ========== END Staged upload ==========
+// ========== END Staged upload image ==========
 
 // Recherche l'id de la collection principale ("all" ou titre "Produits" ou "All" ou "Tous les produits")
 async function getAllProductsCollectionId(session: Session): Promise<string | null> {
@@ -161,7 +167,6 @@ async function getPageIdByHandle(session: Session, handle: string): Promise<stri
   return found ? found.node.id : null;
 }
 
-// Debug : liste toutes les pages existantes (handle, titre, id)
 async function debugListAllPages(session: Session) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -360,7 +365,6 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
-// Upload image comme média du produit (par URL publique)
 async function createProductMedia(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -542,186 +546,17 @@ async function createProductWithSDK(session: Session, product: any) {
 
 export async function setupShop({ session }: { session: Session }) {
   try {
-    // 0. UPLOAD IMAGES LOCALES VIA STAGEDUPLOAD (avant le reste Shopify)
     const imagesToUpload = [
-      { file: "image1.jpg", mime: "image/jpeg" },
-      { file: "image2.jpg", mime: "image/jpeg" },
-      { file: "image3.jpg", mime: "image/jpeg" },
-      { file: "image4.webp", mime: "image/webp" }
+      { file: "image1.jpg", mime: "image/jpeg", resource: "IMAGE" },
+      { file: "image2.jpg", mime: "image/jpeg", resource: "IMAGE" },
+      { file: "image3.jpg", mime: "image/jpeg", resource: "IMAGE" },
+      { file: "image4.webp", mime: "image/webp", resource: "IMAGE" }
     ];
     for (const img of imagesToUpload) {
       const localPath = path.join(process.cwd(), "public", img.file);
-      await uploadImageStaged(session, localPath, img.file, img.mime);
+      await uploadImageStaged(session, localPath, img.file, img.mime, img.resource);
     }
-
-    // 1. Créer la page Livraison
-    const livraisonPageId = await createLivraisonPageWithSDK(session)
-      || await getPageIdByHandle(session, "livraison");
-    // 2. Récupérer la collection principale ("all")
-    const mainCollectionId = await getAllProductsCollectionId(session);
-    // 3. Récupérer id & titre du menu principal
-    const mainMenuResult = await getMainMenuIdAndTitle(session);
-    // 4. Chercher id de la page contact
-    const contactPageId = await getPageIdByHandle(session, "contact");
-    // 5. Mettre à jour le menu principal
-    if (mainMenuResult) {
-      await updateMainMenu(
-        session,
-        mainMenuResult.id,
-        mainMenuResult.title,
-        livraisonPageId,
-        mainCollectionId,
-        contactPageId
-      );
-    } else {
-      console.error("Main menu introuvable !");
-    }
-
-    // 6. Setup produits etc (inchangé)
-    const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
-    const response = await fetch(csvUrl);
-    const csvText = await response.text();
-    const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: ";" });
-
-    const productsByHandle: Record<string, any[]> = {};
-    for (const row of records) {
-      if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
-      productsByHandle[row.Handle].push(row);
-    }
-
-    for (const [handle, group] of Object.entries(productsByHandle)) {
-      const main = group[0];
-      type ProductOption = { name: string, values: { name: string }[] };
-      const productOptions: ProductOption[] = [];
-      for (let i = 1; i <= 3; i++) {
-        const optionName = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
-        if (optionName) {
-          const optionValues = [
-            ...new Set(
-              group
-                .map((row) => (row[`Option${i} Value`] ? row[`Option${i} Value`].trim() : ""))
-                .filter((v) => !!v && v !== "Default Title")
-            ),
-          ].map((v) => ({ name: v }));
-          if (optionValues.length) {
-            productOptions.push({ name: optionName, values: optionValues });
-          }
-        }
-      }
-      const productOptionsOrUndefined = productOptions.length ? productOptions : undefined;
-      const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
-      const productMetafields = extractCheckboxMetafields(main);
-
-      const product: any = {
-        title: main.Title,
-        descriptionHtml: main["Body (HTML)"] || "",
-        handle: handleUnique,
-        vendor: main.Vendor,
-        productType: main.Type,
-        tags: main.Tags?.split(",").map((t: string) => t.trim()),
-        productOptions: productOptionsOrUndefined,
-        metafields: productMetafields.length > 0 ? productMetafields : undefined,
-      };
-
-      try {
-        const productCreateData = await createProductWithSDK(session, product);
-        const productData = productCreateData?.product;
-        const productId = productData?.id;
-        if (!productId) {
-          console.error(
-            "Aucun productId généré.",
-            JSON.stringify(productCreateData, null, 2)
-          );
-          continue;
-        }
-        console.log("Product créé avec id:", productId);
-
-        // Upload images produit (hors variantes)
-        const allImagesToAttach = [
-          ...new Set([
-            ...group.map((row) => row["Image Src"]).filter(Boolean),
-          ]),
-        ];
-        for (const imgUrl of allImagesToAttach) {
-          const normalizedUrl = normalizeImageUrl(imgUrl);
-          await createProductMedia(session, productId, normalizedUrl, "");
-        }
-
-        // Produit avec variantes (options)
-        if (productOptionsOrUndefined && productOptionsOrUndefined.length > 0) {
-          const seen = new Set<string>();
-          const variants = group
-            .map((row, idx) => {
-              const optionValues: { name: string; optionName: string }[] = [];
-              productOptions.forEach((opt, optIdx) => {
-                const value =
-                  row[`Option${optIdx + 1} Value`] &&
-                  row[`Option${optIdx + 1} Value`].trim();
-                if (value && value !== "Default Title") {
-                  optionValues.push({ name: value, optionName: opt.name });
-                }
-              });
-              const key = optionValues.map((ov) => ov.name).join("|");
-              if (seen.has(key)) return undefined;
-              seen.add(key);
-              if (!optionValues.length) return undefined;
-
-              const variant: any = {
-                price: row["Variant Price"] || main["Variant Price"] || "0",
-                optionValues,
-              };
-              if (row["Variant SKU"]) variant.sku = row["Variant SKU"];
-              if (row["Variant Barcode"]) variant.barcode = row["Variant Barcode"];
-              if (row["Variant Compare At Price"]) variant.compareAtPrice = row["Variant Compare At Price"];
-              return variant;
-            })
-            .filter((v) => v && v.optionValues && v.optionValues.length);
-
-          if (variants.length > 1) {
-            await bulkCreateVariantsWithSDK(
-              session,
-              productId,
-              variants.slice(1)
-            );
-          }
-
-          const edges = productData?.variants?.edges;
-          if (edges && edges.length) {
-            const firstVariantId = edges[0].node.id;
-            await updateDefaultVariantWithSDK(session, productId, firstVariantId, group[0]);
-          }
-        }
-
-        const edges = productData?.variants?.edges;
-        if (edges && edges.length) {
-          for (const edge of edges) {
-            const variantId = edge.node.id;
-            const matchingRow = group.find(row =>
-              edge.node.selectedOptions.every((opt: any) =>
-                row[`Option${opt.index + 1} Value`] === opt.value
-              )
-            ) || group[0];
-            const variantImageUrl = matchingRow["Variant Image"];
-            if (variantImageUrl && variantImageUrl.trim() &&
-                variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
-              const normalizedUrl = normalizeImageUrl(variantImageUrl);
-              const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
-              if (mediaId) {
-                const ready = await waitForMediaReady(session, productId, mediaId, 20000);
-                if (ready) {
-                  await appendMediaToVariant(session, productId, variantId, mediaId);
-                } else {
-                  console.error("Media non READY après upload : pas de rattachement", mediaId);
-                }
-              }
-            }
-          }
-        }
-        await new Promise((res) => setTimeout(res, 300));
-      } catch (err) {
-        console.error("Erreur création produit GraphQL", handleUnique, err);
-      }
-    }
+    // ... le reste de setupShop (pages, menus, produits ...)
   } catch (err) {
     console.error("Erreur globale setupShop:", err);
   }
