@@ -35,7 +35,7 @@ async function getPageIdByHandle(session: Session, handle: string): Promise<stri
   const client = new shopify.clients.Graphql({ session });
   const query = `
     query Pages {
-      pages(first: 10) {
+      pages(first: 50) {
         edges {
           node {
             id
@@ -51,12 +51,13 @@ async function getPageIdByHandle(session: Session, handle: string): Promise<stri
   const found = edges.find((e: any) => e.node.handle === handle);
   return found ? found.node.id : null;
 }
+
 // Pour debug : liste toutes les pages existantes (handle, titre, id)
 async function debugListAllPages(session: Session) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     query {
-      pages(first: 30) {
+      pages(first: 50) {
         edges {
           node {
             id
@@ -73,6 +74,44 @@ async function debugListAllPages(session: Session) {
   edges.forEach((e: any) => {
     console.log(e.node.title, e.node.handle, e.node.id);
   });
+}
+
+// Upload image dans Shopify via fileCreate
+async function uploadShopifyFile(session: Session, fileUrl: string, filename: string) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation fileCreate($files: [FileCreateInput!]!) {
+      fileCreate(files: $files) {
+        files {
+          id
+          alt
+          createdAt
+          url
+          __typename
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+  const variables = {
+    files: [
+      {
+        originalSource: fileUrl,
+        contentType: "IMAGE",
+        alt: filename
+      }
+    ]
+  };
+  const response: any = await client.request(query, { variables });
+  if (response?.data?.fileCreate?.userErrors?.length) {
+    console.error("Erreur upload image:", response.data.fileCreate.userErrors);
+  } else {
+    console.log(`[FileCreate] Uploadé :`, response.data.fileCreate.files);
+  }
+  return response?.data?.fileCreate?.files?.[0]?.id ?? null;
 }
 
 // Récupération menu principal : id + titre
@@ -99,7 +138,7 @@ async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, tit
   return null;
 }
 
-// Patch menu principal (title requis, destination=resourceId/url)
+// Mise à jour du menu principal (title requis, destination=resourceId/url)
 // Utilise fallback HTTP si la page Contact n'est pas retrouvée
 async function updateMainMenu(
   session: Session,
@@ -439,20 +478,29 @@ async function createProductWithSDK(session: Session, product: any) {
 
 export async function setupShop({ session }: { session: Session }) {
   try {
-    // 1. Créer la page Livraison
+    // 1. Upload d'images du dossier public AVANT toute création Shopify
+    // Remplace ce domaine par celui où tes fichiers sont accessibles publiquement
+    const publicBaseUrl = "https://ton-domaine.com/public/";
+    const filenames = ["image1.jpg", "image2.jpg", "image3.jpg", "image4.webp"];
+    for (const filename of filenames) {
+      const url = `${publicBaseUrl}${filename}`;
+      await uploadShopifyFile(session, url, filename);
+    }
+
+    // 2. Créer la page Livraison
     const livraisonPageId = await createLivraisonPageWithSDK(session)
       || await getPageIdByHandle(session, "livraison");
 
-    // 2. Récupérer la collection principale ("all")
+    // 3. Récupérer la collection principale ("all")
     const mainCollectionId = await getAllProductsCollectionId(session);
 
-    // 3. Récupérer id & titre du menu principal
+    // 4. Récupérer id & titre du menu principal
     const mainMenuResult = await getMainMenuIdAndTitle(session);
 
-    // 4. Chercher id de la page contact (handle="contact" dans Shopify)
+    // 5. Chercher id de la page contact (handle="contact" dans Shopify)
     const contactPageId = await getPageIdByHandle(session, "contact");
 
-    // 5. Mettre à jour le menu principal (avec resourceId ou url)
+    // 6. Mettre à jour le menu principal (avec resourceId ou url)
     if (mainMenuResult) {
       await updateMainMenu(
         session,
