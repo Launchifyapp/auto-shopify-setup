@@ -66,7 +66,7 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
 
   // 3. POST to S3 staged upload URL
   const { statusCode, body } = await request(target.url, {
-    method: "POST",
+    method: "POST", // CRITIQUE: HTTP POST impératif, pas PUT !
     body: stream,
     headers: encoder.headers
   });
@@ -185,7 +185,6 @@ async function debugListAllPages(session: Session) {
   });
 }
 
-// Récupération menu principal : id + titre
 async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, title: string} | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -209,7 +208,6 @@ async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, tit
   return null;
 }
 
-// Patch menu principal (title requis, destination=resourceId/url)
 async function updateMainMenu(
   session: Session,
   menuId: string,
@@ -288,7 +286,6 @@ async function updateMainMenu(
   }
 }
 
-// Création page Livraison
 async function createLivraisonPageWithSDK(session: Session): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
