@@ -302,16 +302,16 @@ async function uploadImagesToShopifyFiles(session: Session, imageUrls: string[])
   });
 }
 
-// Création de collection intelligente (smart) par tag
-async function createSmartCollection(session: Session, title: string, handle: string, tag: string): Promise<string | null> {
+// Création d'une collection automatisée (smart) par tag
+async function createAutomatedCollection(session: Session, title: string, handle: string, tag: string): Promise<{id: string, title: string} | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    mutation smartCollectionCreate($input: SmartCollectionCreateInput!) {
-      smartCollectionCreate(input: $input) {
-        smartCollection {
+    mutation collectionCreate($input: CollectionInput!) {
+      collectionCreate(input: $input) {
+        collection {
           id
-          handle
           title
+          handle
         }
         userErrors {
           field
@@ -322,26 +322,29 @@ async function createSmartCollection(session: Session, title: string, handle: st
   `;
   const variables = {
     input: {
-      title,
-      handle,
-      rules: [
-        {
-          column: "TAG",
-          relation: "EQUALS",
-          condition: tag,
-        }
-      ]
+      title: title,
+      handle: handle,
+      ruleSet: {
+        appliedDisjunctively: false,
+        rules: [
+          {
+            column: "TAG",
+            relation: "EQUALS",
+            condition: tag
+          }
+        ]
+      }
     }
   };
   const response: any = await client.request(query, { variables });
-  if (response?.data?.smartCollectionCreate?.userErrors?.length) {
-    console.error("Erreur création smartCollection:", title, response.data.smartCollectionCreate.userErrors);
+  if (response?.data?.collectionCreate?.userErrors?.length) {
+    console.error(`Erreur création collection "${title}":`, response.data.collectionCreate.userErrors);
     return null;
   }
-  const collection = response?.data?.smartCollectionCreate?.smartCollection;
+  const collection = response?.data?.collectionCreate?.collection;
   if (collection) {
-    console.log(`Smart Collection '${title}' créée :`, collection.id, collection.handle);
-    return collection.id;
+    console.log(`Collection créée: "${collection.title}" (ID: ${collection.id})`);
+    return { id: collection.id, title: collection.title };
   }
   return null;
 }
@@ -536,9 +539,9 @@ export async function setupShop({ session }: { session: Session }) {
     ];
     await uploadImagesToShopifyFiles(session, imagesUrls);
 
-    // --- Création des deux collections intelligentes par tags ---
-    await createSmartCollection(session, "Beauté & soins", "beaute-soins", "Beauté & soins");
-    await createSmartCollection(session, "Maison & confort", "maison-confort", "Maison & confort");
+    // --- Création des deux collections automatisées ("intelligentes") par TAG ---
+    await createAutomatedCollection(session, "Beauté & soins", "beaute-soins", "Beauté & soins");
+    await createAutomatedCollection(session, "Maison & confort", "maison-confort", "Maison & confort");
 
     // 1. Créer la page Livraison
     const livraisonPageId = await createLivraisonPageWithSDK(session)
