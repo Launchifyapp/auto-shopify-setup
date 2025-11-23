@@ -49,13 +49,12 @@ async function getPageIdByHandle(session: Session, handle: string): Promise<stri
       }
     }
   `;
-  const variables = { query: `handle:${handle}` };
-  const response: any = await client.request(query, variables);
+  // PATCH: Shopify Graphql SDK attend {query, variables}
+  const response: any = await client.request(query, { variables: { query: `handle:${handle}` } });
   const edges = response?.data?.pages?.edges ?? [];
   if (edges.length > 0) return edges[0].node.id;
   return null;
 }
-
 // Récupération menu principal : id + titre
 async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, title: string} | null> {
   const client = new shopify.clients.Graphql({ session });
