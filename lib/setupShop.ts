@@ -2,6 +2,44 @@ import { parse } from "csv-parse/sync";
 import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
 
+// === Ajout fonction d'upload d'image générique via fileCreate ===
+async function uploadShopifyFile(session: Session, fileUrl: string, filename: string) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation fileCreate($files: [FileCreateInput!]!) {
+      fileCreate(files: $files) {
+        files {
+          id
+          alt
+          createdAt
+          url
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+  const variables = {
+    files: [
+      {
+        originalSource: fileUrl,
+        contentType: "IMAGE",
+        alt: filename
+      }
+    ]
+  };
+  const response: any = await client.request(query, { variables });
+  if (response?.data?.fileCreate?.userErrors?.length) {
+    console.error("Erreur upload image:", response.data.fileCreate.userErrors);
+  } else {
+    console.log(`[FileCreate] Uploadé :`, response.data.fileCreate.files);
+  }
+  return response?.data?.fileCreate?.files?.[0]?.id ?? null;
+}
+// === Fin upload image fileCreate ===
+
 // Recherche l'id de la collection principale ("all" ou titre "Produits" ou "All" ou "Tous les produits")
 async function getAllProductsCollectionId(session: Session): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
@@ -35,7 +73,7 @@ async function getPageIdByHandle(session: Session, handle: string): Promise<stri
   const client = new shopify.clients.Graphql({ session });
   const query = `
     query Pages {
-      pages(first: 10) {
+      pages(first: 50) {
         edges {
           node {
             id
@@ -57,7 +95,7 @@ async function debugListAllPages(session: Session) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     query {
-      pages(first: 30) {
+      pages(first: 50) {
         edges {
           node {
             id
@@ -74,44 +112,6 @@ async function debugListAllPages(session: Session) {
   edges.forEach((e: any) => {
     console.log(e.node.title, e.node.handle, e.node.id);
   });
-}
-
-// Upload image dans Shopify via fileCreate
-async function uploadShopifyFile(session: Session, fileUrl: string, filename: string) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation fileCreate($files: [FileCreateInput!]!) {
-      fileCreate(files: $files) {
-        files {
-          id
-          alt
-          createdAt
-          url
-          __typename
-        }
-        userErrors {
-          field
-          message
-        }
-      }
-    }
-  `;
-  const variables = {
-    files: [
-      {
-        originalSource: fileUrl,
-        contentType: "IMAGE",
-        alt: filename
-      }
-    ]
-  };
-  const response: any = await client.request(query, { variables });
-  if (response?.data?.fileCreate?.userErrors?.length) {
-    console.error("Erreur upload image:", response.data.fileCreate.userErrors);
-  } else {
-    console.log(`[FileCreate] Uploadé :`, response.data.fileCreate.files);
-  }
-  return response?.data?.fileCreate?.files?.[0]?.id ?? null;
 }
 
 // Récupération menu principal : id + titre
@@ -192,15 +192,15 @@ async function updateMainMenu(
     },
     contactPageId
       ? {
-          title: "Contact",
-          type: "PAGE",
-          resourceId: contactPageId
-        }
+        title: "Contact",
+        type: "PAGE",
+        resourceId: contactPageId
+      }
       : {
-          title: "Contact",
-          type: "HTTP",
-          url: "/pages/contact"
-        }
+        title: "Contact",
+        type: "HTTP",
+        url: "/pages/contact"
+      }
   ].filter(Boolean);
   const variables = {
     id: menuId,
@@ -210,7 +210,6 @@ async function updateMainMenu(
   const response: any = await client.request(query, { variables });
   if (response?.data?.menuUpdate?.userErrors?.length) {
     console.error("Erreur menuUpdate:", response.data.menuUpdate.userErrors);
-    // Diagnostic auto : liste toutes les pages si erreur sur Contact
     if (
       response.data.menuUpdate.userErrors.some((err: any) => (err.message || "").toLowerCase().includes("page not found"))
     ) {
@@ -478,9 +477,8 @@ async function createProductWithSDK(session: Session, product: any) {
 
 export async function setupShop({ session }: { session: Session }) {
   try {
-    // 0. Uploader les images public avant toute opération
-    // Mets le domaine où tes fichiers sont accessibles !
-    const publicBaseUrl = "https://ton-domaine.com/public/";
+    // 0. UPLOAD IMAGES GENERIQUES AVANT TOUT (fileCreate)
+    const publicBaseUrl = "https://ton-domaine.com/public/"; // <- adapte à ton vrai domaine
     const filenames = ["image1.jpg", "image2.jpg", "image3.jpg", "image4.webp"];
     for (const filename of filenames) {
       const url = `${publicBaseUrl}${filename}`;
@@ -490,17 +488,13 @@ export async function setupShop({ session }: { session: Session }) {
     // 1. Créer la page Livraison
     const livraisonPageId = await createLivraisonPageWithSDK(session)
       || await getPageIdByHandle(session, "livraison");
-
     // 2. Récupérer la collection principale ("all")
     const mainCollectionId = await getAllProductsCollectionId(session);
-
     // 3. Récupérer id & titre du menu principal
     const mainMenuResult = await getMainMenuIdAndTitle(session);
-
-    // 4. Chercher id de la page contact (handle="contact" dans Shopify)
+    // 4. Chercher id de la page contact
     const contactPageId = await getPageIdByHandle(session, "contact");
-
-    // 5. Mettre à jour le menu principal (avec resourceId ou url)
+    // 5. Mettre à jour le menu principal
     if (mainMenuResult) {
       await updateMainMenu(
         session,
@@ -514,7 +508,7 @@ export async function setupShop({ session }: { session: Session }) {
       console.error("Main menu introuvable !");
     }
 
-    // ... Reste du setup produit (inchangé ci-dessous) ...
+    // 6. Setup produits etc (inchangé)
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
