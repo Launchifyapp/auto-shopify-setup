@@ -5,8 +5,10 @@ import fs from "fs";
 import path from "path";
 import { request } from "undici";
 import { FormData } from "formdata-node";
+import { FormDataEncoder } from "form-data-encoder";
+import { Readable } from "stream";
 
-// === Upload image locale via stagedUpload, undici + formdata-node ===
+// === Staged Upload for Shopify files (undici + formdata-node + form-data-encoder) ===
 async function uploadImageStaged(session: Session, localPath: string, filename: string, mimeType: string) {
   // 1. Get staged upload target (S3 pre-signed POST)
   const client = new shopify.clients.Graphql({ session });
@@ -48,16 +50,19 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
     return null;
   }
 
-  // 2. POST file to staged target with undici + formdata-node
+  // 2. POST file to staged target with undici + formdata-node + form-data-encoder
   const form = new FormData();
   for (const param of target.parameters) {
     form.append(param.name, param.value);
   }
   form.append("file", fs.createReadStream(localPath));
+  const encoder = new FormDataEncoder(form);
+  const stream = Readable.from(encoder.encode());
+
   const { statusCode } = await request(target.url, {
     method: "POST",
-    body: form,
-    headers: form.headers
+    body: stream,
+    headers: encoder.headers
   });
   if (statusCode < 200 || statusCode >= 300) {
     throw new Error(`Erreur upload S3 via undici: status ${statusCode}`);
