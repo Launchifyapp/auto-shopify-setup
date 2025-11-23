@@ -20,20 +20,17 @@ async function getAllProductsCollectionId(session: Session): Promise<string | nu
   `;
   const response: any = await client.request(query);
   const edges = response?.data?.collections?.edges ?? [];
-  // On cherche d'abord "all"
   let coll = edges.find((e: any) => e?.node?.handle === "all");
-  // Sinon on cherche "Produits", "All", ou "Tous les produits"
   if (!coll) coll = edges.find((e: any) => {
     const title = e?.node?.title?.toLowerCase();
     return title === "produits" || title === "all" || title === "tous les produits";
   });
-  // Sinon on prend le premier si existant
   if (!coll && edges.length > 0) coll = edges[0];
   if (coll) return coll.node.id;
   return null;
 }
 
-// Recherche l'id d'une page par handle (ex : "livraison")
+// Recherche l'id d'une page par handle
 async function getPageIdByHandle(session: Session, handle: string): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -49,12 +46,36 @@ async function getPageIdByHandle(session: Session, handle: string): Promise<stri
       }
     }
   `;
-  // PATCH: Shopify Graphql SDK attend {query, variables}
   const response: any = await client.request(query, { variables: { query: `handle:${handle}` } });
   const edges = response?.data?.pages?.edges ?? [];
   if (edges.length > 0) return edges[0].node.id;
   return null;
 }
+
+// Pour debug : liste toutes les pages existantes (handle, titre, id)
+async function debugListAllPages(session: Session) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    query {
+      pages(first: 30) {
+        edges {
+          node {
+            id
+            handle
+            title
+          }
+        }
+      }
+    }
+  `;
+  const response: any = await client.request(query);
+  const edges = response?.data?.pages?.edges ?? [];
+  console.log("Pages existantes:");
+  edges.forEach((e: any) => {
+    console.log(e.node.title, e.node.handle, e.node.id);
+  });
+}
+
 // Récupération menu principal : id + titre
 async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, title: string} | null> {
   const client = new shopify.clients.Graphql({ session });
@@ -80,12 +101,14 @@ async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, tit
 }
 
 // Patch menu principal (title requis, destination=resourceId/url)
+// Utilise fallback HTTP si la page Contact n'est pas retrouvée
 async function updateMainMenu(
   session: Session,
   menuId: string,
   menuTitle: string,
   livraisonPageId: string | null,
-  collectionId: string | null
+  collectionId: string | null,
+  contactPageId: string | null
 ) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -103,6 +126,7 @@ async function updateMainMenu(
             title
             url
             resourceId
+            type
           }
         }
         userErrors {
@@ -116,23 +140,29 @@ async function updateMainMenu(
     {
       title: "Accueil",
       type: "FRONTPAGE",
-      url: "/" // url car HOME
+      url: "/"
     },
     collectionId && {
       title: "Nos Produits",
       type: "COLLECTION",
-      resourceId: collectionId // lien interne Shopify
+      resourceId: collectionId
     },
     livraisonPageId && {
       title: "Livraison",
       type: "PAGE",
-      resourceId: livraisonPageId // lien interne Shopify
+      resourceId: livraisonPageId
     },
-    {
-      title: "Contact",
-      type: "PAGE",
-      url: "/pages/contact"
-    },
+    contactPageId
+      ? {
+          title: "Contact",
+          type: "PAGE",
+          resourceId: contactPageId
+        }
+      : {
+          title: "Contact",
+          type: "HTTP",
+          url: "/pages/contact"
+        }
   ].filter(Boolean);
   const variables = {
     id: menuId,
@@ -142,6 +172,12 @@ async function updateMainMenu(
   const response: any = await client.request(query, { variables });
   if (response?.data?.menuUpdate?.userErrors?.length) {
     console.error("Erreur menuUpdate:", response.data.menuUpdate.userErrors);
+    // Diagnostic auto : liste toutes les pages si erreur sur Contact
+    if (
+      response.data.menuUpdate.userErrors.some((err: any) => (err.message || "").toLowerCase().includes("page not found"))
+    ) {
+      await debugListAllPages(session);
+    }
   } else {
     console.log("[Menu principal] Mis à jour :", response.data.menuUpdate.menu);
   }
@@ -162,10 +198,11 @@ async function createLivraisonPageWithSDK(session: Session): Promise<string | nu
       }
     }
   `;
-  const variables = { input: {
-    title: "Livraison",
-    handle: "livraison",
-    body: `Livraison GRATUITE
+  const variables = {
+    input: {
+      title: "Livraison",
+      handle: "livraison",
+      body: `Livraison GRATUITE
 Le traitement des commandes prend de 1 à 3 jours ouvrables avant l'expédition. Une fois l'article expédié, le délai de livraison estimé est le suivant:
 
 France : 4-10 jours ouvrables
@@ -174,9 +211,10 @@ Suisse : 7-12 jours ouvrables
 Canada : 7-12 jours ouvrables
 Reste du monde : 7-14 jours
 `,
-    isPublished: true,
-    templateSuffix: "custom"
-  }};
+      isPublished: true,
+      templateSuffix: "custom"
+    }
+  };
   const response: any = await client.request(query, { variables });
   if (response?.data?.pageCreate?.userErrors?.length) {
     console.error("Erreur création page Livraison:", response.data.pageCreate.userErrors);
@@ -412,14 +450,18 @@ export async function setupShop({ session }: { session: Session }) {
     // 3. Récupérer id & titre du menu principal
     const mainMenuResult = await getMainMenuIdAndTitle(session);
 
-    // 4. Mettre à jour le menu principal (avec resourceId ou url)
+    // 4. Chercher id de la page contact (handle="contact" dans Shopify)
+    const contactPageId = await getPageIdByHandle(session, "contact");
+
+    // 5. Mettre à jour le menu principal (avec resourceId ou url)
     if (mainMenuResult) {
       await updateMainMenu(
         session,
         mainMenuResult.id,
         mainMenuResult.title,
         livraisonPageId,
-        mainCollectionId
+        mainCollectionId,
+        contactPageId
       );
     } else {
       console.error("Main menu introuvable !");
