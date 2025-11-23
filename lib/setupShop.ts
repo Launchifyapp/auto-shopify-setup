@@ -9,12 +9,18 @@ import { FormDataEncoder } from "form-data-encoder";
 import { Readable } from "stream";
 
 // ========== UPLOAD IMAGE LOCAL USING SHOPIFY STAGED UPLOAD PATCHED (undici + formdata-node + form-data-encoder) ==========
-async function uploadImageStaged(session: Session, localPath: string, filename: string, mimeType: string, resource: string,) {
-  // CALCUL FILE SIZE
+async function uploadImageStaged(
+  session: Session,
+  localPath: string,
+  filename: string,
+  mimeType: string,
+  resource: string
+) {
+  // Calcul FILE SIZE
   const stat = fs.statSync(localPath);
   const fileSize = stat.size.toString();
 
-  // 1. Get staged upload target (resource: IMAGE, fileSize required)
+  // Get staged upload target (resource: IMAGE, fileSize required)
   const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
@@ -22,15 +28,9 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
         stagedTargets {
           url
           resourceUrl
-          parameters {
-            name
-            value
-          }
+          parameters { name value }
         }
-        userErrors {
-          field
-          message
-        }
+        userErrors { field message }
       }
     }
   `;
@@ -56,13 +56,7 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
     return null;
   }
 
-  // Log debug
-  console.log("[StagedUpload] URL:", target.url);
-  console.log("[StagedUpload] fileSize:", fileSize);
-  console.log("[StagedUpload] Parameters:", target.parameters);
-  console.log("[StagedUpload] File:", localPath, filename, mimeType);
-
-  // 2. Compose form-data with all parameters first, then file last
+  // Form-data (params d’abord, file en dernier)
   const form = new FormData();
   for (const param of target.parameters) {
     form.append(param.name, param.value);
@@ -71,7 +65,7 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
   const encoder = new FormDataEncoder(form);
   const stream = Readable.from(encoder.encode());
 
-  // 3. POST to S3 staged upload URL
+  // POST to staged upload URL
   const { statusCode, body } = await request(target.url, {
     method: "POST",
     body: stream,
@@ -85,20 +79,12 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
     throw new Error(`Erreur upload S3 via undici: status ${statusCode}`);
   }
 
-  // 4. fileCreate mutation (resource: IMAGE)
+  // fileCreate mutation
   const mutation = `
     mutation fileCreate($files: [FileCreateInput!]!) {
       fileCreate(files: $files) {
-        files {
-          id
-          alt
-          createdAt
-          __typename
-        }
-        userErrors {
-          field
-          message
-        }
+        files { id alt createdAt }
+        userErrors { field message }
       }
     }
   `;
@@ -117,7 +103,6 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
   console.log(`[StagedFile] Uploadé :`, fileResp.data.fileCreate.files);
   return fileResp?.data?.fileCreate?.files?.[0]?.id ?? null;
 }
-// ========== END Staged upload image ==========
 
 // Recherche l'id de la collection principale ("all" ou titre "Produits" ou "All" ou "Tous les produits")
 async function getAllProductsCollectionId(session: Session): Promise<string | null> {
@@ -240,10 +225,7 @@ async function updateMainMenu(
             type
           }
         }
-        userErrors {
-          field
-          message
-        }
+        userErrors { field message }
       }
     }
   `;
