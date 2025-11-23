@@ -30,7 +30,7 @@ async function getAllProductsCollectionId(session: Session): Promise<string | nu
   return null;
 }
 
-// Recherche l'id d'une page par handle
+// Recherche l'id d'une page par handle (filtrage côté client)
 async function getPageIdByHandle(session: Session, handle: string): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -51,6 +51,8 @@ async function getPageIdByHandle(session: Session, handle: string): Promise<stri
   const found = edges.find((e: any) => e.node.handle === handle);
   return found ? found.node.id : null;
 }
+
+// Pour debug : liste toutes les pages existantes (handle, titre, id)
 async function debugListAllPages(session: Session) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -99,6 +101,7 @@ async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, tit
 }
 
 // Patch menu principal (title requis, destination=resourceId/url)
+// Utilise fallback HTTP si la page Contact n'est pas retrouvée
 async function updateMainMenu(
   session: Session,
   menuId: string,
@@ -169,6 +172,7 @@ async function updateMainMenu(
   const response: any = await client.request(query, { variables });
   if (response?.data?.menuUpdate?.userErrors?.length) {
     console.error("Erreur menuUpdate:", response.data.menuUpdate.userErrors);
+    // Diagnostic auto : liste toutes les pages si erreur sur Contact
     if (
       response.data.menuUpdate.userErrors.some((err: any) => (err.message || "").toLowerCase().includes("page not found"))
     ) {
@@ -254,7 +258,7 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
-// Upload images génériques dans Shopify Files
+// Upload image dans les Files de Shopify (pas rattachées à un produit)
 async function uploadImagesToShopifyFiles(session: Session, imageUrls: string[]): Promise<void> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -298,54 +302,7 @@ async function uploadImagesToShopifyFiles(session: Session, imageUrls: string[])
   });
 }
 
-// Création collection automatisée basée sur un tag
-async function createAutomatedCollection(session: Session, title: string, handle: string, tag: string): Promise<{id: string, title: string} | null> {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation collectionCreate($input: CollectionInput!) {
-      collectionCreate(input: $input) {
-        collection {
-          id
-          title
-          handle
-        }
-        userErrors {
-          field
-          message
-        }
-      }
-    }
-  `;
-  const variables = {
-    input: {
-      title: title,
-      handle: handle,
-      ruleSet: {
-        appliedDisjunctively: false,
-        rules: [
-          {
-            column: "TAG",
-            relation: "EQUALS",
-            condition: tag
-          }
-        ]
-      }
-    }
-  };
-  const response: any = await client.request(query, { variables });
-  if (response?.data?.collectionCreate?.userErrors?.length) {
-    console.error(`Erreur création collection "${title}":`, response.data.collectionCreate.userErrors);
-    return null;
-  }
-  const collection = response?.data?.collectionCreate?.collection;
-  if (collection) {
-    console.log(`Collection créée: "${collection.title}" (ID: ${collection.id})`);
-    return { id: collection.id, title: collection.title };
-  }
-  return null;
-}
-
-// Récupère l'ID de publication Online Store (sales channel)
+// Récupérer l'ID de la publication Online Store (sales channel)
 async function getOnlineStorePublicationId(session: Session): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -423,163 +380,7 @@ async function createProductMedia(session: Session, productId: string, imageUrl:
   return response?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
-async function getProductMediaStatus(session: Session, productId: string, mediaId: string) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    query getProductMedia($id: ID!) {
-      product(id: $id) {
-        media(first: 20) {
-          edges {
-            node {
-              ... on MediaImage {
-                id
-                status
-                image { url }
-              }
-            }
-          }
-        }
-      }
-    }
-  `;
-  const response: any = await client.request(query, { variables: { id: productId } });
-  const edges = response?.data?.product?.media?.edges ?? [];
-  const node = edges.find((e: any) => e?.node?.id === mediaId)?.node;
-  return node ? node.status : undefined;
-}
-
-async function waitForMediaReady(session: Session, productId: string, mediaId: string, timeoutMs = 15000) {
-  const start = Date.now();
-  while (true) {
-    const status = await getProductMediaStatus(session, productId, mediaId);
-    if (status === "READY") return true;
-    if (Date.now() - start > timeoutMs) return false;
-    await new Promise(res => setTimeout(res, 1500));
-  }
-}
-
-async function appendMediaToVariant(session: Session, productId: string, variantId: string, mediaId: string) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation productVariantAppendMedia($productId: ID!, $variantMedia: [ProductVariantAppendMediaInput!]!) {
-      productVariantAppendMedia(productId: $productId, variantMedia: $variantMedia) {
-        product { id }
-        productVariants {
-          id
-          media(first: 10) {
-            edges {
-              node {
-                mediaContentType
-                preview {
-                  image {
-                    url
-                  }
-                }
-              }
-            }
-          }
-        }
-        userErrors { code field message }
-      }
-    }
-  `;
-  const variables = {
-    productId,
-    variantMedia: [
-      {
-        variantId,
-        mediaIds: [mediaId]
-      }
-    ],
-  };
-  const response: any = await client.request(query, { variables });
-  if (response?.data?.productVariantAppendMedia?.userErrors?.length) {
-    console.error("Erreur rattachement media à variante :", response.data.productVariantAppendMedia.userErrors);
-  }
-  return response?.data?.productVariantAppendMedia?.productVariants;
-}
-
-async function updateDefaultVariantWithSDK(
-  session: Session,
-  productId: string,
-  variantId: string,
-  main: any
-) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants { id price compareAtPrice sku barcode }
-        userErrors { field message }
-      }
-    }
-  `;
-  const variant: any = {
-    id: variantId,
-    price: main["Variant Price"] ?? "0",
-    ...(main["Variant Compare At Price"] ? { compareAtPrice: main["Variant Compare At Price"] } : {}),
-    ...(main["Variant SKU"] ? { sku: main["Variant SKU"] } : {}),
-    ...(main["Variant Barcode"] ? { barcode: main["Variant Barcode"] } : {}),
-  };
-  const variables = {
-    productId,
-    variants: [variant],
-  };
-  const response: any = await client.request(query, { variables });
-  const data = response?.data?.productVariantsBulkUpdate;
-  if (data?.userErrors?.length) {
-    console.error("Erreur maj variante (bulkUpdate):", data.userErrors);
-  } else {
-    console.log("Variante maj (bulkUpdate):", data.productVariants?.[0]);
-  }
-  return data?.productVariants?.[0]?.id;
-}
-
-async function bulkCreateVariantsWithSDK(
-  session: Session,
-  productId: string,
-  variants: any[]
-) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkCreate(productId: $productId, variants: $variants) {
-        productVariants { id price sku barcode compareAtPrice }
-        userErrors { field message }
-      }
-    }
-  `;
-  const variables = {
-    productId,
-    variants,
-  };
-  const response: any = await client.request(query, { variables });
-  const data = response;
-  return data?.data?.productVariantsBulkCreate;
-}
-
-async function createProductWithSDK(session: Session, product: any) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation productCreate($input: ProductCreateInput!) {
-      productCreate(product: $input) {
-        product {
-          id
-          handle
-          variants(first: 50) {
-            edges { node { id sku title selectedOptions { name value } price compareAtPrice barcode }
-            }
-          }
-        }
-        userErrors { field message }
-      }
-    }
-  `;
-  const variables = { input: product };
-  const response: any = await client.request(query, { variables });
-  const data = response;
-  return data?.data?.productCreate;
-}
+// ... (waitForMediaReady, appendMediaToVariant, updateDefaultVariantWithSDK, bulkCreateVariantsWithSDK, createProductWithSDK inchangés) ...
 
 export async function setupShop({ session }: { session: Session }) {
   try {
@@ -592,11 +393,7 @@ export async function setupShop({ session }: { session: Session }) {
     ];
     await uploadImagesToShopifyFiles(session, imagesUrls);
 
-    // --- Création des deux collections automatisées par TAG ---
-    await createAutomatedCollection(session, "Beauté & soins", "beaute-soins", "Beauté & soins");
-    await createAutomatedCollection(session, "Maison & confort", "maison-confort", "Maison & confort");
-
-    // --- Publication des produits sur le canal Online Store ---
+    // Publication des produits sur le canal Online Store
     const onlineStorePublicationId = await getOnlineStorePublicationId(session);
 
     // 1. Créer la page Livraison
