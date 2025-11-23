@@ -28,14 +28,14 @@ async function getMainMenuId(session: Session): Promise<string | null> {
   return null;
 }
 
-// Fonction: update du menu principal (main menu)
+// Fonction: update du menu principal (main menu) – CORRECT : input, type MenuUpdateInput
 async function updateMainMenu(session: Session, menuId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    mutation UpdateMenu($id: ID!, $menu: MenuInput!) {
+    mutation UpdateMenu($id: ID!, $input: MenuUpdateInput!) {
       menuUpdate(
         id: $id,
-        menu: $menu
+        input: $input
       ) {
         menu {
           id
@@ -55,7 +55,7 @@ async function updateMainMenu(session: Session, menuId: string) {
   // Structure du menu à personnaliser
   const variables = {
     id: menuId,
-    menu: {
+    input: {
       items: [
         {
           title: "Accueil",
