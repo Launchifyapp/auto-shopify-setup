@@ -2,92 +2,6 @@ import { parse } from "csv-parse/sync";
 import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
 
-// Création de fichiers images dans l'admin Shopify Files (non reliés à un produit)
-async function uploadImagesToShopifyFiles(session: Session, imageUrls: string[]): Promise<any[]> {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation fileCreate($files: [FileCreateInput!]!) {
-      fileCreate(files: $files) {
-        files {
-          ... on GenericFile {
-            id
-            url
-            alt
-            createdAt
-          }
-          ... on MediaImage {
-            id
-            image {
-              url
-              altText
-            }
-          }
-        }
-        userErrors { field message }
-      }
-    }
-  `;
-  const files = imageUrls.map(url => ({
-    alt: "",
-    originalSource: url,
-    contentType: "IMAGE",
-  }));
-  const variables = { files };
-  const response: any = await client.request(query, { variables });
-  if (response?.data?.fileCreate?.userErrors?.length) {
-    console.error("Erreur upload Files:", response.data.fileCreate.userErrors);
-  }
-  return response?.data?.fileCreate?.files ?? [];
-}
-
-// Création d'une collection automatisée par tag
-async function createAutomatedCollection(session: Session, title: string, handle: string, tag: string): Promise<string | null> {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation collectionCreate($input: CollectionCreateInput!) {
-      collectionCreate(input: $input) {
-        collection {
-          id
-          handle
-          title
-        }
-        userErrors {
-          field
-          message
-        }
-      }
-    }
-  `;
-  // Automate par tag (condition de collection)
-  const variables = {
-    input: {
-      title,
-      handle,
-      ruleSet: {
-        appliedDisjunctively: true, // OR si plusieurs règles
-        rules: [
-          {
-            column: "TAG",
-            relation: "EQUALS",
-            condition: tag
-          }
-        ]
-      }
-    }
-  };
-  const response: any = await client.request(query, { variables });
-  if (response?.data?.collectionCreate?.userErrors?.length) {
-    console.error("Erreur création collection:", title, response.data.collectionCreate.userErrors);
-    return null;
-  }
-  const collection = response?.data?.collectionCreate?.collection;
-  if (collection) {
-    console.log(`Collection '${title}' créée :`, collection.id, collection.handle);
-    return collection.id;
-  }
-  return null;
-}
-
 // Recherche l'id de la collection principale ("all" ou titre "Produits" ou "All" ou "Tous les produits")
 async function getAllProductsCollectionId(session: Session): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
@@ -137,7 +51,6 @@ async function getPageIdByHandle(session: Session, handle: string): Promise<stri
   const found = edges.find((e: any) => e.node.handle === handle);
   return found ? found.node.id : null;
 }
-
 // Pour debug : liste toutes les pages existantes (handle, titre, id)
 async function debugListAllPages(session: Session) {
   const client = new shopify.clients.Graphql({ session });
@@ -344,7 +257,50 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
-// Upload image comme média du produit
+// Upload image dans les Files de Shopify (pas rattachées à un produit)
+async function uploadImagesToShopifyFiles(session: Session, imageUrls: string[]): Promise<void> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation fileCreate($files: [FileCreateInput!]!) {
+      fileCreate(files: $files) {
+        files {
+          ... on GenericFile {
+            id
+            url
+            alt
+            createdAt
+          }
+          ... on MediaImage {
+            id
+            image {
+              url
+              altText
+            }
+          }
+        }
+        userErrors { field message }
+      }
+    }
+  `;
+  const files = imageUrls.map(url => ({
+    alt: "",
+    originalSource: url,
+    contentType: "IMAGE"
+  }));
+  const variables = { files };
+  const response: any = await client.request(query, { variables });
+  if (response?.data?.fileCreate?.userErrors?.length) {
+    console.error("Erreur upload Files:", response.data.fileCreate.userErrors);
+  }
+  (response?.data?.fileCreate?.files || []).forEach(file => {
+    if(file.image?.url){
+      console.log("Image Shopify File:", file.id, file.image.url);
+    } else if(file.url) {
+      console.log("Fichier Shopify File:", file.id, file.url);
+    }
+  });
+}
+
 async function createProductMedia(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -526,41 +482,14 @@ async function createProductWithSDK(session: Session, product: any) {
 
 export async function setupShop({ session }: { session: Session }) {
   try {
-    // --- UPLOAD DES 4 IMAGES GÉNÉRIQUES DANS FILES SHOPIFY ---
+    // --- UPLOAD DES 4 IMAGES GÉNÉRIQUES AU DÉBUT DANS SHOPIFY FILES ---
     const imagesUrls = [
       "https://auto-shopify-setup.vercel.app/image1.jpg",
       "https://auto-shopify-setup.vercel.app/image2.jpg",
       "https://auto-shopify-setup.vercel.app/image3.jpg",
       "https://auto-shopify-setup.vercel.app/image4.webp"
     ];
-
-    try {
-      const uploadedFiles = await uploadImagesToShopifyFiles(session, imagesUrls);
-      for (const file of uploadedFiles) {
-        if (file.image?.url) {
-          console.log("Image Shopify File:", file.id, file.image.url);
-        } else if (file.url) {
-          console.log("Fichier Shopify File:", file.id, file.url);
-        }
-      }
-      console.log("Images génériques uploadées dans Shopify Files.");
-    } catch (err) {
-      console.error("Erreur lors de l'upload initial des images génériques dans Files:", err);
-    }
-
-    // --- Création de deux collections automatisées par tags ---
-    const beautéSoinsId = await createAutomatedCollection(
-      session,
-      "Beauté & soins",
-      "beaute-soins",
-      "Beauté & soins"
-    );
-    const maisonConfortId = await createAutomatedCollection(
-      session,
-      "Maison & confort",
-      "maison-confort",
-      "Maison & confort"
-    );
+    await uploadImagesToShopifyFiles(session, imagesUrls);
 
     // 1. Créer la page Livraison
     const livraisonPageId = await createLivraisonPageWithSDK(session)
@@ -589,7 +518,7 @@ export async function setupShop({ session }: { session: Session }) {
       console.error("Main menu introuvable !");
     }
 
-    // ... Reste du setup produit (inchangé ci-dessous) ...
+    // ... Reste du setup produit inchangé ci-dessous ...
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
