@@ -3,10 +3,10 @@ import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
 import fs from "fs";
 import path from "path";
-import axios from "axios";
-import FormData from "form-data";
+import { request } from "undici";
+import { FormData } from "formdata-node";
 
-// === Ajout fonction d'upload d'image locale via stagedUpload ===
+// === Upload image locale via stagedUpload, undici + formdata-node ===
 async function uploadImageStaged(session: Session, localPath: string, filename: string, mimeType: string) {
   // 1. Get staged upload target (S3 pre-signed POST)
   const client = new shopify.clients.Graphql({ session });
@@ -47,18 +47,23 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
     console.error("No staged target for upload.");
     return null;
   }
-  // 2. POST file to staged URL (AWS S3-style multipart/form-data)
+
+  // 2. POST file to staged target with undici + formdata-node
   const form = new FormData();
   for (const param of target.parameters) {
     form.append(param.name, param.value);
   }
   form.append("file", fs.createReadStream(localPath));
-
-  await axios.post(target.url, form, {
-    headers: { ...form.getHeaders() }
+  const { statusCode } = await request(target.url, {
+    method: "POST",
+    body: form,
+    headers: form.headers
   });
+  if (statusCode < 200 || statusCode >= 300) {
+    throw new Error(`Erreur upload S3 via undici: status ${statusCode}`);
+  }
 
-  // 3. Create file entry via fileCreate
+  // 3. fileCreate mutation
   const mutation = `
     mutation fileCreate($files: [FileCreateInput!]!) {
       fileCreate(files: $files) {
@@ -249,8 +254,6 @@ async function updateMainMenu(
       : {
         title: "Contact",
         type: "HTTP",
-        // url field not supported on menu items for internal links
-        // so fallback is to HTTP type; click will lead to /pages/contact
         url: "/pages/contact"
       }
   ].filter(Boolean);
@@ -347,7 +350,7 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
-// Upload image comme média du produit
+// Upload image comme média du produit (par URL publique)
 async function createProductMedia(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
