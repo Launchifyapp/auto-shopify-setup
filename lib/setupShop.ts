@@ -76,7 +76,7 @@ async function debugListAllPages(session: Session) {
   });
 }
 
-// Récupération menu principal : id + titre
+// Récupération du menu principal : id + titre
 async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, title: string} | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -302,7 +302,7 @@ async function uploadImagesToShopifyFiles(session: Session, imageUrls: string[])
   });
 }
 
-// Création d'une collection automatisée (smart) par tag
+// Création d'une collection automatisée (smart) par tag avec CollectionInput
 async function createAutomatedCollection(session: Session, title: string, handle: string, tag: string): Promise<{id: string, title: string} | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -347,6 +347,63 @@ async function createAutomatedCollection(session: Session, title: string, handle
     return { id: collection.id, title: collection.title };
   }
   return null;
+}
+
+// Récupérer l'ID de la publication Online Store (sales channel)
+async function getOnlineStorePublicationId(session: Session): Promise<string | null> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    query GetPublications {
+      publications(first: 10) {
+        edges {
+          node {
+            id
+            name
+          }
+        }
+      }
+    }
+  `;
+  const response: any = await client.request(query);
+  const edges = response?.data?.publications?.edges ?? [];
+  const onlineStore = edges.find(
+    (e: any) =>
+      e?.node?.name?.toLowerCase().includes("online store") ||
+      e?.node?.name?.toLowerCase().includes("boutique en ligne")
+  );
+  return onlineStore?.node?.id || null;
+}
+
+// Publier un produit sur le canal Online Store
+async function publishProductToOnlineStore(session: Session, productId: string, publicationId: string) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation PublishProductToOnlineStore($id: ID!, $input: PublishablePublishInput!) {
+      publishablePublish(id: $id, input: $input) {
+        publishable {
+          ... on Product {
+            id
+            title
+            publishedOnPublication(publicationId: $input.publicationId)
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+  const variables = {
+    id: productId,
+    input: { publicationId }
+  };
+  const response: any = await client.request(query, { variables });
+  if (response?.data?.publishablePublish?.userErrors?.length) {
+    console.error("Erreur publishablePublish:", response.data.publishablePublish.userErrors);
+  } else {
+    console.log("Produit publié sur Online Store:", productId);
+  }
 }
 
 async function createProductMedia(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
@@ -539,9 +596,12 @@ export async function setupShop({ session }: { session: Session }) {
     ];
     await uploadImagesToShopifyFiles(session, imagesUrls);
 
-    // --- Création des deux collections automatisées ("intelligentes") par TAG ---
+    // --- Création des deux collections automatisées par TAG ---
     await createAutomatedCollection(session, "Beauté & soins", "beaute-soins", "Beauté & soins");
     await createAutomatedCollection(session, "Maison & confort", "maison-confort", "Maison & confort");
+
+    // --- Publication des produits sur le canal Online Store ---
+    const onlineStorePublicationId = await getOnlineStorePublicationId(session);
 
     // 1. Créer la page Livraison
     const livraisonPageId = await createLivraisonPageWithSDK(session)
@@ -614,7 +674,6 @@ export async function setupShop({ session }: { session: Session }) {
         tags: main.Tags?.split(",").map((t: string) => t.trim()),
         productOptions: productOptionsOrUndefined,
         metafields: productMetafields.length > 0 ? productMetafields : undefined,
-        published: true
       };
 
       try {
@@ -629,6 +688,11 @@ export async function setupShop({ session }: { session: Session }) {
           continue;
         }
         console.log("Product créé avec id:", productId);
+
+        // Publication sur Online Store
+        if (onlineStorePublicationId) {
+          await publishProductToOnlineStore(session, productId, onlineStorePublicationId);
+        }
 
         // Upload images produit (hors variantes)
         const allImagesToAttach = [
