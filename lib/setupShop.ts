@@ -224,39 +224,6 @@ Reste du monde : 7-14 jours
   return pageId;
 }
 
-function normalizeImageUrl(url: string): string {
-  return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
-}
-
-function extractCheckboxMetafields(row: any): any[] {
-  const metafields: any[] = [];
-  if (row["Checkbox 1 (product.metafields.custom.checkbox_1)"] !== undefined) {
-    metafields.push({
-      namespace: "custom",
-      key: "checkbox_1",
-      type: "single_line_text_field",
-      value: row["Checkbox 1 (product.metafields.custom.checkbox_1)"].toString()
-    });
-  }
-  if (row["Checkbox 2 (product.metafields.custom.checkbox_2)"] !== undefined) {
-    metafields.push({
-      namespace: "custom",
-      key: "checkbox_2",
-      type: "single_line_text_field",
-      value: row["Checkbox 2 (product.metafields.custom.checkbox_2)"].toString()
-    });
-  }
-  if (row["Checkbox 3 (product.metafields.custom.checkbox_3)"] !== undefined) {
-    metafields.push({
-      namespace: "custom",
-      key: "checkbox_3",
-      type: "single_line_text_field",
-      value: row["Checkbox 3 (product.metafields.custom.checkbox_3)"].toString()
-    });
-  }
-  return metafields;
-}
-
 // PATCH : upload image distante (public URL) pour Shopify (PAS de staged upload)
 async function uploadShopifyWebImage(session: Session, fileUrl: string, filename: string) {
   const client = new shopify.clients.Graphql({ session });
@@ -305,7 +272,6 @@ export async function setupShop({ session }: { session: Session }) {
 
     // Ensuite le reste de setupShop : pages, menus, produits, variantes
     // ... inchangé ...
-
   } catch (err) {
     console.error("Erreur globale setupShop:", err);
   }
