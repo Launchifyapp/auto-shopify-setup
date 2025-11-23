@@ -614,6 +614,7 @@ export async function setupShop({ session }: { session: Session }) {
         tags: main.Tags?.split(",").map((t: string) => t.trim()),
         productOptions: productOptionsOrUndefined,
         metafields: productMetafields.length > 0 ? productMetafields : undefined,
+        published: true
       };
 
       try {
