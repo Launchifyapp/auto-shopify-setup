@@ -51,6 +51,7 @@ async function getPageIdByHandle(session: Session, handle: string): Promise<stri
   const found = edges.find((e: any) => e.node.handle === handle);
   return found ? found.node.id : null;
 }
+
 // Pour debug : liste toutes les pages existantes (handle, titre, id)
 async function debugListAllPages(session: Session) {
   const client = new shopify.clients.Graphql({ session });
@@ -301,6 +302,50 @@ async function uploadImagesToShopifyFiles(session: Session, imageUrls: string[])
   });
 }
 
+// Création de collection intelligente (smart) par tag
+async function createSmartCollection(session: Session, title: string, handle: string, tag: string): Promise<string | null> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation smartCollectionCreate($input: SmartCollectionCreateInput!) {
+      smartCollectionCreate(input: $input) {
+        smartCollection {
+          id
+          handle
+          title
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+  const variables = {
+    input: {
+      title,
+      handle,
+      rules: [
+        {
+          column: "TAG",
+          relation: "EQUALS",
+          condition: tag,
+        }
+      ]
+    }
+  };
+  const response: any = await client.request(query, { variables });
+  if (response?.data?.smartCollectionCreate?.userErrors?.length) {
+    console.error("Erreur création smartCollection:", title, response.data.smartCollectionCreate.userErrors);
+    return null;
+  }
+  const collection = response?.data?.smartCollectionCreate?.smartCollection;
+  if (collection) {
+    console.log(`Smart Collection '${title}' créée :`, collection.id, collection.handle);
+    return collection.id;
+  }
+  return null;
+}
+
 async function createProductMedia(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -490,6 +535,10 @@ export async function setupShop({ session }: { session: Session }) {
       "https://auto-shopify-setup.vercel.app/image4.webp"
     ];
     await uploadImagesToShopifyFiles(session, imagesUrls);
+
+    // --- Création des deux collections intelligentes par tags ---
+    await createSmartCollection(session, "Beauté & soins", "beaute-soins", "Beauté & soins");
+    await createSmartCollection(session, "Maison & confort", "maison-confort", "Maison & confort");
 
     // 1. Créer la page Livraison
     const livraisonPageId = await createLivraisonPageWithSDK(session)
