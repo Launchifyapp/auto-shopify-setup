@@ -40,7 +40,8 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
         filename,
         mimeType,
         resource,
-        fileSize
+        fileSize,
+        httpMethod: "POST"
       }
     ]
   };
