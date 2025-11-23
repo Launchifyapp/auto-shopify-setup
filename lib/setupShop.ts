@@ -30,12 +30,12 @@ async function getAllProductsCollectionId(session: Session): Promise<string | nu
   return null;
 }
 
-// Recherche l'id d'une page par handle
+// Recherche l'id d'une page par handle (filtrage côté client)
 async function getPageIdByHandle(session: Session, handle: string): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    query Pages($query: String!) {
-      pages(first: 10, query: $query) {
+    query Pages {
+      pages(first: 10) {
         edges {
           node {
             id
@@ -46,12 +46,11 @@ async function getPageIdByHandle(session: Session, handle: string): Promise<stri
       }
     }
   `;
-  const response: any = await client.request(query, { variables: { query: `handle:${handle}` } });
+  const response: any = await client.request(query);
   const edges = response?.data?.pages?.edges ?? [];
-  if (edges.length > 0) return edges[0].node.id;
-  return null;
+  const found = edges.find((e: any) => e.node.handle === handle);
+  return found ? found.node.id : null;
 }
-
 // Pour debug : liste toutes les pages existantes (handle, titre, id)
 async function debugListAllPages(session: Session) {
   const client = new shopify.clients.Graphql({ session });
