@@ -115,7 +115,7 @@ async function updateMainMenu(
   const items = [
     {
       title: "Accueil",
-      type: "HOME",
+      type: "FRONTPAGE",
       url: "/" // url car HOME
     },
     collectionId && {
