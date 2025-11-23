@@ -2,9 +2,7 @@ import { parse } from "csv-parse/sync";
 import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
 
-// --- AJOUT Shopify Menu Principal ---
-
-// Fonction: récupère l'ID du menu principal
+// Fonction: récupère l'ID du menu principal par handle "main-menu"
 async function getMainMenuId(session: Session): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -13,9 +11,8 @@ async function getMainMenuId(session: Session): Promise<string | null> {
         edges {
           node {
             id
-            location
-            handle
             title
+            handle
           }
         }
       }
@@ -23,10 +20,10 @@ async function getMainMenuId(session: Session): Promise<string | null> {
   `;
   const response: any = await client.request(query);
   const edges = response?.data?.menus?.edges ?? [];
-  // Recherche menu avec location MAIN_MENU
-  const mainMenu = edges.find((e: any) => e.node.location === "MAIN_MENU");
+  // Recherche menu avec handle 'main-menu'
+  const mainMenu = edges.find((e: any) => e.node.handle === "main-menu");
   if (mainMenu) return mainMenu.node.id;
-  // Si aucun n'a location, prend le premier
+  // Si aucun handle 'main-menu', prend le premier
   if (edges.length) return edges[0].node.id;
   return null;
 }
@@ -55,7 +52,7 @@ async function updateMainMenu(session: Session, menuId: string) {
       }
     }
   `;
-  // Ex. : personnalise ici ta structure du menu
+  // Structure du menu à personnaliser
   const variables = {
     id: menuId,
     menu: {
@@ -80,7 +77,7 @@ async function updateMainMenu(session: Session, menuId: string) {
           type: "PAGE",
           destination: "/pages/contact"
         }
-        // ajoute d'autres liens si besoin
+        // Ajoute d'autres liens si besoin
       ]
     }
   };
@@ -91,8 +88,6 @@ async function updateMainMenu(session: Session, menuId: string) {
     console.log("[Menu principal] Mis à jour :", response.data.menuUpdate.menu);
   }
 }
-
-// --- Fin AJOUT Shopify Menu Principal ---
 
 // Fonction pour créer la page Livraison via Shopify API
 async function createLivraisonPageWithSDK(session: Session) {
@@ -256,7 +251,7 @@ async function appendMediaToVariant(session: Session, productId: string, variant
     variantMedia: [
       {
         variantId,
-        mediaIds: [mediaId] // PATCH: tableau obligatoire
+        mediaIds: [mediaId]
       }
     ],
   };
@@ -354,17 +349,16 @@ async function createProductWithSDK(session: Session, product: any) {
 
 export async function setupShop({ session }: { session: Session }) {
   try {
-    // --- Création de la page Livraison AVANT modification du menu ---
+    // 1. Créer la page Livraison
     await createLivraisonPageWithSDK(session);
 
-    // ------- AJOUT: Mise à jour du menu principal --------
+    // 2. Mettre à jour le menu principal
     const mainMenuId = await getMainMenuId(session);
     if (mainMenuId) {
       await updateMainMenu(session, mainMenuId);
     } else {
       console.error("Main menu introuvable !");
     }
-    // ------- FIN AJOUT MENU --------
 
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
@@ -501,7 +495,7 @@ export async function setupShop({ session }: { session: Session }) {
               if (mediaId) {
                 const ready = await waitForMediaReady(session, productId, mediaId, 20000);
                 if (ready) {
-                  await appendMediaToVariant(session, productId, variantId, mediaId); // mediaIds (array)
+                  await appendMediaToVariant(session, productId, variantId, mediaId);
                 } else {
                   console.error("Media non READY après upload : pas de rattachement", mediaId);
                 }
