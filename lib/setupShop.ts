@@ -2,7 +2,61 @@ import { parse } from "csv-parse/sync";
 import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
 
-// Fonction: récupère l'ID et le titre du menu principal par handle "main-menu"
+// Recherche l'id de la collection principale ("all" ou titre "Produits" ou "All" ou "Tous les produits")
+async function getAllProductsCollectionId(session: Session): Promise<string | null> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    query Collections {
+      collections(first: 10) {
+        edges {
+          node {
+            id
+            handle
+            title
+          }
+        }
+      }
+    }
+  `;
+  const response: any = await client.request(query);
+  const edges = response?.data?.collections?.edges ?? [];
+  // On cherche d'abord "all"
+  let coll = edges.find((e: any) => e?.node?.handle === "all");
+  // Sinon on cherche "Produits", "All", ou "Tous les produits"
+  if (!coll) coll = edges.find((e: any) => {
+    const title = e?.node?.title?.toLowerCase();
+    return title === "produits" || title === "all" || title === "tous les produits";
+  });
+  // Sinon on prend le premier si existant
+  if (!coll && edges.length > 0) coll = edges[0];
+  if (coll) return coll.node.id;
+  return null;
+}
+
+// Recherche l'id d'une page par handle (ex : "livraison")
+async function getPageIdByHandle(session: Session, handle: string): Promise<string | null> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    query Pages($query: String!) {
+      pages(first: 10, query: $query) {
+        edges {
+          node {
+            id
+            handle
+            title
+          }
+        }
+      }
+    }
+  `;
+  const variables = { query: `handle:${handle}` };
+  const response: any = await client.request(query, variables);
+  const edges = response?.data?.pages?.edges ?? [];
+  if (edges.length > 0) return edges[0].node.id;
+  return null;
+}
+
+// Récupération menu principal : id + titre
 async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, title: string} | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -20,16 +74,20 @@ async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, tit
   `;
   const response: any = await client.request(query);
   const edges = response?.data?.menus?.edges ?? [];
-  // Recherche menu avec handle 'main-menu'
   const mainMenu = edges.find((e: any) => e.node.handle === "main-menu");
   if (mainMenu) return {id: mainMenu.node.id, title: mainMenu.node.title};
-  // Si aucun handle 'main-menu', prend le premier
   if (edges.length) return {id: edges[0].node.id, title: edges[0].node.title};
   return null;
 }
 
-// Fonction: update du menu principal (main menu) – title requis !
-async function updateMainMenu(session: Session, menuId: string, menuTitle: string) {
+// Patch menu principal (title requis, destination=resourceId/url)
+async function updateMainMenu(
+  session: Session,
+  menuId: string,
+  menuTitle: string,
+  livraisonPageId: string | null,
+  collectionId: string | null
+) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation UpdateMenu($id: ID!, $title: String!, $items: [MenuItemUpdateInput!]!) {
@@ -42,8 +100,10 @@ async function updateMainMenu(session: Session, menuId: string, menuTitle: strin
           id
           title
           items {
+            id
             title
-            destination
+            url
+            resourceId
           }
         }
         userErrors {
@@ -57,28 +117,27 @@ async function updateMainMenu(session: Session, menuId: string, menuTitle: strin
     {
       title: "Accueil",
       type: "HOME",
-      destination: "/"
+      url: "/" // url car HOME
     },
-    {
+    collectionId && {
       title: "Nos Produits",
       type: "COLLECTION",
-      destination: "/collections/all"
+      resourceId: collectionId // lien interne Shopify
     },
-    {
+    livraisonPageId && {
       title: "Livraison",
       type: "PAGE",
-      destination: "/pages/livraison"
+      resourceId: livraisonPageId // lien interne Shopify
     },
     {
       title: "Contact",
       type: "PAGE",
-      destination: "/pages/contact"
-    }
-    // Ajoute d'autres liens si besoin
-  ];
+      url: "/pages/contact"
+    },
+  ].filter(Boolean);
   const variables = {
     id: menuId,
-    title: menuTitle, // requis par Shopify !
+    title: menuTitle,
     items
   };
   const response: any = await client.request(query, { variables });
@@ -89,8 +148,8 @@ async function updateMainMenu(session: Session, menuId: string, menuTitle: strin
   }
 }
 
-// Fonction pour créer la page Livraison via Shopify API
-async function createLivraisonPageWithSDK(session: Session) {
+// Création page Livraison
+async function createLivraisonPageWithSDK(session: Session): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation CreatePage($input: PageCreateInput!) {
@@ -120,12 +179,13 @@ Reste du monde : 7-14 jours
     templateSuffix: "custom"
   }};
   const response: any = await client.request(query, { variables });
-  const data = response;
-  if (data?.data?.pageCreate?.userErrors?.length) {
-    console.error("Erreur création page Livraison:", data.data.pageCreate.userErrors);
-  } else {
-    console.log("Page Livraison créée :", data.data.pageCreate.page);
+  if (response?.data?.pageCreate?.userErrors?.length) {
+    console.error("Erreur création page Livraison:", response.data.pageCreate.userErrors);
+    return null;
   }
+  const pageId = response?.data?.pageCreate?.page?.id ?? null;
+  if (pageId) console.log("Page Livraison créée :", response.data.pageCreate.page);
+  return pageId;
 }
 
 function normalizeImageUrl(url: string): string {
@@ -183,7 +243,6 @@ async function createProductMedia(session: Session, productId: string, imageUrl:
   return response?.data?.productCreateMedia?.media?.[0]?.id;
 }
 
-// PATCH: get media status from product.media via productId
 async function getProductMediaStatus(session: Session, productId: string, mediaId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -209,7 +268,6 @@ async function getProductMediaStatus(session: Session, productId: string, mediaI
   return node ? node.status : undefined;
 }
 
-// Poll: attente que le media soit READY en utilisant getProductMediaStatus
 async function waitForMediaReady(session: Session, productId: string, mediaId: string, timeoutMs = 15000) {
   const start = Date.now();
   while (true) {
@@ -220,7 +278,6 @@ async function waitForMediaReady(session: Session, productId: string, mediaId: s
   }
 }
 
-// Rattache le média uploadé à la variante via productVariantAppendMedia (mediaIds en tableau)
 async function appendMediaToVariant(session: Session, productId: string, variantId: string, mediaId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -262,7 +319,6 @@ async function appendMediaToVariant(session: Session, productId: string, variant
   return response?.data?.productVariantAppendMedia?.productVariants;
 }
 
-// Met à jour la variante d'un produit via productVariantsBulkUpdate
 async function updateDefaultVariantWithSDK(
   session: Session,
   productId: string,
@@ -299,7 +355,6 @@ async function updateDefaultVariantWithSDK(
   return data?.productVariants?.[0]?.id;
 }
 
-// Création bulk des variantes via Shopify API (pour produits avec options)
 async function bulkCreateVariantsWithSDK(
   session: Session,
   productId: string,
@@ -323,7 +378,6 @@ async function bulkCreateVariantsWithSDK(
   return data?.data?.productVariantsBulkCreate;
 }
 
-// Crée un produit avec une mutation GraphQL via Shopify API
 async function createProductWithSDK(session: Session, product: any) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -350,16 +404,29 @@ async function createProductWithSDK(session: Session, product: any) {
 export async function setupShop({ session }: { session: Session }) {
   try {
     // 1. Créer la page Livraison
-    await createLivraisonPageWithSDK(session);
+    const livraisonPageId = await createLivraisonPageWithSDK(session)
+      || await getPageIdByHandle(session, "livraison");
 
-    // 2. Mettre à jour le menu principal
+    // 2. Récupérer la collection principale ("all")
+    const mainCollectionId = await getAllProductsCollectionId(session);
+
+    // 3. Récupérer id & titre du menu principal
     const mainMenuResult = await getMainMenuIdAndTitle(session);
+
+    // 4. Mettre à jour le menu principal (avec resourceId ou url)
     if (mainMenuResult) {
-      await updateMainMenu(session, mainMenuResult.id, mainMenuResult.title);
+      await updateMainMenu(
+        session,
+        mainMenuResult.id,
+        mainMenuResult.title,
+        livraisonPageId,
+        mainCollectionId
+      );
     } else {
       console.error("Main menu introuvable !");
     }
 
+    // ... Reste du setup produit (inchangé ci-dessous) ...
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
@@ -459,7 +526,6 @@ export async function setupShop({ session }: { session: Session }) {
             })
             .filter((v) => v && v.optionValues && v.optionValues.length);
 
-          // Création des variantes en bulk
           if (variants.length > 1) {
             await bulkCreateVariantsWithSDK(
               session,
@@ -468,7 +534,6 @@ export async function setupShop({ session }: { session: Session }) {
             );
           }
 
-          // Update de la première variante Shopify
           const edges = productData?.variants?.edges;
           if (edges && edges.length) {
             const firstVariantId = edges[0].node.id;
@@ -476,12 +541,10 @@ export async function setupShop({ session }: { session: Session }) {
           }
         }
 
-        // Boucle : upload media + rattachement pour chaque variante existante (productVariantAppendMedia mediaIds tableau)
         const edges = productData?.variants?.edges;
         if (edges && edges.length) {
           for (const edge of edges) {
             const variantId = edge.node.id;
-            // Recherche la row du CSV correspondant à cette variante via les options
             const matchingRow = group.find(row =>
               edge.node.selectedOptions.every((opt: any) =>
                 row[`Option${opt.index + 1} Value`] === opt.value
