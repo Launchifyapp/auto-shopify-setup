@@ -9,7 +9,7 @@ import { FormDataEncoder } from "form-data-encoder";
 import { Readable } from "stream";
 
 // ========== UPLOAD IMAGE LOCAL USING SHOPIFY STAGED UPLOAD PATCHED (undici + formdata-node + form-data-encoder) ==========
-async function uploadImageStaged(session: Session, localPath: string, filename: string, mimeType: string, resource: "IMAGE") {
+async function uploadImageStaged(session: Session, localPath: string, filename: string, mimeType: string, resource: string,) {
   // CALCUL FILE SIZE
   const stat = fs.statSync(localPath);
   const fileSize = stat.size.toString();
