@@ -8,9 +8,9 @@ import { FormData } from "formdata-node";
 import { FormDataEncoder } from "form-data-encoder";
 import { Readable } from "stream";
 
-// === Staged Upload for Shopify files (undici + formdata-node + form-data-encoder) ===
+// ========== UPLOAD IMAGE LOCAL USING SHOPIFY STAGED UPLOAD (undici + formdata-node + form-data-encoder) ==========
 async function uploadImageStaged(session: Session, localPath: string, filename: string, mimeType: string) {
-  // 1. Get staged upload target (S3 pre-signed POST)
+  // 1. Get staged upload target
   const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
@@ -44,13 +44,18 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
     console.error("Erreur stagedUploadsCreate:", response.data.stagedUploadsCreate.userErrors);
     return null;
   }
-  const target = response?.data?.stagedUploadsCreate?.stagedTargets[0];
+  const target = response?.data?.stagedUploadsCreate?.stagedTargets?.[0];
   if (!target) {
     console.error("No staged target for upload.");
     return null;
   }
 
-  // 2. POST file to staged target with undici + formdata-node + form-data-encoder
+  // Log debug
+  console.log("[StagedUpload] URL:", target.url);
+  console.log("[StagedUpload] Parameters:", target.parameters);
+  console.log("[StagedUpload] File:", localPath, filename, mimeType);
+
+  // 2. Compose form-data with all parameters first, then file last
   const form = new FormData();
   for (const param of target.parameters) {
     form.append(param.name, param.value);
@@ -59,16 +64,21 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
   const encoder = new FormDataEncoder(form);
   const stream = Readable.from(encoder.encode());
 
-  const { statusCode } = await request(target.url, {
+  // 3. POST to S3 staged upload URL
+  const { statusCode, body } = await request(target.url, {
     method: "POST",
     body: stream,
     headers: encoder.headers
   });
   if (statusCode < 200 || statusCode >= 300) {
+    const buf = [];
+    for await (const chunk of body) buf.push(chunk);
+    const errorPayload = Buffer.concat(buf).toString();
+    console.error("Erreur S3 response:", errorPayload);
     throw new Error(`Erreur upload S3 via undici: status ${statusCode}`);
   }
 
-  // 3. fileCreate mutation
+  // 4. fileCreate mutation
   const mutation = `
     mutation fileCreate($files: [FileCreateInput!]!) {
       fileCreate(files: $files) {
@@ -100,7 +110,7 @@ async function uploadImageStaged(session: Session, localPath: string, filename: 
   console.log(`[StagedFile] Uploadé :`, fileResp.data.fileCreate.files);
   return fileResp?.data?.fileCreate?.files?.[0]?.id ?? null;
 }
-// === Fin upload image staged ===
+// ========== END Staged upload ==========
 
 // Recherche l'id de la collection principale ("all" ou titre "Produits" ou "All" ou "Tous les produits")
 async function getAllProductsCollectionId(session: Session): Promise<string | null> {
@@ -130,7 +140,6 @@ async function getAllProductsCollectionId(session: Session): Promise<string | nu
   return null;
 }
 
-// Recherche l'id d'une page par handle (filtrage côté client)
 async function getPageIdByHandle(session: Session, handle: string): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -152,7 +161,7 @@ async function getPageIdByHandle(session: Session, handle: string): Promise<stri
   return found ? found.node.id : null;
 }
 
-// Pour debug : liste toutes les pages existantes (handle, titre, id)
+// Debug : liste toutes les pages existantes (handle, titre, id)
 async function debugListAllPages(session: Session) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -201,7 +210,6 @@ async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, tit
 }
 
 // Patch menu principal (title requis, destination=resourceId/url)
-// Utilise fallback HTTP si la page Contact n'est pas retrouvée
 async function updateMainMenu(
   session: Session,
   menuId: string,
