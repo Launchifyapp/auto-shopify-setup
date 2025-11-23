@@ -12,6 +12,7 @@ async function uploadShopifyFile(session: Session, fileUrl: string, filename: st
           id
           alt
           createdAt
+          __typename
         }
         userErrors {
           field
