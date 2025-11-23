@@ -437,6 +437,58 @@ async function createProductWithSDK(session: Session, product: any) {
   return data?.data?.productCreate;
 }
 
+// Création d'une collection automatisée basée sur un tag
+async function createAutomatedCollection(
+  session: Session,
+  title: string,
+  handle: string,
+  tag: string
+): Promise<{ id: string; title: string } | null> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation collectionCreate($input: CollectionInput!) {
+      collectionCreate(input: $input) {
+        collection {
+          id
+          title
+          handle
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+  const variables = {
+    input: {
+      title: title,
+      handle: handle,
+      ruleSet: {
+        appliedDisjunctively: false,
+        rules: [
+          {
+            column: "TAG",
+            relation: "EQUALS",
+            condition: tag
+          }
+        ]
+      }
+    }
+  };
+  const response: any = await client.request(query, { variables });
+  if (response?.data?.collectionCreate?.userErrors?.length) {
+    console.error(`Erreur création collection "${title}":`, response.data.collectionCreate.userErrors);
+    return null;
+  }
+  const collection = response?.data?.collectionCreate?.collection;
+  if (collection) {
+    console.log(`Collection créée: "${collection.title}" (ID: ${collection.id})`);
+    return { id: collection.id, title: collection.title };
+  }
+  return null;
+}
+
 export async function setupShop({ session }: { session: Session }) {
   try {
     // --- UPLOAD DES 4 IMAGES GÉNÉRIQUES AU DÉBUT DU SCRIPT ---
@@ -470,6 +522,10 @@ export async function setupShop({ session }: { session: Session }) {
     } catch (err) {
       console.error("Erreur lors de l'upload initial des images génériques", err);
     }
+
+    // Création des collections automatisées
+    await createAutomatedCollection(session, "Beauté & soins", "beaute-soins", "Beauté & soins");
+    await createAutomatedCollection(session, "Maison & confort", "maison-confort", "Maison & confort");
 
     // 1. Créer la page Livraison
     const livraisonPageId = await createLivraisonPageWithSDK(session)
