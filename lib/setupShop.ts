@@ -30,7 +30,7 @@ async function getAllProductsCollectionId(session: Session): Promise<string | nu
   return null;
 }
 
-// Recherche l'id d'une page par handle (filtrage côté client)
+// Recherche l'id d'une page par handle
 async function getPageIdByHandle(session: Session, handle: string): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -51,8 +51,6 @@ async function getPageIdByHandle(session: Session, handle: string): Promise<stri
   const found = edges.find((e: any) => e.node.handle === handle);
   return found ? found.node.id : null;
 }
-
-// Pour debug : liste toutes les pages existantes (handle, titre, id)
 async function debugListAllPages(session: Session) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -76,7 +74,7 @@ async function debugListAllPages(session: Session) {
   });
 }
 
-// Récupération du menu principal : id + titre
+// Récupération menu principal : id + titre
 async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, title: string} | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -101,7 +99,6 @@ async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, tit
 }
 
 // Patch menu principal (title requis, destination=resourceId/url)
-// Utilise fallback HTTP si la page Contact n'est pas retrouvée
 async function updateMainMenu(
   session: Session,
   menuId: string,
@@ -172,7 +169,6 @@ async function updateMainMenu(
   const response: any = await client.request(query, { variables });
   if (response?.data?.menuUpdate?.userErrors?.length) {
     console.error("Erreur menuUpdate:", response.data.menuUpdate.userErrors);
-    // Diagnostic auto : liste toutes les pages si erreur sur Contact
     if (
       response.data.menuUpdate.userErrors.some((err: any) => (err.message || "").toLowerCase().includes("page not found"))
     ) {
@@ -258,7 +254,7 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
-// Upload image dans les Files de Shopify (pas rattachées à un produit)
+// Upload images génériques dans Shopify Files
 async function uploadImagesToShopifyFiles(session: Session, imageUrls: string[]): Promise<void> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -302,7 +298,7 @@ async function uploadImagesToShopifyFiles(session: Session, imageUrls: string[])
   });
 }
 
-// Création d'une collection automatisée (smart) par tag avec CollectionInput
+// Création collection automatisée basée sur un tag
 async function createAutomatedCollection(session: Session, title: string, handle: string, tag: string): Promise<{id: string, title: string} | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -349,7 +345,7 @@ async function createAutomatedCollection(session: Session, title: string, handle
   return null;
 }
 
-// Récupérer l'ID de la publication Online Store (sales channel)
+// Récupère l'ID de publication Online Store (sales channel)
 async function getOnlineStorePublicationId(session: Session): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -378,7 +374,7 @@ async function getOnlineStorePublicationId(session: Session): Promise<string | n
 async function publishProductToOnlineStore(session: Session, productId: string, publicationId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    mutation PublishProductToOnlineStore($id: ID!, $input: PublishablePublishInput!) {
+    mutation publishablePublish($id: ID!, $input: PublishablePublishInput!) {
       publishablePublish(id: $id, input: $input) {
         publishable {
           ... on Product {
