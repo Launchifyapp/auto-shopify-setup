@@ -35,7 +35,7 @@ async function getPageIdByHandle(session: Session, handle: string): Promise<stri
   const client = new shopify.clients.Graphql({ session });
   const query = `
     query Pages {
-      pages(first: 50) {
+      pages(first: 10) {
         edges {
           node {
             id
@@ -57,7 +57,7 @@ async function debugListAllPages(session: Session) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     query {
-      pages(first: 50) {
+      pages(first: 30) {
         edges {
           node {
             id
@@ -138,7 +138,7 @@ async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, tit
   return null;
 }
 
-// Mise à jour du menu principal (title requis, destination=resourceId/url)
+// Patch menu principal (title requis, destination=resourceId/url)
 // Utilise fallback HTTP si la page Contact n'est pas retrouvée
 async function updateMainMenu(
   session: Session,
@@ -478,8 +478,8 @@ async function createProductWithSDK(session: Session, product: any) {
 
 export async function setupShop({ session }: { session: Session }) {
   try {
-    // 1. Upload d'images du dossier public AVANT toute création Shopify
-    // Remplace ce domaine par celui où tes fichiers sont accessibles publiquement
+    // 0. Uploader les images public avant toute opération
+    // Mets le domaine où tes fichiers sont accessibles !
     const publicBaseUrl = "https://ton-domaine.com/public/";
     const filenames = ["image1.jpg", "image2.jpg", "image3.jpg", "image4.webp"];
     for (const filename of filenames) {
@@ -487,20 +487,20 @@ export async function setupShop({ session }: { session: Session }) {
       await uploadShopifyFile(session, url, filename);
     }
 
-    // 2. Créer la page Livraison
+    // 1. Créer la page Livraison
     const livraisonPageId = await createLivraisonPageWithSDK(session)
       || await getPageIdByHandle(session, "livraison");
 
-    // 3. Récupérer la collection principale ("all")
+    // 2. Récupérer la collection principale ("all")
     const mainCollectionId = await getAllProductsCollectionId(session);
 
-    // 4. Récupérer id & titre du menu principal
+    // 3. Récupérer id & titre du menu principal
     const mainMenuResult = await getMainMenuIdAndTitle(session);
 
-    // 5. Chercher id de la page contact (handle="contact" dans Shopify)
+    // 4. Chercher id de la page contact (handle="contact" dans Shopify)
     const contactPageId = await getPageIdByHandle(session, "contact");
 
-    // 6. Mettre à jour le menu principal (avec resourceId ou url)
+    // 5. Mettre à jour le menu principal (avec resourceId ou url)
     if (mainMenuResult) {
       await updateMainMenu(
         session,
