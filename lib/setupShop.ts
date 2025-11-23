@@ -2,6 +2,8 @@ import { parse } from "csv-parse/sync";
 import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
 
+// ---------------------- UTILS ----------------------
+
 // Recherche l'id de la collection principale ("all" ou titre "Produits" ou "All" ou "Tous les produits")
 async function getAllProductsCollectionId(session: Session): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
@@ -30,7 +32,7 @@ async function getAllProductsCollectionId(session: Session): Promise<string | nu
   return null;
 }
 
-// Recherche l'id d'une page par handle (filtrage côté client)
+// Recherche l'id d'une page par handle
 async function getPageIdByHandle(session: Session, handle: string): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -52,7 +54,6 @@ async function getPageIdByHandle(session: Session, handle: string): Promise<stri
   return found ? found.node.id : null;
 }
 
-// Pour debug : liste toutes les pages existantes (handle, titre, id)
 async function debugListAllPages(session: Session) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -76,7 +77,7 @@ async function debugListAllPages(session: Session) {
   });
 }
 
-// Récupération menu principal : id + titre
+// Récupération menu principal
 async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, title: string} | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -101,7 +102,6 @@ async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, tit
 }
 
 // Patch menu principal (title requis, destination=resourceId/url)
-// Utilise fallback HTTP si la page Contact n'est pas retrouvée
 async function updateMainMenu(
   session: Session,
   menuId: string,
@@ -172,7 +172,6 @@ async function updateMainMenu(
   const response: any = await client.request(query, { variables });
   if (response?.data?.menuUpdate?.userErrors?.length) {
     console.error("Erreur menuUpdate:", response.data.menuUpdate.userErrors);
-    // Diagnostic auto : liste toutes les pages si erreur sur Contact
     if (
       response.data.menuUpdate.userErrors.some((err: any) => (err.message || "").toLowerCase().includes("page not found"))
     ) {
@@ -258,7 +257,7 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
-// Upload image dans les Files de Shopify (pas rattachées à un produit)
+// Upload images génériques dans Shopify Files
 async function uploadImagesToShopifyFiles(session: Session, imageUrls: string[]): Promise<void> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -302,7 +301,7 @@ async function uploadImagesToShopifyFiles(session: Session, imageUrls: string[])
   });
 }
 
-// Récupérer l'ID de la publication Online Store (sales channel)
+// Récupérer publicationId du Online Store
 async function getOnlineStorePublicationId(session: Session): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -318,8 +317,7 @@ async function getOnlineStorePublicationId(session: Session): Promise<string | n
     }
   `;
   const response: any = await client.request(query);
-  const edges = response?.data?.publications?.edges ?? [];
-  const onlineStore = edges.find(
+  const onlineStore = (response?.data?.publications?.edges ?? []).find(
     (e: any) =>
       e?.node?.name?.toLowerCase().includes("online store") ||
       e?.node?.name?.toLowerCase().includes("boutique en ligne")
@@ -327,7 +325,7 @@ async function getOnlineStorePublicationId(session: Session): Promise<string | n
   return onlineStore?.node?.id || null;
 }
 
-// Publier un produit sur le canal Online Store
+// Publie un produit sur Online Store
 async function publishProductToOnlineStore(session: Session, productId: string, publicationId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -359,32 +357,90 @@ async function publishProductToOnlineStore(session: Session, productId: string, 
   }
 }
 
-async function createProductMedia(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
+// Création collection automatisée
+async function createAutomatedCollection(session: Session, title: string, handle: string, tag: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-      productCreateMedia(productId: $productId, media: $media) {
-        media {
-          ... on MediaImage { id image { url } status }
+    mutation collectionCreate($input: CollectionInput!) {
+      collectionCreate(input: $input) {
+        collection {
+          id
+          title
+          handle
         }
-        mediaUserErrors { field message }
+        userErrors {
+          field
+          message
+        }
       }
     }
   `;
-  const variables = { productId, media: [{
-    originalSource: imageUrl,
-    mediaContentType: "IMAGE",
-    alt: altText
-  }]};
+  const variables = {
+    input: {
+      title: title,
+      handle: handle,
+      ruleSet: {
+        appliedDisjunctively: false,
+        rules: [
+          {
+            column: "TAG",
+            relation: "EQUALS",
+            condition: tag
+          }
+        ]
+      }
+    }
+  };
   const response: any = await client.request(query, { variables });
-  return response?.data?.productCreateMedia?.media?.[0]?.id;
+  if (response?.data?.collectionCreate?.userErrors?.length) {
+    console.error(`Erreur création collection "${title}":`, response.data.collectionCreate.userErrors);
+    return null;
+  }
+  const collection = response?.data?.collectionCreate?.collection;
+  if (collection) {
+    console.log(`Collection créée: "${collection.title}" (ID: ${collection.id})`);
+    return { id: collection.id, title: collection.title };
+  }
+  return null;
 }
 
-// ... (waitForMediaReady, appendMediaToVariant, updateDefaultVariantWithSDK, bulkCreateVariantsWithSDK, createProductWithSDK inchangés) ...
+// Création produit via SDK
+async function createProductWithSDK(session: Session, product: any) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation productCreate($input: ProductCreateInput!) {
+      productCreate(product: $input) {
+        product {
+          id
+          handle
+          variants(first: 50) {
+            edges {
+              node {
+                id
+                sku
+                title
+                selectedOptions { name value }
+                price
+                compareAtPrice
+                barcode
+              }
+            }
+          }
+        }
+        userErrors { field message }
+      }
+    }
+  `;
+  const variables = { input: product };
+  const response: any = await client.request(query, { variables });
+  return response?.data?.productCreate;
+}
+
+// ---------------------- LOGIC ----------------------
 
 export async function setupShop({ session }: { session: Session }) {
   try {
-    // --- UPLOAD DES 4 IMAGES GÉNÉRIQUES AU DÉBUT DANS SHOPIFY FILES ---
+    // Upload images génériques dans Files
     const imagesUrls = [
       "https://auto-shopify-setup.vercel.app/image1.jpg",
       "https://auto-shopify-setup.vercel.app/image2.jpg",
@@ -393,23 +449,23 @@ export async function setupShop({ session }: { session: Session }) {
     ];
     await uploadImagesToShopifyFiles(session, imagesUrls);
 
-    // Publication des produits sur le canal Online Store
+    // Création des deux collections automatisées par TAG
+    await createAutomatedCollection(session, "Beauté & soins", "beaute-soins", "Beauté & soins");
+    await createAutomatedCollection(session, "Maison & confort", "maison-confort", "Maison & confort");
+
+    // Publication des produits sur Online Store (on récupère l'id du canal)
     const onlineStorePublicationId = await getOnlineStorePublicationId(session);
 
-    // 1. Créer la page Livraison
+    // Pages, menu...
     const livraisonPageId = await createLivraisonPageWithSDK(session)
       || await getPageIdByHandle(session, "livraison");
 
-    // 2. Récupérer la collection principale ("all")
     const mainCollectionId = await getAllProductsCollectionId(session);
 
-    // 3. Récupérer id & titre du menu principal
     const mainMenuResult = await getMainMenuIdAndTitle(session);
 
-    // 4. Chercher id de la page contact (handle="contact" dans Shopify)
     const contactPageId = await getPageIdByHandle(session, "contact");
 
-    // 5. Mettre à jour le menu principal (avec resourceId ou url)
     if (mainMenuResult) {
       await updateMainMenu(
         session,
@@ -423,7 +479,7 @@ export async function setupShop({ session }: { session: Session }) {
       console.error("Main menu introuvable !");
     }
 
-    // ... Reste du setup produit inchangé ci-dessous ...
+    // Gestion des produits depuis CSV
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
