@@ -349,101 +349,54 @@ async function createAutomatedCollection(session: Session, title: string, handle
   return null;
 }
 
-async function createProductMedia(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-      productCreateMedia(productId: $productId, media: $media) {
-        media {
-          ... on MediaImage { id image { url } status }
-        }
-        mediaUserErrors { field message }
-      }
-    }
-  `;
-  const variables = { productId, media: [{
-    originalSource: imageUrl,
-    mediaContentType: "IMAGE",
-    alt: altText
-  }]};
-  const response: any = await client.request(query, { variables });
-  return response?.data?.productCreateMedia?.media?.[0]?.id;
-}
-
-async function getProductMediaStatus(session: Session, productId: string, mediaId: string) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    query getProductMedia($id: ID!) {
-      product(id: $id) {
-        media(first: 20) {
-          edges {
-            node {
-              ... on MediaImage {
-                id
-                status
-                image { url }
-              }
-            }
+// Création des images sur un produit
+async function createProductMedia(session: Session, productId: string, media: any[]): Promise<any[]> {
+    const client = new shopify.clients.Graphql({ session });
+    const query = `
+      mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+        productCreateMedia(productId: $productId, media: $media) {
+          media {
+            ... on MediaImage { id status alt mediaContentType preview { image { url } } }
           }
+          mediaUserErrors { field message }
         }
       }
+    `;
+    const variables = { productId, media };
+    try {
+        const response: any = await client.request(query, { variables });
+        if (response?.data?.productCreateMedia?.mediaUserErrors?.length > 0) {
+            console.error("Erreurs lors de la création de media:", response.data.productCreateMedia.mediaUserErrors);
+        }
+        return response?.data?.productCreateMedia?.media ?? [];
+    } catch (e) {
+        console.error("Exception GQL createProductMedia", e);
+        return [];
     }
-  `;
-  const response: any = await client.request(query, { variables: { id: productId } });
-  const edges = response?.data?.product?.media?.edges ?? [];
-  const node = edges.find((e: any) => e?.node?.id === mediaId)?.node;
-  return node ? node.status : undefined;
 }
 
-async function waitForMediaReady(session: Session, productId: string, mediaId: string, timeoutMs = 15000) {
-  const start = Date.now();
-  while (true) {
-    const status = await getProductMediaStatus(session, productId, mediaId);
-    if (status === "READY") return true;
-    if (Date.now() - start > timeoutMs) return false;
-    await new Promise(res => setTimeout(res, 1500));
-  }
-}
-
-async function appendMediaToVariant(session: Session, productId: string, variantId: string, mediaId: string) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation productVariantAppendMedia($productId: ID!, $variantMedia: [ProductVariantAppendMediaInput!]!) {
-      productVariantAppendMedia(productId: $productId, variantMedia: $variantMedia) {
-        product { id }
-        productVariants {
-          id
-          media(first: 10) {
-            edges {
-              node {
-                mediaContentType
-                preview {
-                  image {
-                    url
-                  }
-                }
-              }
-            }
+// Associe des images à leurs variantes respectives
+async function appendMediaToVariants(session: Session, productId: string, variantMedia: any[]) {
+    if (variantMedia.length === 0) return;
+    const client = new shopify.clients.Graphql({ session });
+    const query = `
+      mutation productVariantAppendMedia($productId: ID!, $variantMedia: [ProductVariantAppendMediaInput!]!) {
+        productVariantAppendMedia(productId: $productId, variantMedia: $variantMedia) {
+          productVariants {
+            id
+            media(first: 5) { edges { node { ... on MediaImage { id } } } }
           }
+          userErrors { code field message }
         }
-        userErrors { code field message }
       }
+    `;
+    const variables = { productId, variantMedia };
+    const response: any = await client.request(query, { variables });
+    if (response?.data?.productVariantAppendMedia?.userErrors?.length > 0) {
+      console.error("Erreur lors de l'association media-variante :", response.data.productVariantAppendMedia.userErrors);
+    } else {
+      console.log(`Association media-variante réussie pour le produit ${productId}`);
     }
-  `;
-  const variables = {
-    productId,
-    variantMedia: [
-      {
-        variantId,
-        mediaIds: [mediaId]
-      }
-    ],
-  };
-  const response: any = await client.request(query, { variables });
-  if (response?.data?.productVariantAppendMedia?.userErrors?.length) {
-    console.error("Erreur rattachement media à variante :", response.data.productVariantAppendMedia.userErrors);
-  }
-  return response?.data?.productVariantAppendMedia?.productVariants;
 }
 
 async function updateDefaultVariantWithSDK(
@@ -699,22 +652,11 @@ export async function setupShop({ session }: { session: Session }) {
         console.log("Product créé avec id:", productId);
         idsToPublish.push(productId); // Stocker l'ID du produit pour la publication
 
-        // Upload images produit (hors variantes)
-        const allImagesToAttach = [
-          ...new Set([
-            ...group.map((row) => row["Image Src"]).filter(Boolean),
-          ]),
-        ];
-        for (const imgUrl of allImagesToAttach) {
-          const normalizedUrl = normalizeImageUrl(imgUrl);
-          await createProductMedia(session, productId, normalizedUrl, "");
-        }
-
         // Produit avec variantes (options)
         if (productOptionsOrUndefined && productOptionsOrUndefined.length > 0) {
           const seen = new Set<string>();
-          const variants = group
-            .map((row, idx) => {
+          const variantsToCreate = group
+            .map((row) => {
               const optionValues: { name: string; optionName: string }[] = [];
               productOptions.forEach((opt, optIdx) => {
                 const value =
@@ -738,48 +680,65 @@ export async function setupShop({ session }: { session: Session }) {
               if (row["Variant Compare At Price"]) variant.compareAtPrice = row["Variant Compare At Price"];
               return variant;
             })
-            .filter((v) => v && v.optionValues && v.optionValues.length);
+            .filter((v): v is any => v && v.optionValues && v.optionValues.length > 0);
 
-          if (variants.length > 1) {
-            await bulkCreateVariantsWithSDK(
-              session,
-              productId,
-              variants.slice(1)
-            );
+          if (variantsToCreate.length > 1) {
+            await bulkCreateVariantsWithSDK(session, productId, variantsToCreate.slice(1));
           }
 
-          const edges = productData?.variants?.edges;
-          if (edges && edges.length) {
-            const firstVariantId = edges[0].node.id;
+          const firstVariantId = productData?.variants?.edges?.[0]?.node?.id;
+          if (firstVariantId) {
             await updateDefaultVariantWithSDK(session, productId, firstVariantId, group[0]);
           }
         }
 
-        const edges = productData?.variants?.edges;
-        if (edges && edges.length) {
-          for (const edge of edges) {
-            const variantId = edge.node.id;
-            const matchingRow = group.find(row =>
-              edge.node.selectedOptions.every((opt: any) =>
-                row[`Option${opt.index + 1} Value`] === opt.value
-              )
-            ) || group[0];
+        // --- GESTION DES IMAGES ET DE LEUR ASSOCIATION (LOGIQUE CORRIGÉE) ---
+        
+        // 1. Collecter toutes les images uniques (générales et de variantes)
+        const allImageUrls = [...new Set(
+            group.flatMap(row => [row["Image Src"], row["Variant Image"]]).filter(Boolean)
+        )];
+
+        const mediaToCreate = allImageUrls.map(url => ({
+            originalSource: normalizeImageUrl(url as string),
+            mediaContentType: "IMAGE",
+            alt: main.Title,
+        }));
+        
+        // 2. Créer tous les media en une fois
+        const createdMedia = await createProductMedia(session, productId, mediaToCreate);
+        await new Promise(res => setTimeout(res, 3000)); // Attendre que les media soient prêts
+
+        // 3. Préparer l'association variantes -> media
+        const urlToMediaIdMap = new Map(createdMedia.map(m => [m.preview.image.url.split('?')[0], m.id]));
+        const allVariants = productData?.variants?.edges?.map((e: any) => e.node) ?? [];
+        
+        const variantMediaPayload: any[] = [];
+        
+        for (const variant of allVariants) {
+            const matchingRow = group.find(row => 
+                variant.selectedOptions.every((opt: any) => {
+                    const optionIndex = productOptions.findIndex(po => po.name === opt.name);
+                    return optionIndex !== -1 && row[`Option${optionIndex + 1} Value`] === opt.value;
+                })
+            ) || group.find(row => row['Option1 Value'] === 'Default Title') || group[0];
+            
             const variantImageUrl = matchingRow["Variant Image"];
-            if (variantImageUrl && variantImageUrl.trim() &&
-                variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
-              const normalizedUrl = normalizeImageUrl(variantImageUrl);
-              const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
-              if (mediaId) {
-                const ready = await waitForMediaReady(session, productId, mediaId, 20000);
-                if (ready) {
-                  await appendMediaToVariant(session, productId, variantId, mediaId);
-                } else {
-                  console.error("Media non READY après upload : pas de rattachement", mediaId);
+            if (variantImageUrl) {
+                const normalizedUrl = normalizeImageUrl(variantImageUrl).split('?')[0];
+                const mediaId = urlToMediaIdMap.get(normalizedUrl);
+                if (mediaId) {
+                    variantMediaPayload.push({
+                        variantId: variant.id,
+                        mediaIds: [mediaId]
+                    });
                 }
-              }
             }
-          }
         }
+        
+        // 4. Associer toutes les variantes à leurs images en une seule mutation
+        await appendMediaToVariants(session, productId, variantMediaPayload);
+
         await new Promise((res) => setTimeout(res, 300));
       } catch (err) {
         console.error("Erreur création produit GraphQL", handleUnique, err);
