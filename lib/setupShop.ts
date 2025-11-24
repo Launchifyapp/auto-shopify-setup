@@ -560,6 +560,7 @@ export async function setupShop({ session }: { session: Session }) {
         }
       }
       
+      // Crée le produit avec les options mais sans les variantes spécifiques pour l'instant
       const productForCreation: any = {
         title: main.Title,
         descriptionHtml: main["Body (HTML)"] || "",
@@ -569,6 +570,7 @@ export async function setupShop({ session }: { session: Session }) {
         tags: main.Tags?.split(",").map((t: string) => t.trim()),
         metafields: extractCheckboxMetafields(main).length > 0 ? extractCheckboxMetafields(main) : undefined,
         options: productOptions.length > 0 ? productOptions.map(opt => opt.name) : undefined,
+        // On ne met pas les variantes ici, Shopify va les créer pour nous à partir des options
       };
 
       try {
@@ -584,8 +586,8 @@ export async function setupShop({ session }: { session: Session }) {
 
         // --- GESTION DES IMAGES ET VARIANTES (LOGIQUE SIMPLIFIÉE ET FIABILISÉE) ---
 
-        // 1. Uploader toutes les images uniques du produit et récupérer leurs IDs
-        const allImageUrls = [...new Set(group.flatMap(row => [row["Image Src"], row["Variant Image"]]).filter(Boolean) as string[])];
+        // 1. Uploader toutes les images uniques du produit (de la colonne "Image Src")
+        const allImageUrls = [...new Set(group.map(row => row["Image Src"]).filter(Boolean) as string[])];
         const imagesToCreate = allImageUrls.map(url => ({ src: normalizeImageUrl(url), altText: main.Title }));
         
         console.log(`Tentative de création de ${imagesToCreate.length} images pour le produit ${productId}`);
@@ -600,12 +602,13 @@ export async function setupShop({ session }: { session: Session }) {
         const variantsToUpdate = [];
 
         for (const variant of allVariantsFromProduct) {
+            // Trouver la ligne CSV correspondante pour cette variante
             const matchingRow = group.find(row => 
                 variant.selectedOptions.every((opt: any) => {
                     const optionIndex = productOptions.findIndex(po => po.name === opt.name);
                     return optionIndex !== -1 && row[`Option${optionIndex + 1} Value`] === opt.value;
                 })
-            ) || group[0];
+            ) || group[0]; // Fallback sur la première ligne si aucune correspondance
 
             const variantUpdatePayload: any = { id: variant.id };
 
@@ -615,16 +618,16 @@ export async function setupShop({ session }: { session: Session }) {
             if (matchingRow["Variant SKU"]) variantUpdatePayload.sku = matchingRow["Variant SKU"];
             if (matchingRow["Variant Barcode"]) variantUpdatePayload.barcode = matchingRow["Variant Barcode"];
 
-            // Associer l'image
+            // Associer l'image de la variante
             const variantImageUrl = matchingRow["Variant Image"];
             if (variantImageUrl) {
                 const normalizedUrl = normalizeImageUrl(variantImageUrl).split('?')[0];
                 const imageId = urlToImageIdMap.get(normalizedUrl);
                 if (imageId) {
                     variantUpdatePayload.imageId = imageId;
-                    console.log(`Association de la variante ${variant.id} à l'image ${imageId}`);
+                    console.log(`Association de la variante ${variant.id} (${variant.title}) à l'image ${imageId}`);
                 } else {
-                     console.warn(`Aucun ID d'image trouvé pour l'URL: ${normalizedUrl}`);
+                     console.warn(`Aucun ID d'image trouvé pour l'URL de variante: ${normalizedUrl}`);
                 }
             }
             variantsToUpdate.push(variantUpdatePayload);
