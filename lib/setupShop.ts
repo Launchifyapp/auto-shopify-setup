@@ -560,8 +560,8 @@ async function getOnlineStorePublicationId(session: Session): Promise<string | n
   }
 }
 
-// Publie un produit sur un canal de vente donné
-async function publishProduct(session: Session, productId: string, publicationId: string): Promise<void> {
+// Publie une ressource (produit ou collection) sur un canal de vente donné
+async function publishResource(session: Session, resourceId: string, publicationId: string): Promise<void> {
   const client = new shopify.clients.Graphql({ session });
   const mutation = `
     mutation publishablePublish($id: ID!, $input: [PublicationInput!]!) {
@@ -574,7 +574,7 @@ async function publishProduct(session: Session, productId: string, publicationId
     }
   `;
   const variables = {
-    id: productId,
+    id: resourceId,
     input: [{
       publicationId: publicationId,
     }],
@@ -582,18 +582,20 @@ async function publishProduct(session: Session, productId: string, publicationId
   try {
     const response: any = await client.request(mutation, { variables });
     if (response?.data?.publishablePublish?.userErrors?.length > 0) {
-      console.error(`Erreur lors de la publication du produit ${productId}:`, response.data.publishablePublish.userErrors);
+      console.error(`Erreur lors de la publication de la ressource ${resourceId}:`, response.data.publishablePublish.userErrors);
     } else {
-      console.log(`Produit ${productId} publié avec succès sur ${publicationId}.`);
+      console.log(`Ressource ${resourceId} publiée avec succès sur ${publicationId}.`);
     }
   } catch (error) {
-    console.error(`Exception lors de la publication du produit ${productId}:`, error);
+    console.error(`Exception lors de la publication de la ressource ${resourceId}:`, error);
   }
 }
 
 
 export async function setupShop({ session }: { session: Session }) {
   try {
+    const idsToPublish: string[] = [];
+
     // --- UPLOAD DES 4 IMAGES GÉNÉRIQUES AU DÉBUT DANS SHOPIFY FILES ---
     const imagesUrls = [
       "https://auto-shopify-setup.vercel.app/image1.jpg",
@@ -604,8 +606,11 @@ export async function setupShop({ session }: { session: Session }) {
     await uploadImagesToShopifyFiles(session, imagesUrls);
 
     // --- Création des deux collections automatisées ("intelligentes") par TAG ---
-    await createAutomatedCollection(session, "Beauté & soins", "beaute-soins", "Beauté & soins");
-    await createAutomatedCollection(session, "Maison & confort", "maison-confort", "Maison & confort");
+    const beautyCollection = await createAutomatedCollection(session, "Beauté & soins", "beaute-soins", "Beauté & soins");
+    if (beautyCollection?.id) idsToPublish.push(beautyCollection.id);
+
+    const homeCollection = await createAutomatedCollection(session, "Maison & confort", "maison-confort", "Maison & confort");
+    if (homeCollection?.id) idsToPublish.push(homeCollection.id);
 
     // 1. Créer la page Livraison
     const livraisonPageId = await createLivraisonPageWithSDK(session)
@@ -645,8 +650,6 @@ export async function setupShop({ session }: { session: Session }) {
       if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
       productsByHandle[row.Handle].push(row);
     }
-
-    const createdProductIds: string[] = []; // Pour stocker les IDs des produits créés
 
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
@@ -694,7 +697,7 @@ export async function setupShop({ session }: { session: Session }) {
           continue;
         }
         console.log("Product créé avec id:", productId);
-        createdProductIds.push(productId); // Stocker l'ID
+        idsToPublish.push(productId); // Stocker l'ID du produit pour la publication
 
         // Upload images produit (hors variantes)
         const allImagesToAttach = [
@@ -783,21 +786,21 @@ export async function setupShop({ session }: { session: Session }) {
       }
     }
     
-    // --- PUBLICATION DES PRODUITS SUR LE CANAL DE VENTE "ONLINE STORE" ---
-    console.log("Fin de la création des produits. Début de la publication...");
+    // --- PUBLICATION DES PRODUITS ET COLLECTIONS SUR LE CANAL DE VENTE "ONLINE STORE" ---
+    console.log("Fin de la création des ressources. Début de la publication...");
 
     const onlineStorePublicationId = await getOnlineStorePublicationId(session);
 
-    if (onlineStorePublicationId && createdProductIds.length > 0) {
-      for (const productId of createdProductIds) {
-        await publishProduct(session, productId, onlineStorePublicationId);
+    if (onlineStorePublicationId && idsToPublish.length > 0) {
+      for (const resourceId of idsToPublish) {
+        await publishResource(session, resourceId, onlineStorePublicationId);
         await new Promise((res) => setTimeout(res, 300)); // Petit délai pour ne pas surcharger l'API
       }
-      console.log("Tous les produits ont été traités pour publication.");
+      console.log("Toutes les ressources ont été traitées pour publication.");
     } else if (!onlineStorePublicationId) {
-      console.error("Impossible de publier les produits car l'ID de 'Online Store' n'a pas été trouvé.");
+      console.error("Impossible de publier les ressources car l'ID de 'Online Store' n'a pas été trouvé.");
     } else {
-      console.log("Aucun produit à publier.");
+      console.log("Aucune ressource à publier.");
     }
 
   } catch (err) {
