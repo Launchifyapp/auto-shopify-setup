@@ -710,7 +710,11 @@ export async function setupShop({ session }: { session: Session }) {
         await new Promise(res => setTimeout(res, 3000)); // Attendre que les media soient prêts
 
         // 3. Préparer l'association variantes -> media
-        const urlToMediaIdMap = new Map(createdMedia.map(m => [m.preview.image.url.split('?')[0], m.id]));
+        const urlToMediaIdMap = new Map(
+            createdMedia
+                .filter(m => m?.preview?.image?.url) // Vérification pour éviter l'erreur
+                .map(m => [m.preview.image.url.split('?')[0], m.id])
+        );
         const allVariants = productData?.variants?.edges?.map((e: any) => e.node) ?? [];
         
         const variantMediaPayload: any[] = [];
