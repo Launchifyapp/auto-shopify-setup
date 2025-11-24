@@ -402,10 +402,10 @@ async function productVariantsBulkUpdate(session: Session, productId: string, va
 
 async function createProductWithSDK(session: Session, product: any) {
   const client = new shopify.clients.Graphql({ session });
-  // Correction de la mutation pour utiliser ProductInput et le champ 'variants' pour la création
+  // CORRECTION: Utilisation de `product` de type `ProductCreateInput!`
   const query = `
-    mutation productCreate($input: ProductInput!) {
-      productCreate(input: $input) {
+    mutation productCreate($product: ProductCreateInput!) {
+      productCreate(product: $product) {
         product {
           id
           handle
@@ -418,7 +418,8 @@ async function createProductWithSDK(session: Session, product: any) {
       }
     }
   `;
-  const variables = { input: product };
+  // CORRECTION: La variable doit s'appeler `product` pour correspondre à la mutation
+  const variables = { product: product };
   const response: any = await client.request(query, { variables });
   const data = response;
   return data?.data?.productCreate;
