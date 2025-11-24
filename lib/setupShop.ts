@@ -350,112 +350,54 @@ async function createAutomatedCollection(session: Session, title: string, handle
 }
 
 // Création des images sur un produit
-async function createProductMedia(session: Session, productId: string, media: any[]): Promise<any[]> {
+async function productCreateImages(session: Session, productId: string, images: {src: string, altText: string}[]): Promise<{id: string, url: string}[]> {
     const client = new shopify.clients.Graphql({ session });
     const query = `
-      mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-        productCreateMedia(productId: $productId, media: $media) {
-          media {
-            ... on MediaImage { id status alt mediaContentType preview { image { url } } }
+      mutation productCreateImages($productId: ID!, $images: [ImageInput!]!) {
+        productCreateImages(productId: $productId, images: $images) {
+          images {
+            id
+            url
           }
-          mediaUserErrors { field message }
+          userErrors { field message }
         }
       }
     `;
-    const variables = { productId, media };
+    const variables = { productId, images };
     try {
         const response: any = await client.request(query, { variables });
-        if (response?.data?.productCreateMedia?.mediaUserErrors?.length > 0) {
-            console.error("Erreurs lors de la création de media:", response.data.productCreateMedia.mediaUserErrors);
+        if (response?.data?.productCreateImages?.userErrors?.length > 0) {
+            console.error("Erreurs lors de la création d'images:", response.data.productCreateImages.userErrors);
         }
-        return response?.data?.productCreateMedia?.media ?? [];
+        return response?.data?.productCreateImages?.images ?? [];
     } catch (e) {
-        console.error("Exception GQL createProductMedia", e);
+        console.error("Exception GQL productCreateImages", e);
         return [];
     }
 }
 
-// Associe des images à leurs variantes respectives
-async function appendMediaToVariants(session: Session, productId: string, variantMedia: any[]) {
-    if (variantMedia.length === 0) return;
+// Met à jour les variantes en bloc, y compris leur image
+async function productVariantsBulkUpdate(session: Session, productId: string, variants: any[]) {
+    if (variants.length === 0) return;
     const client = new shopify.clients.Graphql({ session });
     const query = `
-      mutation productVariantAppendMedia($productId: ID!, $variantMedia: [ProductVariantAppendMediaInput!]!) {
-        productVariantAppendMedia(productId: $productId, variantMedia: $variantMedia) {
+      mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        productVariantsBulkUpdate(productId: $productId, variants: $variants) {
           productVariants {
             id
-            media(first: 5) { edges { node { ... on MediaImage { id } } } }
+            image { id url }
           }
-          userErrors { code field message }
+          userErrors { field message }
         }
       }
     `;
-    const variables = { productId, variantMedia };
+    const variables = { productId, variants };
     const response: any = await client.request(query, { variables });
-    if (response?.data?.productVariantAppendMedia?.userErrors?.length > 0) {
-      console.error("Erreur lors de l'association media-variante :", response.data.productVariantAppendMedia.userErrors);
+    if (response?.data?.productVariantsBulkUpdate?.userErrors?.length > 0) {
+      console.error("Erreur lors de la mise à jour en bloc des variantes:", response.data.productVariantsBulkUpdate.userErrors);
     } else {
-      console.log(`Association media-variante réussie pour le produit ${productId}`);
+      console.log(`Mise à jour en bloc des variantes réussie pour le produit ${productId}`);
     }
-}
-
-async function updateDefaultVariantWithSDK(
-  session: Session,
-  productId: string,
-  variantId: string,
-  main: any
-) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants { id price compareAtPrice sku barcode }
-        userErrors { field message }
-      }
-    }
-  `;
-  const variant: any = {
-    id: variantId,
-    price: main["Variant Price"] ?? "0",
-    ...(main["Variant Compare At Price"] ? { compareAtPrice: main["Variant Compare At Price"] } : {}),
-    ...(main["Variant SKU"] ? { sku: main["Variant SKU"] } : {}),
-    ...(main["Variant Barcode"] ? { barcode: main["Variant Barcode"] } : {}),
-  };
-  const variables = {
-    productId,
-    variants: [variant],
-  };
-  const response: any = await client.request(query, { variables });
-  const data = response?.data?.productVariantsBulkUpdate;
-  if (data?.userErrors?.length) {
-    console.error("Erreur maj variante (bulkUpdate):", data.userErrors);
-  } else {
-    console.log("Variante maj (bulkUpdate):", data.productVariants?.[0]);
-  }
-  return data?.productVariants?.[0]?.id;
-}
-
-async function bulkCreateVariantsWithSDK(
-  session: Session,
-  productId: string,
-  variants: any[]
-) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkCreate(productId: $productId, variants: $variants) {
-        productVariants { id price sku barcode compareAtPrice }
-        userErrors { field message }
-      }
-    }
-  `;
-  const variables = {
-    productId,
-    variants,
-  };
-  const response: any = await client.request(query, { variables });
-  const data = response;
-  return data?.data?.productVariantsBulkCreate;
 }
 
 async function createProductWithSDK(session: Session, product: any) {
@@ -606,146 +548,97 @@ export async function setupShop({ session }: { session: Session }) {
 
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
-      type ProductOption = { name: string, values: { name: string }[] };
+      type ProductOption = { name: string, values: string[] };
       const productOptions: ProductOption[] = [];
       for (let i = 1; i <= 3; i++) {
-        const optionName = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
+        const optionName = main[`Option${i} Name`]?.trim();
         if (optionName) {
-          const optionValues = [
-            ...new Set(
-              group
-                .map((row) => (row[`Option${i} Value`] ? row[`Option${i} Value`].trim() : ""))
-                .filter((v) => !!v && v !== "Default Title")
-            ),
-          ].map((v) => ({ name: v }));
+          const optionValues = [...new Set(group.map(row => row[`Option${i} Value`]?.trim()).filter(Boolean))];
           if (optionValues.length) {
             productOptions.push({ name: optionName, values: optionValues });
           }
         }
       }
-      const productOptionsOrUndefined = productOptions.length ? productOptions : undefined;
-      const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
-      const productMetafields = extractCheckboxMetafields(main);
-
-      const product: any = {
+      
+      const productForCreation: any = {
         title: main.Title,
         descriptionHtml: main["Body (HTML)"] || "",
-        handle: handleUnique,
+        handle: handle + "-" + Math.random().toString(16).slice(2, 7),
         vendor: main.Vendor,
         productType: main.Type,
         tags: main.Tags?.split(",").map((t: string) => t.trim()),
-        productOptions: productOptionsOrUndefined,
-        metafields: productMetafields.length > 0 ? productMetafields : undefined,
+        metafields: extractCheckboxMetafields(main).length > 0 ? extractCheckboxMetafields(main) : undefined,
+        options: productOptions.length > 0 ? productOptions.map(opt => opt.name) : undefined,
       };
 
       try {
-        const productCreateData = await createProductWithSDK(session, product);
+        const productCreateData = await createProductWithSDK(session, productForCreation);
         const productData = productCreateData?.product;
         const productId = productData?.id;
         if (!productId) {
-          console.error(
-            "Aucun productId généré.",
-            JSON.stringify(productCreateData, null, 2)
-          );
+          console.error("Aucun productId généré.", JSON.stringify(productCreateData, null, 2));
           continue;
         }
         console.log("Product créé avec id:", productId);
-        idsToPublish.push(productId); // Stocker l'ID du produit pour la publication
+        idsToPublish.push(productId);
 
-        // Produit avec variantes (options)
-        if (productOptionsOrUndefined && productOptionsOrUndefined.length > 0) {
-          const seen = new Set<string>();
-          const variantsToCreate = group
-            .map((row) => {
-              const optionValues: { name: string; optionName: string }[] = [];
-              productOptions.forEach((opt, optIdx) => {
-                const value =
-                  row[`Option${optIdx + 1} Value`] &&
-                  row[`Option${optIdx + 1} Value`].trim();
-                if (value && value !== "Default Title") {
-                  optionValues.push({ name: value, optionName: opt.name });
-                }
-              });
-              const key = optionValues.map((ov) => ov.name).join("|");
-              if (seen.has(key)) return undefined;
-              seen.add(key);
-              if (!optionValues.length) return undefined;
+        // --- GESTION DES IMAGES ET VARIANTES (LOGIQUE SIMPLIFIÉE ET FIABILISÉE) ---
 
-              const variant: any = {
-                price: row["Variant Price"] || main["Variant Price"] || "0",
-                optionValues,
-              };
-              if (row["Variant SKU"]) variant.sku = row["Variant SKU"];
-              if (row["Variant Barcode"]) variant.barcode = row["Variant Barcode"];
-              if (row["Variant Compare At Price"]) variant.compareAtPrice = row["Variant Compare At Price"];
-              return variant;
-            })
-            .filter((v): v is any => v && v.optionValues && v.optionValues.length > 0);
-
-          if (variantsToCreate.length > 1) {
-            await bulkCreateVariantsWithSDK(session, productId, variantsToCreate.slice(1));
-          }
-
-          const firstVariantId = productData?.variants?.edges?.[0]?.node?.id;
-          if (firstVariantId) {
-            await updateDefaultVariantWithSDK(session, productId, firstVariantId, group[0]);
-          }
-        }
-
-        // --- GESTION DES IMAGES ET DE LEUR ASSOCIATION (LOGIQUE CORRIGÉE) ---
+        // 1. Uploader toutes les images uniques du produit et récupérer leurs IDs
+        const allImageUrls = [...new Set(group.flatMap(row => [row["Image Src"], row["Variant Image"]]).filter(Boolean) as string[])];
+        const imagesToCreate = allImageUrls.map(url => ({ src: normalizeImageUrl(url), altText: main.Title }));
         
-        // 1. Collecter toutes les images uniques (générales et de variantes)
-        const allImageUrls = [...new Set(
-            group.flatMap(row => [row["Image Src"], row["Variant Image"]]).filter(Boolean)
-        )];
+        console.log(`Tentative de création de ${imagesToCreate.length} images pour le produit ${productId}`);
+        const createdImages = await productCreateImages(session, productId, imagesToCreate);
+        await new Promise(res => setTimeout(res, 3000)); // Attente pour le traitement des images par Shopify
+        
+        const urlToImageIdMap = new Map(createdImages.map(img => [img.url.split('?')[0], img.id]));
+        console.log(`Images créées et mappées: ${urlToImageIdMap.size}`);
 
-        const mediaToCreate = allImageUrls.map(url => ({
-            originalSource: normalizeImageUrl(url as string),
-            mediaContentType: "IMAGE",
-            alt: main.Title,
-        }));
-        
-        // 2. Créer tous les media en une fois
-        const createdMedia = await createProductMedia(session, productId, mediaToCreate);
-        await new Promise(res => setTimeout(res, 3000)); // Attendre que les media soient prêts
+        // 2. Préparer la mise à jour en bloc des variantes
+        const allVariantsFromProduct = productData?.variants?.edges?.map((e: any) => e.node) ?? [];
+        const variantsToUpdate = [];
 
-        // 3. Préparer l'association variantes -> media
-        const urlToMediaIdMap = new Map(
-            createdMedia
-                .filter(m => m?.preview?.image?.url) // Vérification pour éviter l'erreur
-                .map(m => [m.preview.image.url.split('?')[0], m.id])
-        );
-        const allVariants = productData?.variants?.edges?.map((e: any) => e.node) ?? [];
-        
-        const variantMediaPayload: any[] = [];
-        
-        for (const variant of allVariants) {
+        for (const variant of allVariantsFromProduct) {
             const matchingRow = group.find(row => 
                 variant.selectedOptions.every((opt: any) => {
                     const optionIndex = productOptions.findIndex(po => po.name === opt.name);
                     return optionIndex !== -1 && row[`Option${optionIndex + 1} Value`] === opt.value;
                 })
-            ) || group.find(row => row['Option1 Value'] === 'Default Title') || group[0];
-            
+            ) || group[0];
+
+            const variantUpdatePayload: any = { id: variant.id };
+
+            // Ajouter les détails (prix, sku, etc.)
+            variantUpdatePayload.price = matchingRow["Variant Price"] ?? main["Variant Price"] ?? "0";
+            if (matchingRow["Variant Compare At Price"]) variantUpdatePayload.compareAtPrice = matchingRow["Variant Compare At Price"];
+            if (matchingRow["Variant SKU"]) variantUpdatePayload.sku = matchingRow["Variant SKU"];
+            if (matchingRow["Variant Barcode"]) variantUpdatePayload.barcode = matchingRow["Variant Barcode"];
+
+            // Associer l'image
             const variantImageUrl = matchingRow["Variant Image"];
             if (variantImageUrl) {
                 const normalizedUrl = normalizeImageUrl(variantImageUrl).split('?')[0];
-                const mediaId = urlToMediaIdMap.get(normalizedUrl);
-                if (mediaId) {
-                    variantMediaPayload.push({
-                        variantId: variant.id,
-                        mediaIds: [mediaId]
-                    });
+                const imageId = urlToImageIdMap.get(normalizedUrl);
+                if (imageId) {
+                    variantUpdatePayload.imageId = imageId;
+                    console.log(`Association de la variante ${variant.id} à l'image ${imageId}`);
+                } else {
+                     console.warn(`Aucun ID d'image trouvé pour l'URL: ${normalizedUrl}`);
                 }
             }
+            variantsToUpdate.push(variantUpdatePayload);
         }
-        
-        // 4. Associer toutes les variantes à leurs images en une seule mutation
-        await appendMediaToVariants(session, productId, variantMediaPayload);
+
+        // 3. Exécuter la mise à jour en bloc
+        if(variantsToUpdate.length > 0) {
+          console.log(`Début de la mise à jour en bloc pour ${variantsToUpdate.length} variantes.`);
+          await productVariantsBulkUpdate(session, productId, variantsToUpdate);
+        }
 
         await new Promise((res) => setTimeout(res, 300));
       } catch (err) {
-        console.error("Erreur création produit GraphQL", handleUnique, err);
+        console.error("Erreur globale dans la boucle produit:", handle, err);
       }
     }
     
