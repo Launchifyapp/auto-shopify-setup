@@ -402,6 +402,7 @@ async function productVariantsBulkUpdate(session: Session, productId: string, va
 
 async function createProductWithSDK(session: Session, product: any) {
   const client = new shopify.clients.Graphql({ session });
+  // Correction de la mutation pour utiliser ProductInput et le champ 'variants' pour la création
   const query = `
     mutation productCreate($input: ProductInput!) {
       productCreate(input: $input) {
@@ -534,7 +535,6 @@ export async function setupShop({ session }: { session: Session }) {
       console.error("Main menu introuvable !");
     }
 
-    // ... Reste du setup produit inchangé ci-dessous ...
     const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
     const response = await fetch(csvUrl);
     const csvText = await response.text();
@@ -548,15 +548,11 @@ export async function setupShop({ session }: { session: Session }) {
 
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
-      type ProductOption = { name: string, values: string[] };
-      const productOptions: ProductOption[] = [];
+      const productOptionsNames: string[] = [];
       for (let i = 1; i <= 3; i++) {
         const optionName = main[`Option${i} Name`]?.trim();
         if (optionName) {
-          const optionValues = [...new Set(group.map(row => row[`Option${i} Value`]?.trim()).filter(Boolean))];
-          if (optionValues.length) {
-            productOptions.push({ name: optionName, values: optionValues });
-          }
+          productOptionsNames.push(optionName);
         }
       }
       
@@ -568,20 +564,7 @@ export async function setupShop({ session }: { session: Session }) {
         productType: main.Type,
         tags: main.Tags?.split(",").map((t: string) => t.trim()),
         metafields: extractCheckboxMetafields(main).length > 0 ? extractCheckboxMetafields(main) : undefined,
-        // CORRECTION: Utiliser `variants` pour pré-définir les variantes avec leurs options
-        variants: group.map(row => {
-            const variant: any = {
-                price: row["Variant Price"] ?? main["Variant Price"] ?? "0",
-                options: [],
-            };
-            for (let i = 1; i <= 3; i++) {
-                const optionValue = row[`Option${i} Value`]?.trim();
-                if (optionValue) {
-                    variant.options.push(optionValue);
-                }
-            }
-            return variant;
-        }).filter(v => v.options.length > 0),
+        options: productOptionsNames.length > 0 ? productOptionsNames : undefined,
       };
 
       try {
@@ -589,21 +572,21 @@ export async function setupShop({ session }: { session: Session }) {
         const productData = productCreateData?.product;
         const productId = productData?.id;
         if (!productId) {
-          console.error("Aucun productId généré.", JSON.stringify(productCreateData?.userErrors ?? productCreateData, null, 2));
+          console.error(`Aucun productId généré pour le handle ${handle}. Erreurs:`, JSON.stringify(productCreateData?.userErrors ?? "Aucune erreur retournée.", null, 2));
           continue;
         }
         console.log("Product créé avec id:", productId);
         idsToPublish.push(productId);
 
-        // --- GESTION DES IMAGES ET VARIANTES (LOGIQUE SIMPLIFIÉE ET FIABILISÉE) ---
+        // --- GESTION DES IMAGES ET VARIANTES ---
 
-        // 1. Uploader toutes les images uniques du produit (de la colonne "Image Src")
+        // 1. Uploader toutes les images uniques du produit
         const allImageUrls = [...new Set(group.map(row => row["Image Src"]).filter(Boolean) as string[])];
         const imagesToCreate = allImageUrls.map(url => ({ src: normalizeImageUrl(url), altText: main.Title }));
         
         console.log(`Tentative de création de ${imagesToCreate.length} images pour le produit ${productId}`);
         const createdImages = await productCreateImages(session, productId, imagesToCreate);
-        await new Promise(res => setTimeout(res, 3000)); // Attente pour le traitement des images par Shopify
+        await new Promise(res => setTimeout(res, 3000));
         
         const urlToImageIdMap = new Map<string, string>();
         if (createdImages) {
@@ -621,8 +604,8 @@ export async function setupShop({ session }: { session: Session }) {
 
         for (const variant of allVariantsFromProduct) {
             const matchingRow = group.find(row => 
-                variant.selectedOptions.every((opt: any) => {
-                    const optionIndex = productOptions.findIndex(po => po.name.trim() === opt.name.trim());
+                variant.selectedOptions.every((opt: { name: string; value: string; }) => {
+                    const optionIndex = productOptionsNames.findIndex(name => name.trim() === opt.name.trim());
                     return optionIndex !== -1 && row[`Option${optionIndex + 1} Value`]?.trim() === opt.value.trim();
                 })
             ) || group[0];
@@ -659,7 +642,7 @@ export async function setupShop({ session }: { session: Session }) {
       }
     }
     
-    // --- PUBLICATION DES PRODUITS ET COLLECTIONS SUR LE CANAL DE VENTE "ONLINE STORE" ---
+    // --- PUBLICATION DES PRODUITS ET COLLECTIONS ---
     console.log("Fin de la création des ressources. Début de la publication...");
 
     const onlineStorePublicationId = await getOnlineStorePublicationId(session);
@@ -667,7 +650,7 @@ export async function setupShop({ session }: { session: Session }) {
     if (onlineStorePublicationId && idsToPublish.length > 0) {
       for (const resourceId of idsToPublish) {
         await publishResource(session, resourceId, onlineStorePublicationId);
-        await new Promise((res) => setTimeout(res, 300)); // Petit délai pour ne pas surcharger l'API
+        await new Promise((res) => setTimeout(res, 300));
       }
       console.log("Toutes les ressources ont été traitées pour publication.");
     } else if (!onlineStorePublicationId) {
