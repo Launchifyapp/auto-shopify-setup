@@ -403,8 +403,8 @@ async function productVariantsBulkUpdate(session: Session, productId: string, va
 async function createProductWithSDK(session: Session, product: any) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    mutation productCreate($input: ProductCreateInput!) {
-      productCreate(product: $input) {
+    mutation productCreate($input: ProductInput!) {
+      productCreate(input: $input) {
         product {
           id
           handle
@@ -560,7 +560,6 @@ export async function setupShop({ session }: { session: Session }) {
         }
       }
       
-      // Crée le produit avec les options mais sans les variantes spécifiques pour l'instant
       const productForCreation: any = {
         title: main.Title,
         descriptionHtml: main["Body (HTML)"] || "",
@@ -569,8 +568,20 @@ export async function setupShop({ session }: { session: Session }) {
         productType: main.Type,
         tags: main.Tags?.split(",").map((t: string) => t.trim()),
         metafields: extractCheckboxMetafields(main).length > 0 ? extractCheckboxMetafields(main) : undefined,
-        options: productOptions.length > 0 ? productOptions.map(opt => opt.name) : undefined,
-        // On ne met pas les variantes ici, Shopify va les créer pour nous à partir des options
+        // CORRECTION: Utiliser `variants` pour pré-définir les variantes avec leurs options
+        variants: group.map(row => {
+            const variant: any = {
+                price: row["Variant Price"] ?? main["Variant Price"] ?? "0",
+                options: [],
+            };
+            for (let i = 1; i <= 3; i++) {
+                const optionValue = row[`Option${i} Value`]?.trim();
+                if (optionValue) {
+                    variant.options.push(optionValue);
+                }
+            }
+            return variant;
+        }).filter(v => v.options.length > 0),
       };
 
       try {
@@ -578,7 +589,7 @@ export async function setupShop({ session }: { session: Session }) {
         const productData = productCreateData?.product;
         const productId = productData?.id;
         if (!productId) {
-          console.error("Aucun productId généré.", JSON.stringify(productCreateData, null, 2));
+          console.error("Aucun productId généré.", JSON.stringify(productCreateData?.userErrors ?? productCreateData, null, 2));
           continue;
         }
         console.log("Product créé avec id:", productId);
@@ -594,7 +605,14 @@ export async function setupShop({ session }: { session: Session }) {
         const createdImages = await productCreateImages(session, productId, imagesToCreate);
         await new Promise(res => setTimeout(res, 3000)); // Attente pour le traitement des images par Shopify
         
-        const urlToImageIdMap = new Map(createdImages.map(img => [img.url.split('?')[0], img.id]));
+        const urlToImageIdMap = new Map<string, string>();
+        if (createdImages) {
+            createdImages.forEach(img => {
+                if (img?.url && img?.id) {
+                    urlToImageIdMap.set(img.url.split('?')[0], img.id);
+                }
+            });
+        }
         console.log(`Images créées et mappées: ${urlToImageIdMap.size}`);
 
         // 2. Préparer la mise à jour en bloc des variantes
@@ -602,23 +620,20 @@ export async function setupShop({ session }: { session: Session }) {
         const variantsToUpdate = [];
 
         for (const variant of allVariantsFromProduct) {
-            // Trouver la ligne CSV correspondante pour cette variante
             const matchingRow = group.find(row => 
                 variant.selectedOptions.every((opt: any) => {
-                    const optionIndex = productOptions.findIndex(po => po.name === opt.name);
-                    return optionIndex !== -1 && row[`Option${optionIndex + 1} Value`] === opt.value;
+                    const optionIndex = productOptions.findIndex(po => po.name.trim() === opt.name.trim());
+                    return optionIndex !== -1 && row[`Option${optionIndex + 1} Value`]?.trim() === opt.value.trim();
                 })
-            ) || group[0]; // Fallback sur la première ligne si aucune correspondance
+            ) || group[0];
 
             const variantUpdatePayload: any = { id: variant.id };
 
-            // Ajouter les détails (prix, sku, etc.)
             variantUpdatePayload.price = matchingRow["Variant Price"] ?? main["Variant Price"] ?? "0";
             if (matchingRow["Variant Compare At Price"]) variantUpdatePayload.compareAtPrice = matchingRow["Variant Compare At Price"];
             if (matchingRow["Variant SKU"]) variantUpdatePayload.sku = matchingRow["Variant SKU"];
             if (matchingRow["Variant Barcode"]) variantUpdatePayload.barcode = matchingRow["Variant Barcode"];
 
-            // Associer l'image de la variante
             const variantImageUrl = matchingRow["Variant Image"];
             if (variantImageUrl) {
                 const normalizedUrl = normalizeImageUrl(variantImageUrl).split('?')[0];
@@ -633,7 +648,6 @@ export async function setupShop({ session }: { session: Session }) {
             variantsToUpdate.push(variantUpdatePayload);
         }
 
-        // 3. Exécuter la mise à jour en bloc
         if(variantsToUpdate.length > 0) {
           console.log(`Début de la mise à jour en bloc pour ${variantsToUpdate.length} variantes.`);
           await productVariantsBulkUpdate(session, productId, variantsToUpdate);
