@@ -451,8 +451,7 @@ export async function setupShop({ session }: { session: Session }) {
     const imagesUrls = [
       "https://auto-shopify-setup.vercel.app/image1.jpg",
       "https://auto-shopify-setup.vercel.app/image2.jpg",
-      "https://auto-shopify-setup.vercel.app/image3.jpg",
-      "https://auto-shopify-setup.vercel.app/image4.webp"
+      "https://auto-shopify-setup.vercel.app/image3.jpg"
     ];
     await uploadImagesToShopifyFiles(session, imagesUrls);
 
