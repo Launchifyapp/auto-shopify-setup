@@ -566,12 +566,6 @@ async function publishProduct(session: Session, productId: string, publicationId
   const mutation = `
     mutation publishablePublish($id: ID!, $input: [PublicationInput!]!) {
       publishablePublish(id: $id, input: $input) {
-        publishable {
-          ... on Product {
-            id
-            isPublishedOnPublication(publicationId: "${publicationId}")
-          }
-        }
         userErrors {
           field
           message
@@ -581,9 +575,9 @@ async function publishProduct(session: Session, productId: string, publicationId
   `;
   const variables = {
     id: productId,
-    input: {
+    input: [{
       publicationId: publicationId,
-    },
+    }],
   };
   try {
     const response: any = await client.request(mutation, { variables });
