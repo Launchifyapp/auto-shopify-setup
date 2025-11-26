@@ -1,8 +1,9 @@
 import { parse } from "csv-parse/sync";
 import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
+import { Language, t } from "@/lib/i18n";
 
-// Recherche l'id de la collection principale ("all" ou titre "Produits" ou "All" ou "Tous les produits")
+// Search for main collection ID
 async function getAllProductsCollectionId(session: Session): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -23,14 +24,14 @@ async function getAllProductsCollectionId(session: Session): Promise<string | nu
   let coll = edges.find((e: any) => e?.node?.handle === "all");
   if (!coll) coll = edges.find((e: any) => {
     const title = e?.node?.title?.toLowerCase();
-    return title === "produits" || title === "all" || title === "tous les produits";
+    return title === "produits" || title === "products" || title === "all" || title === "tous les produits" || title === "all products";
   });
   if (!coll && edges.length > 0) coll = edges[0];
   if (coll) return coll.node.id;
   return null;
 }
 
-// Recherche l'id d'une page par handle (filtrage côté client)
+// Search for page ID by handle
 async function getPageIdByHandle(session: Session, handle: string): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -52,7 +53,7 @@ async function getPageIdByHandle(session: Session, handle: string): Promise<stri
   return found ? found.node.id : null;
 }
 
-// Pour debug : liste toutes les pages existantes (handle, titre, id)
+// Debug: list all pages
 async function debugListAllPages(session: Session) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -70,13 +71,13 @@ async function debugListAllPages(session: Session) {
   `;
   const response: any = await client.request(query);
   const edges = response?.data?.pages?.edges ?? [];
-  console.log("Pages existantes:");
+  console.log("Existing pages:");
   edges.forEach((e: any) => {
     console.log(e.node.title, e.node.handle, e.node.id);
   });
 }
 
-// Récupération menu principal : id + titre
+// Get main menu ID and title
 async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, title: string} | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -100,15 +101,15 @@ async function getMainMenuIdAndTitle(session: Session): Promise<{id: string, tit
   return null;
 }
 
-// Patch menu principal (title requis, destination=resourceId/url)
-// Utilise fallback HTTP si la page Contact n'est pas retrouvée
+// Update main menu with language-specific labels
 async function updateMainMenu(
   session: Session,
   menuId: string,
   menuTitle: string,
-  livraisonPageId: string | null,
+  shippingPageId: string | null,
   collectionId: string | null,
-  contactPageId: string | null
+  contactPageId: string | null,
+  lang: Language
 ) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -138,28 +139,28 @@ async function updateMainMenu(
   `;
   const items = [
     {
-      title: "Accueil",
+      title: t(lang, "menuHome"),
       type: "FRONTPAGE",
       url: "/"
     },
     collectionId && {
-      title: "Nos Produits",
+      title: t(lang, "menuProducts"),
       type: "COLLECTION",
       resourceId: collectionId
     },
-    livraisonPageId && {
-      title: "Livraison",
+    shippingPageId && {
+      title: t(lang, "menuShipping"),
       type: "PAGE",
-      resourceId: livraisonPageId
+      resourceId: shippingPageId
     },
     contactPageId
       ? {
-          title: "Contact",
+          title: t(lang, "menuContact"),
           type: "PAGE",
           resourceId: contactPageId
         }
       : {
-          title: "Contact",
+          title: t(lang, "menuContact"),
           type: "HTTP",
           url: "/pages/contact"
         }
@@ -171,20 +172,19 @@ async function updateMainMenu(
   };
   const response: any = await client.request(query, { variables });
   if (response?.data?.menuUpdate?.userErrors?.length) {
-    console.error("Erreur menuUpdate:", response.data.menuUpdate.userErrors);
-    // Diagnostic auto : liste toutes les pages si erreur sur Contact
+    console.error("Menu update error:", response.data.menuUpdate.userErrors);
     if (
       response.data.menuUpdate.userErrors.some((err: any) => (err.message || "").toLowerCase().includes("page not found"))
     ) {
       await debugListAllPages(session);
     }
   } else {
-    console.log("[Menu principal] Mis à jour :", response.data.menuUpdate.menu);
+    console.log("[Main menu] Updated:", response.data.menuUpdate.menu);
   }
 }
 
-// Création page Livraison
-async function createLivraisonPageWithSDK(session: Session): Promise<string | null> {
+// Create shipping page with language-specific content
+async function createShippingPageWithSDK(session: Session, lang: Language): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation CreatePage($input: PageCreateInput!) {
@@ -200,28 +200,20 @@ async function createLivraisonPageWithSDK(session: Session): Promise<string | nu
   `;
   const variables = {
     input: {
-      title: "Livraison",
-      handle: "livraison",
-      body: `Livraison GRATUITE
-Le traitement des commandes prend de 1 à 3 jours ouvrables avant l'expédition. Une fois l'article expédié, le délai de livraison estimé est le suivant:
-
-France : 4-10 jours ouvrables
-Belgique: 4-10 jours ouvrables
-Suisse : 7-12 jours ouvrables
-Canada : 7-12 jours ouvrables
-Reste du monde : 7-14 jours
-`,
+      title: t(lang, "shippingPageTitle"),
+      handle: t(lang, "shippingPageHandle"),
+      body: t(lang, "shippingPageBody"),
       isPublished: true,
       templateSuffix: "custom"
     }
   };
   const response: any = await client.request(query, { variables });
   if (response?.data?.pageCreate?.userErrors?.length) {
-    console.error("Erreur création page Livraison:", response.data.pageCreate.userErrors);
+    console.error("Shipping page creation error:", response.data.pageCreate.userErrors);
     return null;
   }
   const pageId = response?.data?.pageCreate?.page?.id ?? null;
-  if (pageId) console.log("Page Livraison créée :", response.data.pageCreate.page);
+  if (pageId) console.log("Shipping page created:", response.data.pageCreate.page);
   return pageId;
 }
 
@@ -258,7 +250,7 @@ function extractCheckboxMetafields(row: any): any[] {
   return metafields;
 }
 
-// Upload image dans les Files de Shopify (pas rattachées à un produit)
+// Upload images to Shopify Files
 async function uploadImagesToShopifyFiles(session: Session, imageUrls: string[]): Promise<void> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -291,18 +283,18 @@ async function uploadImagesToShopifyFiles(session: Session, imageUrls: string[])
   const variables = { files };
   const response: any = await client.request(query, { variables });
   if (response?.data?.fileCreate?.userErrors?.length) {
-    console.error("Erreur upload Files:", response.data.fileCreate.userErrors);
+    console.error("Files upload error:", response.data.fileCreate.userErrors);
   }
   ((response?.data?.fileCreate?.files || []) as any[]).forEach((file: any) => {
     if(file.image?.url){
-      console.log("Image Shopify File:", file.id, file.image.url);
+      console.log("Shopify Image File:", file.id, file.image.url);
     } else if(file.url) {
-      console.log("Fichier Shopify File:", file.id, file.url);
+      console.log("Shopify File:", file.id, file.url);
     }
   });
 }
 
-// Création d'une collection automatisée (smart) par tag
+// Create automated collection by tag
 async function createAutomatedCollection(session: Session, title: string, handle: string, tag: string): Promise<{id: string, title: string} | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -338,12 +330,12 @@ async function createAutomatedCollection(session: Session, title: string, handle
   };
   const response: any = await client.request(query, { variables });
   if (response?.data?.collectionCreate?.userErrors?.length) {
-    console.error(`Erreur création collection "${title}":`, response.data.collectionCreate.userErrors);
+    console.error(`Collection "${title}" creation error:`, response.data.collectionCreate.userErrors);
     return null;
   }
   const collection = response?.data?.collectionCreate?.collection;
   if (collection) {
-    console.log(`Collection créée: "${collection.title}" (ID: ${collection.id})`);
+    console.log(`Collection created: "${collection.title}" (ID: ${collection.id})`);
     return { id: collection.id, title: collection.title };
   }
   return null;
@@ -441,7 +433,7 @@ async function appendMediaToVariant(session: Session, productId: string, variant
   };
   const response: any = await client.request(query, { variables });
   if (response?.data?.productVariantAppendMedia?.userErrors?.length) {
-    console.error("Erreur rattachement media à variante :", response.data.productVariantAppendMedia.userErrors);
+    console.error("Media attachment to variant error:", response.data.productVariantAppendMedia.userErrors);
   }
   return response?.data?.productVariantAppendMedia?.productVariants;
 }
@@ -475,9 +467,9 @@ async function updateDefaultVariantWithSDK(
   const response: any = await client.request(query, { variables });
   const data = response?.data?.productVariantsBulkUpdate;
   if (data?.userErrors?.length) {
-    console.error("Erreur maj variante (bulkUpdate):", data.userErrors);
+    console.error("Variant update error (bulkUpdate):", data.userErrors);
   } else {
-    console.log("Variante maj (bulkUpdate):", data.productVariants?.[0]);
+    console.log("Variant updated (bulkUpdate):", data.productVariants?.[0]);
   }
   return data?.productVariants?.[0]?.id;
 }
@@ -528,7 +520,7 @@ async function createProductWithSDK(session: Session, product: any) {
   return data?.data?.productCreate;
 }
 
-// Récupère l'ID de la publication "Online Store"
+// Get Online Store publication ID
 async function getOnlineStorePublicationId(session: Session): Promise<string | null> {
   const client = new shopify.clients.Graphql({ session });
   const query = `
@@ -548,19 +540,19 @@ async function getOnlineStorePublicationId(session: Session): Promise<string | n
     const edges = response?.data?.publications?.edges ?? [];
     const onlineStorePub = edges.find((e: any) => e?.node?.name === "Online Store");
     if (onlineStorePub) {
-      console.log(`Publication "Online Store" trouvée avec l'ID: ${onlineStorePub.node.id}`);
+      console.log(`"Online Store" publication found with ID: ${onlineStorePub.node.id}`);
       return onlineStorePub.node.id;
     } else {
-      console.error('Publication "Online Store" non trouvée.');
+      console.error('"Online Store" publication not found.');
       return null;
     }
   } catch (error) {
-    console.error("Erreur lors de la récupération des publications:", error);
+    console.error("Error fetching publications:", error);
     return null;
   }
 }
 
-// Publie une ressource (produit ou collection) sur un canal de vente donné
+// Publish a resource to a sales channel
 async function publishResource(session: Session, resourceId: string, publicationId: string): Promise<void> {
   const client = new shopify.clients.Graphql({ session });
   const mutation = `
@@ -582,21 +574,21 @@ async function publishResource(session: Session, resourceId: string, publication
   try {
     const response: any = await client.request(mutation, { variables });
     if (response?.data?.publishablePublish?.userErrors?.length > 0) {
-      console.error(`Erreur lors de la publication de la ressource ${resourceId}:`, response.data.publishablePublish.userErrors);
+      console.error(`Error publishing resource ${resourceId}:`, response.data.publishablePublish.userErrors);
     } else {
-      console.log(`Ressource ${resourceId} publiée avec succès sur ${publicationId}.`);
+      console.log(`Resource ${resourceId} published successfully on ${publicationId}.`);
     }
   } catch (error) {
-    console.error(`Exception lors de la publication de la ressource ${resourceId}:`, error);
+    console.error(`Exception publishing resource ${resourceId}:`, error);
   }
 }
 
 
-export async function setupShop({ session }: { session: Session }) {
+export async function setupShop({ session, lang = "fr" }: { session: Session; lang?: Language }) {
   try {
     const idsToPublish: string[] = [];
 
-    // --- UPLOAD DES 4 IMAGES GÉNÉRIQUES AU DÉBUT DANS SHOPIFY FILES ---
+    // --- UPLOAD GENERIC IMAGES TO SHOPIFY FILES ---
     const imagesUrls = [
       "https://auto-shopify-setup.vercel.app/image1.jpg",
       "https://auto-shopify-setup.vercel.app/image2.jpg",
@@ -605,42 +597,58 @@ export async function setupShop({ session }: { session: Session }) {
     ];
     await uploadImagesToShopifyFiles(session, imagesUrls);
 
-    // --- Création des deux collections automatisées ("intelligentes") par TAG ---
-    const beautyCollection = await createAutomatedCollection(session, "Beauté & soins", "beaute-soins", "Beauté & soins");
+    // --- Create automated collections by TAG with language-specific names ---
+    const beautyCollection = await createAutomatedCollection(
+      session, 
+      t(lang, "collectionBeauty"), 
+      t(lang, "collectionBeautyHandle"), 
+      t(lang, "collectionBeautyTag")
+    );
     if (beautyCollection?.id) idsToPublish.push(beautyCollection.id);
 
-    const homeCollection = await createAutomatedCollection(session, "Maison & confort", "maison-confort", "Maison & confort");
+    const homeCollection = await createAutomatedCollection(
+      session, 
+      t(lang, "collectionHome"), 
+      t(lang, "collectionHomeHandle"), 
+      t(lang, "collectionHomeTag")
+    );
     if (homeCollection?.id) idsToPublish.push(homeCollection.id);
 
-    // 1. Créer la page Livraison
-    const livraisonPageId = await createLivraisonPageWithSDK(session)
-      || await getPageIdByHandle(session, "livraison");
+    // 1. Create Shipping page
+    const shippingPageId = await createShippingPageWithSDK(session, lang)
+      || await getPageIdByHandle(session, t(lang, "shippingPageHandle"));
 
-    // 2. Récupérer la collection principale ("all")
+    // 2. Get main collection ("all")
     const mainCollectionId = await getAllProductsCollectionId(session);
 
-    // 3. Récupérer id & titre du menu principal
+    // 3. Get main menu ID & title
     const mainMenuResult = await getMainMenuIdAndTitle(session);
 
-    // 4. Chercher id de la page contact (handle="contact" dans Shopify)
+    // 4. Find contact page ID
     const contactPageId = await getPageIdByHandle(session, "contact");
 
-    // 5. Mettre à jour le menu principal (avec resourceId ou url)
+    // 5. Update main menu with language-specific labels
     if (mainMenuResult) {
       await updateMainMenu(
         session,
         mainMenuResult.id,
         mainMenuResult.title,
-        livraisonPageId,
+        shippingPageId,
         mainCollectionId,
-        contactPageId
+        contactPageId,
+        lang
       );
     } else {
-      console.error("Main menu introuvable !");
+      console.error("Main menu not found!");
     }
 
-    // ... Reste du setup produit inchangé ci-dessous ...
-    const csvUrl = "https://auto-shopify-setup.vercel.app/products.csv";
+    // --- Products setup ---
+    // Select CSV based on language
+    // Note: For English, once products-en.csv is added to public/, it will be used
+    const csvUrl = lang === "en"
+      ? "https://auto-shopify-setup.vercel.app/products-en.csv"
+      : "https://auto-shopify-setup.vercel.app/products.csv";
+    
     const response = await fetch(csvUrl);
     const csvText = await response.text();
     const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: ";" });
@@ -691,15 +699,15 @@ export async function setupShop({ session }: { session: Session }) {
         const productId = productData?.id;
         if (!productId) {
           console.error(
-            "Aucun productId généré.",
+            "No productId generated.",
             JSON.stringify(productCreateData, null, 2)
           );
           continue;
         }
-        console.log("Product créé avec id:", productId);
-        idsToPublish.push(productId); // Stocker l'ID du produit pour la publication
+        console.log("Product created with id:", productId);
+        idsToPublish.push(productId);
 
-        // Upload images produit (hors variantes)
+        // Upload product images
         const allImagesToAttach = [
           ...new Set([
             ...group.map((row) => row["Image Src"]).filter(Boolean),
@@ -710,7 +718,7 @@ export async function setupShop({ session }: { session: Session }) {
           await createProductMedia(session, productId, normalizedUrl, "");
         }
 
-        // Produit avec variantes (options)
+        // Product with variants (options)
         if (productOptionsOrUndefined && productOptionsOrUndefined.length > 0) {
           const seen = new Set<string>();
           const variants = group
@@ -774,7 +782,7 @@ export async function setupShop({ session }: { session: Session }) {
                 if (ready) {
                   await appendMediaToVariant(session, productId, variantId, mediaId);
                 } else {
-                  console.error("Media non READY après upload : pas de rattachement", mediaId);
+                  console.error("Media not READY after upload: not attaching", mediaId);
                 }
               }
             }
@@ -782,28 +790,28 @@ export async function setupShop({ session }: { session: Session }) {
         }
         await new Promise((res) => setTimeout(res, 300));
       } catch (err) {
-        console.error("Erreur création produit GraphQL", handleUnique, err);
+        console.error("GraphQL product creation error", handleUnique, err);
       }
     }
     
-    // --- PUBLICATION DES PRODUITS ET COLLECTIONS SUR LE CANAL DE VENTE "ONLINE STORE" ---
-    console.log("Fin de la création des ressources. Début de la publication...");
+    // --- PUBLISH PRODUCTS AND COLLECTIONS TO "ONLINE STORE" ---
+    console.log("Resource creation complete. Starting publication...");
 
     const onlineStorePublicationId = await getOnlineStorePublicationId(session);
 
     if (onlineStorePublicationId && idsToPublish.length > 0) {
       for (const resourceId of idsToPublish) {
         await publishResource(session, resourceId, onlineStorePublicationId);
-        await new Promise((res) => setTimeout(res, 300)); // Petit délai pour ne pas surcharger l'API
+        await new Promise((res) => setTimeout(res, 300));
       }
-      console.log("Toutes les ressources ont été traitées pour publication.");
+      console.log("All resources have been processed for publication.");
     } else if (!onlineStorePublicationId) {
-      console.error("Impossible de publier les ressources car l'ID de 'Online Store' n'a pas été trouvé.");
+      console.error("Unable to publish resources because 'Online Store' ID was not found.");
     } else {
-      console.log("Aucune ressource à publier.");
+      console.log("No resources to publish.");
     }
 
   } catch (err) {
-    console.error("Erreur globale setupShop:", err);
+    console.error("Global setupShop error:", err);
   }
 }

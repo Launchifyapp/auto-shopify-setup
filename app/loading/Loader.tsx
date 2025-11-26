@@ -1,10 +1,13 @@
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Language, t } from "@/lib/i18n";
 
 export default function Loader() {
   const searchParams = useSearchParams();
   const shop = searchParams?.get("shop") ?? "";
   const token = searchParams?.get("token") ?? "";
+  const langParam = searchParams?.get("lang") ?? "fr";
+  const lang: Language = langParam === "en" ? "en" : "fr";
   const [step, setStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
 
@@ -13,37 +16,39 @@ export default function Loader() {
       try {
         setStep(1);
         // 1. Setup boutique
-        const res1 = await fetch(`/api/setup-shop?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(token)}`);
+        const res1 = await fetch(`/api/setup-shop?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(token)}&lang=${lang}`);
         const data1 = await res1.json();
-        if (!data1.ok) throw new Error(data1.error || "Erreur setup boutique");
+        if (!data1.ok) throw new Error(data1.error || t(lang, "errorSetup"));
 
         setStep(2);
-        // 2. Upload thème
-        const res2 = await fetch(`/api/upload-theme?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(token)}`);
+        // 2. Upload theme
+        const res2 = await fetch(`/api/upload-theme?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(token)}&lang=${lang}`);
         const data2 = await res2.json();
-        if (!data2.ok || !data2.themeId) throw new Error(data2.error || "Erreur upload thème");
+        if (!data2.ok || !data2.themeId) throw new Error(data2.error || t(lang, "errorThemeUpload"));
 
         setStep(3);
-        // 3. Publication du thème
+        // 3. Publish theme
         const res3 = await fetch(`/api/publish-theme?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(token)}&themeId=${data2.themeId}`);
         const data3 = await res3.json();
-        if (!data3.ok) throw new Error(data3.error || "Erreur publication thème");
+        if (!data3.ok) throw new Error(data3.error || t(lang, "errorThemePublish"));
 
-        // 4. Succès
-        window.location.href = "/success";
+        // 4. Success
+        window.location.href = `/success?lang=${lang}`;
       } catch (e: any) {
-        setError(e.message || "Erreur générale automatisation");
+        setError(e.message || t(lang, "generalError"));
       }
     }
 
     if (shop && token) fullSetup();
-    else setError("Paramètres manquants.");
-  }, [shop, token]);
+    else setError(t(lang, "missingParams"));
+  }, [shop, token, lang]);
+
+  const stepText = t(lang, "loadingStep").replace("{step}", String(step));
 
   return (
     <div style={{ textAlign:"center",marginTop:"10rem" }}>
-      <h1>Installation en cours…</h1>
-      <p>Étape {step}/3. Merci de patienter pendant l’automatisation complète de votre boutique Shopify.</p>
+      <h1>{t(lang, "loadingTitle")}</h1>
+      <p>{stepText}</p>
       {error && <p style={{ color:"red", fontSize:"1.7rem"}}>❌ {error}</p>}
       <div className="spinner" />
       <style>{`
