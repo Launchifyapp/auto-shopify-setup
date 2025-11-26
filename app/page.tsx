@@ -6,7 +6,7 @@ export default function InstallLanding() {
   // Utilise variable Next.js client OU hardcode si besoin
   const CLIENT_ID = process.env.NEXT_PUBLIC_SHOPIFY_API_KEY || "ta_cle_api_shopify";
   const REDIRECT_URI = "https://launchify.tech/api/auth/callback";
-  const SCOPES = "write_products,write_themes,write_content";
+  const SCOPES = "read_files,write_files,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_online_store_navigation,write_online_store_navigation,write_online_store_pages,read_products,write_products,read_content,write_content,write_themes";
 
   function startInstall() {
     if (!shop.endsWith(".myshopify.com")) {
