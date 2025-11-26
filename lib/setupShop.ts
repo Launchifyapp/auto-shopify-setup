@@ -764,6 +764,13 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
             const firstVariantId = edges[0].node.id;
             await updateDefaultVariantWithSDK(session, productId, firstVariantId, group[0]);
           }
+        } else {
+          // Product without variants: update the default variant with price and compareAtPrice
+          const edges = productData?.variants?.edges;
+          if (edges && edges.length) {
+            const defaultVariantId = edges[0].node.id;
+            await updateDefaultVariantWithSDK(session, productId, defaultVariantId, main);
+          }
         }
 
         const edges = productData?.variants?.edges;
