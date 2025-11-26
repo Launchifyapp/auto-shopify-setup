@@ -9,13 +9,13 @@ export async function GET(req: NextRequest) {
   const shop = searchParams.get("shop");
   const stateParam = searchParams.get("state");
 
-  // Extract language from state parameter
-  let lang = "fr";
+  // Extract display language from state parameter
+  let displayLang = "fr";
   if (stateParam) {
     try {
       const stateData = JSON.parse(decodeURIComponent(stateParam));
-      if (stateData.lang === "en" || stateData.lang === "fr") {
-        lang = stateData.lang;
+      if (stateData.displayLang === "en" || stateData.displayLang === "fr") {
+        displayLang = stateData.displayLang;
       }
     } catch (e) {
       // Default to French if parsing fails
@@ -59,9 +59,9 @@ export async function GET(req: NextRequest) {
     return new Response(html, { status: 400, headers: { "Content-Type": "text/html; charset=UTF-8" } });
   }
 
-  // Absolute redirect required!
+  // Redirect to store language selection page (before loader)
   const appBase = process.env.NEXT_PUBLIC_BASE_URL || "https://auto-shopify-setup.vercel.app";
-  const redirectUrl = `${appBase}/loading?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(data.access_token)}&lang=${lang}`;
+  const redirectUrl = `${appBase}/select-language?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(data.access_token)}&displayLang=${displayLang}`;
 
   return Response.redirect(redirectUrl, 302);
 }

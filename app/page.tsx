@@ -4,7 +4,7 @@ import { Language, t } from "@/lib/i18n";
 
 export default function InstallLanding() {
   const [shop, setShop] = useState("");
-  const [lang, setLang] = useState<Language>("fr");
+  const [displayLang, setDisplayLang] = useState<Language>("fr");
   
   const CLIENT_ID = process.env.NEXT_PUBLIC_SHOPIFY_API_KEY || "ta_cle_api_shopify";
   const REDIRECT_URI = "https://auto-shopify-setup.vercel.app/api/auth/callback";
@@ -12,37 +12,34 @@ export default function InstallLanding() {
 
   function startInstall() {
     if (!shop.endsWith(".myshopify.com")) {
-      alert(t(lang, "invalidShopAlert"));
+      alert(t(displayLang, "invalidShopAlert"));
       return;
     }
-    // Pass language in state parameter to preserve it through OAuth
-    const state = encodeURIComponent(JSON.stringify({ lang }));
+    // Pass display language in state parameter to preserve it through OAuth
+    const state = encodeURIComponent(JSON.stringify({ displayLang }));
     const installUrl = `https://${shop}/admin/oauth/authorize?client_id=${CLIENT_ID}&scope=${SCOPES}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}`;
     window.location.href = installUrl;
   }
 
   return (
-    <main style={{ textAlign:"center", marginTop:"8rem" }}>
-      <h1 style={{ fontSize:"2rem" }}>{t(lang, "installTitle")}</h1>
-      <p>{t(lang, "installDescription")}</p>
-      
-      <div style={{ margin: "1.5rem auto", maxWidth: "320px" }}>
-        <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>
-          {t(lang, "selectLanguage")}
-        </label>
+    <main style={{ textAlign:"center", marginTop:"8rem", position: "relative" }}>
+      <div style={{ position: "absolute", top: "-6rem", right: "1rem" }}>
         <select
-          value={lang}
-          onChange={e => setLang(e.target.value as Language)}
-          style={{ fontSize: "1.1rem", padding: "0.5rem", width: "100%", borderRadius: "4px", border: "1px solid #ccc" }}
+          value={displayLang}
+          onChange={e => setDisplayLang(e.target.value as Language)}
+          style={{ fontSize: "0.9rem", padding: "0.4rem", borderRadius: "4px", border: "1px solid #ccc" }}
         >
           <option value="fr">🇫🇷 Français</option>
           <option value="en">🇬🇧 English</option>
         </select>
       </div>
       
+      <h1 style={{ fontSize:"2rem" }}>{t(displayLang, "installTitle")}</h1>
+      <p>{t(displayLang, "installDescription")}</p>
+      
       <input
         type="text"
-        placeholder={t(lang, "shopPlaceholder")}
+        placeholder={t(displayLang, "shopPlaceholder")}
         value={shop}
         onChange={e => setShop(e.target.value)}
         style={{ fontSize:"1.2rem", padding:"0.5rem", width:"320px", margin:"1rem" }}
@@ -53,11 +50,11 @@ export default function InstallLanding() {
         onClick={startInstall}
         disabled={!shop.endsWith(".myshopify.com")}
       >
-        {t(lang, "installButton")}
+        {t(displayLang, "installButton")}
       </button>
       <p style={{ marginTop:"2rem", color:"#888" }}>
-        {t(lang, "afterInstallMessage")} <br />
-        {t(lang, "afterInstallDetails")}
+        {t(displayLang, "afterInstallMessage")} <br />
+        {t(displayLang, "afterInstallDetails")}
       </p>
     </main>
   );

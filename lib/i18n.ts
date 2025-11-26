@@ -2,15 +2,21 @@ export type Language = "fr" | "en";
 
 export const translations = {
   fr: {
-    // Landing page
+    // Landing page (only display language, no store language)
     installTitle: "Installer l'app Shopify automatique",
     installDescription: "Entrez votre nom de boutique Shopify pour lancer l'installation de l'app sur votre store.",
     shopPlaceholder: "votreshop.myshopify.com",
     installButton: "Installer l'app sur Shopify",
-    afterInstallMessage: "Après installation, l'automatisation de votre boutique démarre",
+    afterInstallMessage: "Après installation, vous pourrez choisir la langue de votre boutique",
     afterInstallDetails: "(pages, produits, thème).",
     invalidShopAlert: "Entrer un shop valide, ex: monboutique.myshopify.com",
-    selectLanguage: "Langue de votre boutique",
+    displayLanguage: "Langue d'affichage",
+    
+    // Store language selection page (after OAuth)
+    selectStoreLanguageTitle: "Choisissez la langue de votre boutique",
+    selectStoreLanguageDescription: "Sélectionnez la langue dans laquelle vos produits, pages et thème seront créés.",
+    selectStoreLanguage: "Langue de la boutique",
+    startInstallation: "Démarrer l'installation",
     
     // Loading page
     loadingTitle: "Installation en cours…",
@@ -55,15 +61,21 @@ Reste du monde : 7-14 jours
     themeName: "Dreamify V2 FR",
   },
   en: {
-    // Landing page
+    // Landing page (only display language, no store language)
     installTitle: "Install the automatic Shopify app",
     installDescription: "Enter your Shopify store name to start installing the app on your store.",
     shopPlaceholder: "yourshop.myshopify.com",
     installButton: "Install app on Shopify",
-    afterInstallMessage: "After installation, your store automation begins",
+    afterInstallMessage: "After installation, you will be able to choose your store language",
     afterInstallDetails: "(pages, products, theme).",
     invalidShopAlert: "Enter a valid shop, e.g.: mystore.myshopify.com",
-    selectLanguage: "Your store language",
+    displayLanguage: "Display language",
+    
+    // Store language selection page (after OAuth)
+    selectStoreLanguageTitle: "Choose your store language",
+    selectStoreLanguageDescription: "Select the language in which your products, pages and theme will be created.",
+    selectStoreLanguage: "Store language",
+    startInstallation: "Start installation",
     
     // Loading page
     loadingTitle: "Installation in progress…",
