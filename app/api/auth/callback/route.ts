@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
   }
 
   // REDIRECTION ABSOLUE obligatoire !
-  const appBase = process.env.NEXT_PUBLIC_BASE_URL || "https://auto-shopify-setup.vercel.app";
+  const appBase = process.env.NEXT_PUBLIC_BASE_URL || "https://launchify.tech";
   const redirectUrl = `${appBase}/loading?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(data.access_token)}`;
 
   return Response.redirect(redirectUrl, 302);
