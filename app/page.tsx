@@ -5,7 +5,7 @@ export default function InstallLanding() {
   const [shop, setShop] = useState("");
   // Utilise variable Next.js client OU hardcode si besoin
   const CLIENT_ID = process.env.NEXT_PUBLIC_SHOPIFY_API_KEY || "ta_cle_api_shopify";
-  const REDIRECT_URI = "https://auto-shopify-setup.vercel.app/api/auth/callback";
+  const REDIRECT_URI = "https://launchify.tech/api/auth/callback";
   const SCOPES = "write_products,write_themes,write_content";
 
   function startInstall() {
