@@ -649,9 +649,12 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
       ? "https://auto-shopify-setup.vercel.app/products-en.csv"
       : "https://auto-shopify-setup.vercel.app/products.csv";
     
+    // English CSV uses comma delimiter, French CSV uses semicolon delimiter
+    const csvDelimiter = lang === "en" ? "," : ";";
+    
     const response = await fetch(csvUrl);
     const csvText = await response.text();
-    const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: ";" });
+    const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: csvDelimiter });
 
     const productsByHandle: Record<string, any[]> = {};
     for (const row of records) {
