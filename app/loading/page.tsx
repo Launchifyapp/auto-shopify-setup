@@ -5,7 +5,7 @@ import Loader from "./Loader";
 
 export default function SuspenseBoundary() {
   return (
-    <Suspense fallback={<div>Chargement…</div>}>
+    <Suspense fallback={<div>Loading… / Chargement…</div>}>
       <Loader />
     </Suspense>
   );
