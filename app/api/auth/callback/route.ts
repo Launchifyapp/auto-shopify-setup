@@ -62,6 +62,9 @@ export async function GET(req: NextRequest) {
   // Redirect to store language selection page (before loader)
   const appBase = process.env.NEXT_PUBLIC_BASE_URL || "https://auto-shopify-setup.vercel.app";
   const redirectUrl = `${appBase}/select-language?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(data.access_token)}&displayLang=${displayLang}`;
+  // REDIRECTION ABSOLUE obligatoire !
+  const appBase = process.env.NEXT_PUBLIC_BASE_URL || "https://launchify.tech";
+  const redirectUrl = `${appBase}/loading?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(data.access_token)}`;
 
   return Response.redirect(redirectUrl, 302);
 }
