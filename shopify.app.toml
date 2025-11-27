@@ -5,7 +5,7 @@
 name = "auto-shopify-setup"
 
 [webhooks]
-api_version = "2024-07"
+api_version = "2025-01"
 
 # Compliance webhooks are mandatory for apps distributed through the Shopify App Store
 # These webhooks handle GDPR/CCPA data requests and deletion requests

@@ -58,24 +58,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   console.log(`[Webhook] Received ${topic} for shop: ${shop || 'unknown'}`);
 
+  // Extract common properties with safe access
+  const customer = payload.customer as { id?: string | number } | undefined;
+  const customerId = customer?.id ?? 'unknown';
+  const shopId = payload.shop_id ?? 'unknown';
+
   // Handle each compliance topic
   switch (topic) {
     case 'customers/data_request':
-      console.log(`[Privacy] customers/data_request - Customer ID: ${(payload.customer as { id?: unknown })?.id || 'unknown'}`);
+      console.log(`[Privacy] customers/data_request - Customer ID: ${customerId}`);
       console.log('[Privacy] Response: No customer data is stored by this application.');
       return res.status(200).json({
         message: 'Data request received - no customer data is stored by this application'
       });
 
     case 'customers/redact':
-      console.log(`[Privacy] customers/redact - Customer ID: ${(payload.customer as { id?: unknown })?.id || 'unknown'}`);
+      console.log(`[Privacy] customers/redact - Customer ID: ${customerId}`);
       console.log('[Privacy] Response: No customer data to delete - none is stored.');
       return res.status(200).json({
         message: 'Redact request received - no customer data is stored by this application'
       });
 
     case 'shop/redact':
-      console.log(`[Privacy] shop/redact - Shop ID: ${payload.shop_id || 'unknown'}`);
+      console.log(`[Privacy] shop/redact - Shop ID: ${shopId}`);
       console.log('[Privacy] Response: No shop data to delete - none is stored persistently.');
       return res.status(200).json({
         message: 'Shop redact request received - no data is stored persistently by this application'
