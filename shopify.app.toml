@@ -1,0 +1,14 @@
+# Shopify App Configuration
+# This file configures the Shopify app including compliance webhooks
+# @see https://shopify.dev/docs/apps/build/compliance/privacy-law-compliance
+
+name = "auto-shopify-setup"
+
+[webhooks]
+api_version = "2024-07"
+
+# Compliance webhooks are mandatory for apps distributed through the Shopify App Store
+# These webhooks handle GDPR/CCPA data requests and deletion requests
+[[webhooks.subscriptions]]
+compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+uri = "/api/webhooks"
