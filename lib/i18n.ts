@@ -59,6 +59,20 @@ Reste du monde : 7-14 jours
     collectionHomeHandle: "maison-confort",
     collectionHomeTag: "Maison & confort",
     themeName: "Dreamify V2 FR",
+    
+    // Privacy policy page
+    privacyTitle: "Politique de confidentialité",
+    privacyIntroTitle: "Introduction",
+    privacyIntroText: "Cette politique de confidentialité décrit comment notre application Shopify gère les données. Nous nous engageons à protéger votre vie privée et à être transparents sur nos pratiques en matière de données.",
+    privacyDataTitle: "Données clients collectées",
+    privacyDataText: "Notre application ne collecte, ne stocke ni ne traite aucune donnée personnelle des clients de votre boutique. Nous n'avons accès à aucune information client telle que les noms, adresses e-mail, adresses postales ou informations de paiement.",
+    privacyMerchantDataTitle: "Données marchands",
+    privacyMerchantDataText: "Notre application accède uniquement aux données de configuration de votre boutique nécessaires pour fournir nos services (thèmes, produits, pages). Ces données ne sont utilisées que pendant le processus d'installation et ne sont pas stockées de manière permanente sur nos serveurs.",
+    privacyGDPRTitle: "Conformité RGPD et droits sur les données",
+    privacyGDPRText: "Conformément au RGPD, au CCPA et aux autres lois sur la protection des données, vous avez le droit de demander l'accès, la rectification ou la suppression de vos données. Étant donné que nous ne stockons aucune donnée personnelle, ces demandes n'entraîneront aucune action de notre part, mais nous confirmerons que nous ne détenons aucune de vos données.",
+    privacyContactTitle: "Nous contacter",
+    privacyContactText: "Si vous avez des questions concernant cette politique de confidentialité ou nos pratiques en matière de données, veuillez nous contacter à :",
+    privacyLastUpdated: "Dernière mise à jour : Novembre 2025",
   },
   en: {
     // Landing page (only display language, no store language)
@@ -118,6 +132,20 @@ Rest of the world: 10-21 business days
     collectionHomeHandle: "home-comfort",
     collectionHomeTag: "Home & Comfort",
     themeName: "Dreamify V2 EN",
+    
+    // Privacy policy page
+    privacyTitle: "Privacy Policy",
+    privacyIntroTitle: "Introduction",
+    privacyIntroText: "This privacy policy describes how our Shopify app handles data. We are committed to protecting your privacy and being transparent about our data practices.",
+    privacyDataTitle: "Customer Data Collected",
+    privacyDataText: "Our app does not collect, store, or process any personal data from your store's customers. We do not have access to any customer information such as names, email addresses, mailing addresses, or payment information.",
+    privacyMerchantDataTitle: "Merchant Data",
+    privacyMerchantDataText: "Our app only accesses store configuration data necessary to provide our services (themes, products, pages). This data is only used during the installation process and is not permanently stored on our servers.",
+    privacyGDPRTitle: "GDPR Compliance and Data Rights",
+    privacyGDPRText: "In accordance with GDPR, CCPA, and other data protection laws, you have the right to request access, rectification, or deletion of your data. Since we do not store any personal data, these requests will result in no action on our part, but we will confirm that we hold none of your data.",
+    privacyContactTitle: "Contact Us",
+    privacyContactText: "If you have any questions about this privacy policy or our data practices, please contact us at:",
+    privacyLastUpdated: "Last updated: November 2025",
   }
 };
 
