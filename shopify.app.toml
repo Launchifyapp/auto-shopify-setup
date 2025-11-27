@@ -1,31 +1,30 @@
-# Shopify App Configuration
-# This file configures the Shopify app including compliance webhooks
-# @see https://shopify.dev/docs/apps/build/compliance/privacy-law-compliance
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-name = "launchify"
+client_id = "cfa8956ee2e19e9f8c583f54582fe43a"
+name = "Launchify"
+application_url = "https://launchify.tech"
+embedded = true
 
 [webhooks]
-api_version = "2025-01"
+api_version = "2025-10"
 
-# Compliance webhooks are mandatory for apps distributed through the Shopify App Store
-# These webhooks handle GDPR/CCPA data requests and deletion requests
-#
-# For development: Use relative URIs (Shopify CLI handles the host automatically)
-# For production: Replace with absolute HTTPS URLs before deployment
-#
-# Each compliance topic has a dedicated endpoint for clear separation:
-# - customers/data_request: Customer requests their personal data (GDPR Article 15)
-# - customers/redact: Customer requests deletion of their data (GDPR Article 17)
-# - shop/redact: Shop data deletion after uninstall (48h grace period)
+  [[webhooks.subscriptions]]
+  uri = "/api/webhooks/customers-data-request"
+  compliance_topics = [ "customers/data_request" ]
 
-[[webhooks.subscriptions]]
-compliance_topics = ["customers/data_request"]
-uri = "/api/webhooks/customers-data-request"
+  [[webhooks.subscriptions]]
+  uri = "/api/webhooks/customers-redact"
+  compliance_topics = [ "customers/redact" ]
 
-[[webhooks.subscriptions]]
-compliance_topics = ["customers/redact"]
-uri = "/api/webhooks/customers-redact"
+  [[webhooks.subscriptions]]
+  uri = "/api/webhooks/shop-redact"
+  compliance_topics = [ "shop/redact" ]
 
-[[webhooks.subscriptions]]
-compliance_topics = ["shop/redact"]
-uri = "/api/webhooks/shop-redact"
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_files,write_files,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_online_store_navigation,write_online_store_navigation,write_online_store_pages,read_products,write_products,read_content,write_content,write_themes"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [ "https://launchify.tech/api/auth/callback" ]
