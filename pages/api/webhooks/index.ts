@@ -9,8 +9,15 @@ export const config = {
 };
 
 /**
- * Main compliance webhook handler for Shopify
- * Handles all mandatory compliance webhooks:
+ * Fallback compliance webhook handler for Shopify
+ * 
+ * NOTE: The TOML configuration uses separate dedicated endpoints:
+ * - /api/webhooks/customers-data-request
+ * - /api/webhooks/customers-redact
+ * - /api/webhooks/shop-redact
+ * 
+ * This handler serves as a fallback and can process any compliance topic.
+ * It handles all mandatory compliance webhooks:
  * - customers/data_request: Customer requests their data
  * - customers/redact: Request to delete customer data
  * - shop/redact: Request to delete shop data (48h after uninstall)
