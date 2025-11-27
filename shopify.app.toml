@@ -2,7 +2,7 @@
 # This file configures the Shopify app including compliance webhooks
 # @see https://shopify.dev/docs/apps/build/compliance/privacy-law-compliance
 
-name = "auto-shopify-setup"
+name = "launchify"
 
 [webhooks]
 api_version = "2025-01"
