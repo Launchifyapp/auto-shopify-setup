@@ -13,10 +13,19 @@ api_version = "2025-01"
 # For development: Use relative URIs (Shopify CLI handles the host automatically)
 # For production: Replace with absolute HTTPS URLs before deployment
 #
-# The following topics MUST be handled:
+# Each compliance topic has a dedicated endpoint for clear separation:
 # - customers/data_request: Customer requests their personal data (GDPR Article 15)
 # - customers/redact: Customer requests deletion of their data (GDPR Article 17)
 # - shop/redact: Shop data deletion after uninstall (48h grace period)
+
 [[webhooks.subscriptions]]
-compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
-uri = "/api/webhooks"
+compliance_topics = ["customers/data_request"]
+uri = "/api/webhooks/customers-data-request"
+
+[[webhooks.subscriptions]]
+compliance_topics = ["customers/redact"]
+uri = "/api/webhooks/customers-redact"
+
+[[webhooks.subscriptions]]
+compliance_topics = ["shop/redact"]
+uri = "/api/webhooks/shop-redact"
