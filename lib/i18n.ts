@@ -71,7 +71,7 @@ Reste du monde : 7-14 jours
     privacyGDPRTitle: "Conformité RGPD et droits sur les données",
     privacyGDPRText: "Conformément au RGPD, au CCPA et aux autres lois sur la protection des données, vous avez le droit de demander l'accès, la rectification ou la suppression de vos données. Étant donné que nous ne stockons aucune donnée personnelle, ces demandes n'entraîneront aucune action de notre part, mais nous confirmerons que nous ne détenons aucune de vos données.",
     privacyContactTitle: "Nous contacter",
-    privacyContactText: "Si vous avez des questions concernant cette politique de confidentialité ou nos pratiques en matière de données, veuillez nous contacter à :",
+    privacyContactText: "Si vous avez des questions concernant cette politique de confidentialité ou nos pratiques en matière de données, veuillez nous contacter à launchify.business@gmail.com :",
     privacyLastUpdated: "Dernière mise à jour : Novembre 2025",
   },
   en: {
@@ -144,7 +144,7 @@ Rest of the world: 10-21 business days
     privacyGDPRTitle: "GDPR Compliance and Data Rights",
     privacyGDPRText: "In accordance with GDPR, CCPA, and other data protection laws, you have the right to request access, rectification, or deletion of your data. Since we do not store any personal data, these requests will result in no action on our part, but we will confirm that we hold none of your data.",
     privacyContactTitle: "Contact Us",
-    privacyContactText: "If you have any questions about this privacy policy or our data practices, please contact us at:",
+    privacyContactText: "If you have any questions about this privacy policy or our data practices, please contact us at launchify.business@gmail.com:",
     privacyLastUpdated: "Last updated: November 2025",
   }
 };
