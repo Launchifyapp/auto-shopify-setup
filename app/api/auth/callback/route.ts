@@ -59,9 +59,13 @@ export async function GET(req: NextRequest) {
     return new Response(html, { status: 400, headers: { "Content-Type": "text/html; charset=UTF-8" } });
   }
 
+  // Capture the scope returned by Shopify OAuth (the actual permissions granted)
+  const grantedScope = data.scope || "";
+  console.log("[OAuth callback] Granted scope:", grantedScope);
+
   // Redirect to store language selection page (before loader)
   const appBase = process.env.NEXT_PUBLIC_BASE_URL || "https://auto-shopify-setup.vercel.app";
-  const redirectUrl = `${appBase}/select-language?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(data.access_token)}&displayLang=${displayLang}`;
+  const redirectUrl = `${appBase}/select-language?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(data.access_token)}&scope=${encodeURIComponent(grantedScope)}&displayLang=${displayLang}`;
 
   return Response.redirect(redirectUrl, 302);
 }

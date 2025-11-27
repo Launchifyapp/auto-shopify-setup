@@ -7,6 +7,7 @@ function SelectLanguageContent() {
   const searchParams = useSearchParams();
   const shop = searchParams?.get("shop") ?? "";
   const token = searchParams?.get("token") ?? "";
+  const scope = searchParams?.get("scope") ?? "";
   const displayLangParam = searchParams?.get("displayLang") ?? "fr";
   
   const [displayLang, setDisplayLang] = useState<Language>(displayLangParam === "en" ? "en" : "fr");
@@ -17,7 +18,7 @@ function SelectLanguageContent() {
       alert(t(displayLang, "missingParams"));
       return;
     }
-    window.location.href = `/loading?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(token)}&lang=${storeLang}`;
+    window.location.href = `/loading?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(token)}&scope=${encodeURIComponent(scope)}&lang=${storeLang}`;
   }
 
   return (

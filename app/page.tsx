@@ -2,13 +2,15 @@
 import { useState } from "react";
 import { Language, t } from "@/lib/i18n";
 
+// OAuth scopes - must match lib/scopes.ts ALL_SCOPES
+const SCOPES = "read_products,write_products,read_content,write_content,read_files,write_files,read_themes,write_themes,read_online_store_pages,write_online_store_pages,read_online_store_navigation,write_online_store_navigation,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects";
+
 export default function InstallLanding() {
   const [shop, setShop] = useState("");
   const [displayLang, setDisplayLang] = useState<Language>("fr");
   
   const CLIENT_ID = process.env.NEXT_PUBLIC_SHOPIFY_API_KEY || "ta_cle_api_shopify";
   const REDIRECT_URI = "https://launchify.tech/api/auth/callback";
-  const SCOPES = "read_files,write_files,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_online_store_navigation,write_online_store_navigation,write_online_store_pages,read_products,write_products,read_content,write_content,write_themes";
 
   function startInstall() {
     if (!shop.endsWith(".myshopify.com")) {

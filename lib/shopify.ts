@@ -1,5 +1,6 @@
 import '@shopify/shopify-api/adapters/node'; // ← Adapter Node obligatoire
 import { shopifyApi, Session, ApiVersion } from "@shopify/shopify-api";
+import { DEFAULT_SESSION_SCOPE } from "@/lib/scopes";
 
 // Host extraction sécurisé
 function getHostName() {
@@ -30,7 +31,8 @@ export async function shopifyGraphQL(
   shop: string,
   token: string,
   query: string,
-  variables: any = {}
+  variables: any = {},
+  scope: string = DEFAULT_SESSION_SCOPE
 ) {
   const session = new Session({
     id: `${shop}_${Date.now()}`,
@@ -38,7 +40,7 @@ export async function shopifyGraphQL(
     state: "shopify-graphql",
     isOnline: true,
     accessToken: token,
-    scope: "write_products,read_products,write_files,read_files,write_online_store_pages,read_online_store_pages,write_content,read_content,write_themes,read_themes",
+    scope,
     expires: undefined,
     onlineAccessInfo: undefined,
   });
