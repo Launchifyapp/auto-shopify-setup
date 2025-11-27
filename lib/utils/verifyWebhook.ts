@@ -1,8 +1,6 @@
 import type { NextApiRequest } from 'next';
 import crypto from 'crypto';
 
-const SHOPIFY_WEBHOOK_SECRET = process.env.SHOPIFY_API_SECRET || '';
-
 /**
  * Verifies Shopify webhook signature using HMAC-SHA256
  * Uses timing-safe comparison as required by Shopify
@@ -13,8 +11,10 @@ const SHOPIFY_WEBHOOK_SECRET = process.env.SHOPIFY_API_SECRET || '';
  * @see https://shopify.dev/docs/apps/build/webhooks/subscribe/https#step-5-verify-the-webhook
  */
 export function verifyShopifyWebhook(req: NextApiRequest & { rawBody?: Buffer }): boolean {
-  const hmacHeader = req.headers['x-shopify-hmac-sha256'] as string;
-  if (!hmacHeader || !SHOPIFY_WEBHOOK_SECRET) {
+  const hmacHeader = req.headers['x-shopify-hmac-sha256'] as string | undefined;
+  const secret = process.env.SHOPIFY_API_SECRET;
+  
+  if (!hmacHeader || !secret) {
     return false;
   }
 
@@ -25,15 +25,17 @@ export function verifyShopifyWebhook(req: NextApiRequest & { rawBody?: Buffer })
   }
 
   // Compute HMAC using the raw body buffer
+  // Shopify expects HMAC-SHA256 with base64 encoding
   const computedHmac = crypto
-    .createHmac('sha256', SHOPIFY_WEBHOOK_SECRET)
+    .createHmac('sha256', secret)
     .update(body)
     .digest('base64');
 
   // Use timing-safe comparison to prevent timing attacks
+  // Compare the base64 strings directly as buffers
   try {
-    const hmacBuffer = Buffer.from(hmacHeader, 'base64');
-    const computedBuffer = Buffer.from(computedHmac, 'base64');
+    const hmacBuffer = Buffer.from(hmacHeader, 'utf8');
+    const computedBuffer = Buffer.from(computedHmac, 'utf8');
 
     // Buffers must be same length for timingSafeEqual
     if (hmacBuffer.length !== computedBuffer.length) {

@@ -60,8 +60,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Extract common properties with safe access
   const customer = payload.customer as { id?: string | number } | undefined;
-  const customerId = customer?.id ?? 'unknown';
-  const shopId = payload.shop_id ?? 'unknown';
+  const customerId = customer?.id || 'unknown';
+  const shopId = payload.shop_id || 'unknown';
 
   // Handle each compliance topic
   switch (topic) {
@@ -87,7 +87,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
 
     default:
+      // Return 200 for unhandled topics to acknowledge receipt
+      // This prevents Shopify from retrying the webhook
       console.log(`[Webhook] Unhandled topic: ${topic}`);
-      return res.status(400).json({ error: `Unhandled webhook topic: ${topic}` });
+      return res.status(200).json({ 
+        message: 'Webhook received',
+        topic: topic || 'unknown'
+      });
   }
 }

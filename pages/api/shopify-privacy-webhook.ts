@@ -34,7 +34,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const topic = req.headers['x-shopify-topic'];
   const shop = req.headers['x-shopify-shop-domain'];
-  const payload = rawBody.length > 0 ? JSON.parse(rawBody.toString('utf8')) : {};
+  
+  let payload: Record<string, unknown> = {};
+  if (rawBody.length > 0) {
+    try {
+      payload = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      return res.status(400).json({ error: 'Invalid JSON payload' });
+    }
+  }
 
   console.log(`[PRIVACY] Shopify webhook reçu: ${topic} for shop: ${shop}`);
   // Ici, on log la demande pour traçabilité, mais on n'a aucune donnée à exporter/supprimer

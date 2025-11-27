@@ -9,6 +9,14 @@ api_version = "2025-01"
 
 # Compliance webhooks are mandatory for apps distributed through the Shopify App Store
 # These webhooks handle GDPR/CCPA data requests and deletion requests
+#
+# For development: Use relative URIs (Shopify CLI handles the host automatically)
+# For production: Replace with absolute HTTPS URLs before deployment
+#
+# The following topics MUST be handled:
+# - customers/data_request: Customer requests their personal data (GDPR Article 15)
+# - customers/redact: Customer requests deletion of their data (GDPR Article 17)
+# - shop/redact: Shop data deletion after uninstall (48h grace period)
 [[webhooks.subscriptions]]
 compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
 uri = "/api/webhooks"

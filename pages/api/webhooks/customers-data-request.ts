@@ -36,10 +36,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const shop = req.headers['x-shopify-shop-domain'] as string | undefined;
-  const payload = rawBody.length > 0 ? JSON.parse(rawBody.toString('utf8')) : {};
+  
+  let payload: Record<string, unknown> = {};
+  if (rawBody.length > 0) {
+    try {
+      payload = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      return res.status(400).json({ error: 'Invalid JSON payload' });
+    }
+  }
+  
+  const customer = payload.customer as { id?: string | number } | undefined;
 
   console.log(`[Privacy] customers/data_request received for shop: ${shop || 'unknown'}`);
-  console.log(`[Privacy] Customer ID: ${payload?.customer?.id || 'unknown'}`);
+  console.log(`[Privacy] Customer ID: ${customer?.id || 'unknown'}`);
   console.log('[Privacy] Response: No customer data is stored by this application.');
 
   // Respond with 200 OK - Shopify requires this acknowledgment
