@@ -93,15 +93,29 @@ export function hasToken(shop: string): boolean {
 
 /**
  * Normalize shop domain to consistent format
+ * Validates that the shop domain ends with .myshopify.com to prevent URL substring attacks
  */
 function normalizeShopDomain(shop: string): string {
   // Remove protocol if present
   let normalized = shop.replace(/^https?:\/\//, '');
   // Remove trailing slash
   normalized = normalized.replace(/\/$/, '');
-  // Ensure .myshopify.com suffix
-  if (!normalized.includes('.myshopify.com')) {
-    normalized = `${normalized}.myshopify.com`;
+  // Remove any path components
+  normalized = normalized.split('/')[0];
+  
+  // Validate and ensure .myshopify.com suffix
+  // Use endsWith for security - prevents attacks like "evil.myshopify.com.attacker.com"
+  if (!normalized.endsWith('.myshopify.com')) {
+    // If it doesn't end with .myshopify.com, append it
+    // But only if it looks like a valid shop name (alphanumeric + hyphens)
+    const shopName = normalized.split('.')[0];
+    if (/^[a-zA-Z0-9][-a-zA-Z0-9]*$/.test(shopName)) {
+      normalized = `${shopName}.myshopify.com`;
+    } else {
+      // Invalid shop name format, return as-is for error handling upstream
+      normalized = `${normalized}.myshopify.com`;
+    }
   }
+  
   return normalized.toLowerCase();
 }
