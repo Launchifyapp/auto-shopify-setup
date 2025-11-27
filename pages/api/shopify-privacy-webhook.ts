@@ -16,14 +16,20 @@ export const config = {
  * @see https://shopify.dev/docs/apps/build/compliance/privacy-law-compliance
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') return res.status(405).end('Method not allowed');
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Validate Content-Type header as required by Shopify
+  const contentType = req.headers['content-type'];
+  if (!contentType || !contentType.includes('application/json')) {
+    return res.status(400).json({ error: 'Content-Type must be application/json' });
+  }
 
   // Read raw body as Buffer for HMAC verification
   const rawBody = await getRawBody(req);
   (req as NextApiRequest & { rawBody: Buffer }).rawBody = rawBody;
 
   if (!verifyShopifyWebhook(req as NextApiRequest & { rawBody: Buffer })) {
-    return res.status(401).send('Invalid webhook signature');
+    return res.status(401).json({ error: 'Unauthorized - Invalid webhook signature' });
   }
 
   const topic = req.headers['x-shopify-topic'];
@@ -50,10 +56,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       break;
 
     default:
-      res.status(204).send('Not a privacy topic');
-      return;
+      return res.status(200).json({ message: 'Webhook received but topic not handled' });
   }
 
   // Conformité : tu DOIS répondre 200 à Shopify
-  res.status(200).send('Webhook processed - no personal data stored');
+  res.status(200).json({ message: 'Webhook processed - no personal data stored' });
 }

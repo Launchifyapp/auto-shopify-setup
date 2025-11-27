@@ -18,7 +18,13 @@ export const config = {
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
-    return res.status(405).end('Method not allowed');
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Validate Content-Type header as required by Shopify
+  const contentType = req.headers['content-type'];
+  if (!contentType || !contentType.includes('application/json')) {
+    return res.status(400).json({ error: 'Content-Type must be application/json' });
   }
 
   // Read raw body as Buffer for HMAC verification
@@ -26,7 +32,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   (req as NextApiRequest & { rawBody: Buffer }).rawBody = rawBody;
 
   if (!verifyShopifyWebhook(req as NextApiRequest & { rawBody: Buffer })) {
-    return res.status(401).send('Invalid webhook signature');
+    return res.status(401).json({ error: 'Unauthorized - Invalid webhook signature' });
   }
 
   const shop = req.headers['x-shopify-shop-domain'] as string | undefined;
