@@ -4,6 +4,7 @@
  */
 
 import { NextRequest } from 'next/server';
+import * as crypto from 'crypto';
 
 interface SessionTokenPayload {
   iss: string; // Issuer (shop domain)
@@ -32,13 +33,54 @@ function base64UrlDecode(str: string): string {
 }
 
 /**
- * Extract and decode session token payload without verification
- * Note: In production, you should verify the signature using Shopify's public key
+ * Verify JWT signature using HMAC-SHA256 with the API secret
+ */
+function verifySignature(token: string): boolean {
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    return false;
+  }
+
+  const apiSecret = process.env.SHOPIFY_API_SECRET;
+  if (!apiSecret) {
+    console.log('[Session Token] API secret not configured');
+    return false;
+  }
+
+  const [header, payload, signature] = parts;
+  const signatureInput = `${header}.${payload}`;
+
+  // Create expected signature using HMAC-SHA256
+  const expectedSignature = crypto
+    .createHmac('sha256', apiSecret)
+    .update(signatureInput)
+    .digest('base64url');
+
+  // Compare signatures using timing-safe comparison
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    );
+  } catch {
+    // Buffer lengths don't match
+    return false;
+  }
+}
+
+/**
+ * Extract and decode session token payload with signature verification
  */
 export function decodeSessionToken(token: string): SessionTokenPayload | null {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) {
+      return null;
+    }
+
+    // Verify signature before decoding payload
+    if (!verifySignature(token)) {
+      console.log('[Session Token] Invalid signature');
       return null;
     }
 
@@ -89,8 +131,12 @@ export function verifySessionToken(token: string): { shop: string; isValid: bool
   } catch {
     // Fallback: try to extract from issuer
     if (payload.iss) {
-      const issUrl = new URL(payload.iss);
-      shop = issUrl.hostname;
+      try {
+        const issUrl = new URL(payload.iss);
+        shop = issUrl.hostname;
+      } catch {
+        // issuer URL is also invalid, shop will be empty
+      }
     }
   }
 

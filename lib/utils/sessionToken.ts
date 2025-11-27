@@ -1,13 +1,20 @@
 /**
  * Session Token utilities for Shopify App Bridge authentication
  * Using session tokens for user authentication as required by Shopify app review
+ * 
+ * Based on Shopify App Bridge CDN script API:
+ * https://shopify.dev/docs/api/app-bridge-library
  */
 
 declare global {
   interface Window {
+    // Shopify App Bridge global object provided by the CDN script
+    // This interface matches the App Bridge CDN script's API for embedded apps
     shopify?: {
+      // Get a session token (JWT) for authenticated API calls
       idToken: () => Promise<string>;
-      config: {
+      // App configuration set by the embedding context
+      config?: {
         shop: string;
         host: string;
         apiKey: string;

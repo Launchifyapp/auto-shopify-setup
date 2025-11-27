@@ -15,7 +15,10 @@ interface TokenEntry {
 // In-memory store - tokens are lost on server restart
 const tokenStore = new Map<string, TokenEntry>();
 
-// Token expiry time (24 hours in milliseconds)
+// Token expiry time for in-memory cache (24 hours in milliseconds)
+// Note: This is not related to Shopify's OAuth token expiry. Shopify OAuth tokens
+// don't expire for apps, but we clear our cache after 24 hours to limit memory usage
+// and ensure fresh authentication flows for long-running app installations.
 const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
 /**

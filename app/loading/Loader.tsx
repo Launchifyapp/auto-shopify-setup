@@ -3,6 +3,29 @@ import { useEffect, useState } from "react";
 import { Language, t } from "@/lib/i18n";
 import { authenticatedFetch } from "@/lib/utils/sessionToken";
 
+/**
+ * Check if we're running in an embedded Shopify context
+ * Uses multiple detection methods for reliability
+ */
+function isEmbeddedContext(): boolean {
+  if (typeof window === 'undefined') return false;
+  
+  // Check for App Bridge global object
+  if (window.shopify !== undefined) return true;
+  
+  // Check for embedded parameter in URL (set by Shopify when app is embedded)
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('embedded') === '1') return true;
+  
+  // Check for host parameter (base64 encoded shop admin URL, present in embedded context)
+  if (urlParams.get('host')) return true;
+  
+  // Check if we're in an iframe (embedded apps are loaded in iframes)
+  if (window.top !== window.self) return true;
+  
+  return false;
+}
+
 export default function Loader() {
   const searchParams = useSearchParams();
   const shop = searchParams?.get("shop") ?? "";
@@ -15,7 +38,8 @@ export default function Loader() {
     async function fullSetup() {
       try {
         // Determine if we should use session tokens (embedded app) or direct fetch (non-embedded)
-        const isEmbedded = typeof window !== 'undefined' && window.shopify !== undefined;
+        // Check after component mount to ensure window is available
+        const isEmbedded = isEmbeddedContext();
         
         // Use the appropriate fetch method
         const apiFetch = isEmbedded ? authenticatedFetch : fetch;
