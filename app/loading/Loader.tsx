@@ -1,12 +1,34 @@
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Language, t } from "@/lib/i18n";
+import { authenticatedFetch } from "@/lib/utils/sessionToken";
+
+/**
+ * Check if we're running in an embedded Shopify context
+ * Uses multiple detection methods for reliability
+ */
+function isEmbeddedContext(): boolean {
+  if (typeof window === 'undefined') return false;
+  
+  // Check for App Bridge global object
+  if (window.shopify !== undefined) return true;
+  
+  // Check for embedded parameter in URL (set by Shopify when app is embedded)
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('embedded') === '1') return true;
+  
+  // Check for host parameter (base64 encoded shop admin URL, present in embedded context)
+  if (urlParams.get('host')) return true;
+  
+  // Check if we're in an iframe (embedded apps are loaded in iframes)
+  if (window.top !== window.self) return true;
+  
+  return false;
+}
 
 export default function Loader() {
   const searchParams = useSearchParams();
   const shop = searchParams?.get("shop") ?? "";
-  const token = searchParams?.get("token") ?? "";
-  const scope = searchParams?.get("scope") ?? "";
   const langParam = searchParams?.get("lang") ?? "fr";
   const lang: Language = langParam === "en" ? "en" : "fr";
   const [step, setStep] = useState(1);
@@ -15,21 +37,28 @@ export default function Loader() {
   useEffect(() => {
     async function fullSetup() {
       try {
+        // Determine if we should use session tokens (embedded app) or direct fetch (non-embedded)
+        // Check after component mount to ensure window is available
+        const isEmbedded = isEmbeddedContext();
+        
+        // Use the appropriate fetch method
+        const apiFetch = isEmbedded ? authenticatedFetch : fetch;
+        
         setStep(1);
         // 1. Setup boutique
-        const res1 = await fetch(`/api/setup-shop?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(token)}&scope=${encodeURIComponent(scope)}&lang=${lang}`);
+        const res1 = await apiFetch(`/api/setup-shop?shop=${encodeURIComponent(shop)}&lang=${lang}`);
         const data1 = await res1.json();
         if (!data1.ok) throw new Error(data1.error || t(lang, "errorSetup"));
 
         setStep(2);
         // 2. Upload theme
-        const res2 = await fetch(`/api/upload-theme?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(token)}&lang=${lang}`);
+        const res2 = await apiFetch(`/api/upload-theme?shop=${encodeURIComponent(shop)}&lang=${lang}`);
         const data2 = await res2.json();
         if (!data2.ok || !data2.themeId) throw new Error(data2.error || t(lang, "errorThemeUpload"));
 
         setStep(3);
         // 3. Publish theme
-        const res3 = await fetch(`/api/publish-theme?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(token)}&themeId=${data2.themeId}`);
+        const res3 = await apiFetch(`/api/publish-theme?shop=${encodeURIComponent(shop)}&themeId=${data2.themeId}`);
         const data3 = await res3.json();
         if (!data3.ok) throw new Error(data3.error || t(lang, "errorThemePublish"));
 
@@ -40,9 +69,9 @@ export default function Loader() {
       }
     }
 
-    if (shop && token) fullSetup();
+    if (shop) fullSetup();
     else setError(t(lang, "missingParams"));
-  }, [shop, token, lang]);
+  }, [shop, lang]);
 
   const stepText = t(lang, "loadingStep").replace("{step}", String(step));
 

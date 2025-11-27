@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { storeToken } from "@/lib/utils/tokenStore";
 
 // ATTENTION : Utilise une URL ABSOLUE pour Response.redirect !
 
@@ -63,9 +64,13 @@ export async function GET(req: NextRequest) {
   const grantedScope = data.scope || "";
   console.log("[OAuth callback] Granted scope:", grantedScope);
 
+  // Store the access token server-side for session token authentication
+  storeToken(shop, data.access_token, grantedScope);
+
   // Redirect to store language selection page (before loader)
+  // Note: We no longer pass the token in URL - it's stored server-side
   const appBase = process.env.NEXT_PUBLIC_BASE_URL || "https://auto-shopify-setup.vercel.app";
-  const redirectUrl = `${appBase}/select-language?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(data.access_token)}&scope=${encodeURIComponent(grantedScope)}&displayLang=${displayLang}`;
+  const redirectUrl = `${appBase}/select-language?shop=${encodeURIComponent(shop)}&displayLang=${displayLang}`;
 
   return Response.redirect(redirectUrl, 302);
 }

@@ -6,19 +6,18 @@ import { Language, t } from "@/lib/i18n";
 function SelectLanguageContent() {
   const searchParams = useSearchParams();
   const shop = searchParams?.get("shop") ?? "";
-  const token = searchParams?.get("token") ?? "";
-  const scope = searchParams?.get("scope") ?? "";
   const displayLangParam = searchParams?.get("displayLang") ?? "fr";
   
   const [displayLang, setDisplayLang] = useState<Language>(displayLangParam === "en" ? "en" : "fr");
   const [storeLang, setStoreLang] = useState<Language>("fr");
 
   function startInstallation() {
-    if (!shop || !token) {
+    if (!shop) {
       alert(t(displayLang, "missingParams"));
       return;
     }
-    window.location.href = `/loading?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(token)}&scope=${encodeURIComponent(scope)}&lang=${storeLang}`;
+    // Token is now stored server-side, not passed in URL
+    window.location.href = `/loading?shop=${encodeURIComponent(shop)}&lang=${storeLang}`;
   }
 
   return (
