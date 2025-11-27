@@ -6,6 +6,7 @@ export default function Loader() {
   const searchParams = useSearchParams();
   const shop = searchParams?.get("shop") ?? "";
   const token = searchParams?.get("token") ?? "";
+  const scope = searchParams?.get("scope") ?? "";
   const langParam = searchParams?.get("lang") ?? "fr";
   const lang: Language = langParam === "en" ? "en" : "fr";
   const [step, setStep] = useState(1);
@@ -16,7 +17,7 @@ export default function Loader() {
       try {
         setStep(1);
         // 1. Setup boutique
-        const res1 = await fetch(`/api/setup-shop?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(token)}&lang=${lang}`);
+        const res1 = await fetch(`/api/setup-shop?shop=${encodeURIComponent(shop)}&token=${encodeURIComponent(token)}&scope=${encodeURIComponent(scope)}&lang=${lang}`);
         const data1 = await res1.json();
         if (!data1.ok) throw new Error(data1.error || t(lang, "errorSetup"));
 

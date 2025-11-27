@@ -2,8 +2,9 @@ import { NextRequest } from "next/server";
 import { setupShop } from "@/lib/setupShop";
 import { Session } from "@shopify/shopify-api";
 import { Language } from "@/lib/i18n";
+import { DEFAULT_SESSION_SCOPE } from "@/lib/scopes";
 
-function getSession(shop: string, accessToken: string): Session {
+function getSession(shop: string, accessToken: string, scope: string): Session {
   if (!shop || typeof shop !== "string") {
     throw new Error("Missing or invalid shop parameter!");
   }
@@ -11,7 +12,8 @@ function getSession(shop: string, accessToken: string): Session {
     throw new Error("Missing or invalid token/accessToken parameter!");
   }
 
-  const scope = "read_products,write_products,write_files,read_files,write_online_store_pages,read_online_store_pages,write_content,read_content,write_themes,read_themes";
+  // Use the scope from OAuth if provided, otherwise use default
+  const sessionScope = scope || DEFAULT_SESSION_SCOPE;
 
   return new Session({
     id: `${shop}_${Date.now()}`,
@@ -19,7 +21,7 @@ function getSession(shop: string, accessToken: string): Session {
     state: "setup-shop",
     isOnline: true,
     accessToken,
-    scope,
+    scope: sessionScope,
     expires: undefined,
     onlineAccessInfo: undefined,
   });
@@ -29,6 +31,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const shop = searchParams.get("shop");
   const token = searchParams.get("token");
+  const scope = searchParams.get("scope") || "";
   const langParam = searchParams.get("lang");
   const lang: Language = langParam === "en" ? "en" : "fr";
 
@@ -39,10 +42,10 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  console.log("[DEBUG setup-shop] shop:", shop, "token:", !!token, "lang:", lang);
+  console.log("[DEBUG setup-shop] shop:", shop, "token:", !!token, "scope:", scope, "lang:", lang);
 
   try {
-    const session = getSession(shop, token);
+    const session = getSession(shop, token, scope);
     await setupShop({ session, lang });
 
     return new Response(
