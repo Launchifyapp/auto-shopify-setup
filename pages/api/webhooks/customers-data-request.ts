@@ -49,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const customer = payload.customer as { id?: string | number } | undefined;
 
   console.log(`[Privacy] customers/data_request received for shop: ${shop || 'unknown'}`);
-  console.log(`[Privacy] Customer ID: ${customer?.id ?? 'unknown'}`);
+  console.log(`[Privacy] Customer ID: ${customer?.id || 'unknown'}`);
   console.log('[Privacy] Response: No customer data is stored by this application.');
 
   // Respond with 200 OK - Shopify requires this acknowledgment

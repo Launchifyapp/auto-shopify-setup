@@ -60,8 +60,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Extract common properties with safe access
   const customer = payload.customer as { id?: string | number } | undefined;
-  const customerId = customer?.id ?? 'unknown';
-  const shopId = payload.shop_id ?? 'unknown';
+  const customerId = customer?.id || 'unknown';
+  const shopId = payload.shop_id || 'unknown';
 
   // Handle each compliance topic
   switch (topic) {

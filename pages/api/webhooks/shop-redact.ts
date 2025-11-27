@@ -48,7 +48,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   console.log(`[Privacy] shop/redact received for shop: ${shop || 'unknown'}`);
-  console.log(`[Privacy] Shop ID: ${payload?.shop_id ?? 'unknown'}`);
+  console.log(`[Privacy] Shop ID: ${payload?.shop_id || 'unknown'}`);
   console.log('[Privacy] Response: No shop data to delete - none is stored persistently.');
 
   // Respond with 200 OK - Shopify requires this acknowledgment
