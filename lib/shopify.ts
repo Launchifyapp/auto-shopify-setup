@@ -22,7 +22,7 @@ export const shopify = shopifyApi({
   adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!,
   privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!,
   hostName: getHostName(),
-  isEmbeddedApp: false,
+  isEmbeddedApp: true, // Set to true to match shopify.app.toml embedded=true
   // sessionStorage: ... (optionnel)
 });
 
