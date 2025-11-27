@@ -13,22 +13,24 @@ export const config = {
  * Shopify sends this when a customer requests deletion of their data under GDPR/CCPA
  * Since this app doesn't store any customer data, we acknowledge the request
  * and confirm no data needs to be deleted.
+ * 
+ * @see https://shopify.dev/docs/apps/build/compliance/privacy-law-compliance
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).end('Method not allowed');
   }
 
-  // Read raw body for HMAC verification
+  // Read raw body as Buffer for HMAC verification
   const rawBody = await getRawBody(req);
-  (req as NextApiRequest & { rawBody: string }).rawBody = rawBody;
+  (req as NextApiRequest & { rawBody: Buffer }).rawBody = rawBody;
 
-  if (!verifyShopifyWebhook(req as NextApiRequest & { rawBody: string })) {
+  if (!verifyShopifyWebhook(req as NextApiRequest & { rawBody: Buffer })) {
     return res.status(401).send('Invalid webhook signature');
   }
 
   const shop = req.headers['x-shopify-shop-domain'] as string | undefined;
-  const payload = rawBody ? JSON.parse(rawBody) : {};
+  const payload = rawBody.length > 0 ? JSON.parse(rawBody.toString('utf8')) : {};
 
   console.log(`[Privacy] customers/redact received for shop: ${shop || 'unknown'}`);
   console.log(`[Privacy] Customer ID: ${payload?.customer?.id || 'unknown'}`);
