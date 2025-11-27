@@ -1,5 +1,12 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { verifyShopifyWebhook } from '@/lib/utils/verifyWebhook';
+import { verifyShopifyWebhook, getRawBody } from '@/lib/utils/verifyWebhook';
+
+// Disable body parsing to get raw body for HMAC verification
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
 
 /**
  * Webhook endpoint for customers/data_request
@@ -12,14 +19,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).end('Method not allowed');
   }
 
-  if (!verifyShopifyWebhook(req)) {
+  // Read raw body for HMAC verification
+  const rawBody = await getRawBody(req);
+  (req as NextApiRequest & { rawBody: string }).rawBody = rawBody;
+
+  if (!verifyShopifyWebhook(req as NextApiRequest & { rawBody: string })) {
     return res.status(401).send('Invalid webhook signature');
   }
 
-  const shop = req.headers['x-shopify-shop-domain'];
-  const payload = req.body;
+  const shop = req.headers['x-shopify-shop-domain'] as string | undefined;
+  const payload = rawBody ? JSON.parse(rawBody) : {};
 
-  console.log(`[Privacy] customers/data_request received for shop: ${shop}`);
+  console.log(`[Privacy] customers/data_request received for shop: ${shop || 'unknown'}`);
   console.log(`[Privacy] Customer ID: ${payload?.customer?.id || 'unknown'}`);
   console.log('[Privacy] Response: No customer data is stored by this application.');
 
