@@ -87,7 +87,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
 
     default:
+      // Return 200 for unhandled topics to acknowledge receipt
+      // This prevents Shopify from retrying the webhook
       console.log(`[Webhook] Unhandled topic: ${topic}`);
-      return res.status(400).json({ error: `Unhandled webhook topic: ${topic}` });
+      return res.status(200).json({ 
+        message: 'Webhook received',
+        topic: topic || 'unknown'
+      });
   }
 }

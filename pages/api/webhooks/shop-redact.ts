@@ -37,10 +37,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const shop = req.headers['x-shopify-shop-domain'] as string | undefined;
-  const payload = rawBody.length > 0 ? JSON.parse(rawBody.toString('utf8')) : {};
+  
+  let payload: Record<string, unknown> = {};
+  if (rawBody.length > 0) {
+    try {
+      payload = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      return res.status(400).json({ error: 'Invalid JSON payload' });
+    }
+  }
 
   console.log(`[Privacy] shop/redact received for shop: ${shop || 'unknown'}`);
-  console.log(`[Privacy] Shop ID: ${payload?.shop_id || 'unknown'}`);
+  console.log(`[Privacy] Shop ID: ${payload?.shop_id ?? 'unknown'}`);
   console.log('[Privacy] Response: No shop data to delete - none is stored persistently.');
 
   // Respond with 200 OK - Shopify requires this acknowledgment
