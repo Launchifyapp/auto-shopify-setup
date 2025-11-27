@@ -1,22 +1,34 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import crypto from 'crypto';
+import { verifyShopifyWebhook, getRawBody } from '@/lib/utils/verifyWebhook';
 
-const SHOPIFY_WEBHOOK_SECRET = process.env.SHOPIFY_API_SECRET!;
+// Disable body parsing to get raw body for HMAC verification
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
 
-function verifyShopifyWebhook(req: NextApiRequest): boolean {
-  const hmacHeader = req.headers['x-shopify-hmac-sha256'] as string;
-  const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-  const hash = crypto.createHmac('sha256', SHOPIFY_WEBHOOK_SECRET).update(body, 'utf8').digest('base64');
-  return hmacHeader === hash;
-}
-
+/**
+ * Legacy webhook endpoint for Shopify privacy webhooks
+ * This endpoint handles all privacy topics in a single handler
+ * Consider using the individual endpoints in /api/webhooks/ instead
+ * 
+ * @see https://shopify.dev/docs/apps/build/compliance/privacy-law-compliance
+ */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).end('Method not allowed');
-  if (!verifyShopifyWebhook(req)) return res.status(401).send('Invalid webhook signature');
+
+  // Read raw body as Buffer for HMAC verification
+  const rawBody = await getRawBody(req);
+  (req as NextApiRequest & { rawBody: Buffer }).rawBody = rawBody;
+
+  if (!verifyShopifyWebhook(req as NextApiRequest & { rawBody: Buffer })) {
+    return res.status(401).send('Invalid webhook signature');
+  }
 
   const topic = req.headers['x-shopify-topic'];
   const shop = req.headers['x-shopify-shop-domain'];
-  const payload = req.body;
+  const payload = rawBody.length > 0 ? JSON.parse(rawBody.toString('utf8')) : {};
 
   console.log(`[PRIVACY] Shopify webhook reçu: ${topic} for shop: ${shop}`);
   // Ici, on log la demande pour traçabilité, mais on n'a aucune donnée à exporter/supprimer
@@ -42,6 +54,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return;
   }
 
-  // Conformité : tu DOIS répondre 200 à Shopify
+  // Conformité : tu DOIS répondre 200 à Shopify
   res.status(200).send('Webhook processed - no personal data stored');
 }
