@@ -12,6 +12,10 @@ out/
 .env.test.local
 .env.production.local
 
+# Shopify configuration (contains sensitive data - deploy via Shopify CLI)
+shopify.app.toml
+shopify.app.*.toml
+
 # Debug logs
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
