@@ -44,6 +44,22 @@ Required environment variables:
 - `SHOPIFY_STOREFRONT_TOKEN` - Storefront API access token
 - `NEXT_PUBLIC_SHOPIFY_API_KEY` - Public API key for client-side App Bridge
 
+### 2b. Configure Shopify App Settings
+
+Copy the example Shopify configuration file:
+
+```bash
+cp shopify.app.toml.example shopify.app.toml
+```
+
+Edit `shopify.app.toml` and update:
+- `client_id` - Your app's client ID from Partner Dashboard
+- `name` - Your app name
+- `application_url` - Your deployed app URL
+- `redirect_urls` - Your OAuth callback URL
+
+**Note:** If you already have a `shopify.app.toml` file, ensure it's not committed to public repositories as it may contain sensitive configuration.
+
 ### 3. Development
 
 ```bash

@@ -332,14 +332,14 @@ Log only:
 If you discover a security vulnerability:
 
 1. **Do NOT** open a public GitHub issue
-2. Email security concerns to: [your-security-email]
+2. Email security concerns to the repository maintainers (configure this with your security contact email)
 3. Include:
    - Description of the vulnerability
    - Steps to reproduce
    - Potential impact
    - Suggested fix (if any)
 
-We will respond within 48 hours and work on a fix promptly.
+The maintainers will respond promptly and work on a fix.
 
 ## Security Checklist
 
