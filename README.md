@@ -68,6 +68,57 @@ npm run dev
 
 Visit `http://localhost:3000` to see your app running locally.
 
+### Using Polaris App Home Components
+
+This project includes TypeScript type definitions for Shopify Polaris App Home web components. You can use these custom elements in your TypeScript/TSX files without type errors:
+
+```typescript
+import React from "react";
+
+export default function AppHomePage() {
+  const handleAction = () => {
+    console.log("Action triggered");
+  };
+
+  return (
+    <s-page heading="My App Home">
+      <s-section heading="Get Started">
+        <s-box padding="4" gap="4">
+          <s-heading level="2">Welcome</s-heading>
+          <s-paragraph>Start building your app home experience.</s-paragraph>
+          
+          <s-button
+            slot="primary-action"
+            onClick={handleAction}
+            variant="primary"
+          >
+            Take Action
+          </s-button>
+        </s-box>
+      </s-section>
+    </s-page>
+  );
+}
+```
+
+**Available Components:**
+- `s-page` - Main page container with heading and primary actions
+- `s-section` - Section container for grouping content
+- `s-box` - Generic layout container
+- `s-button` - Button with variants (primary, secondary, tertiary)
+- `s-grid` - Grid layout with configurable columns and gaps
+- `s-card` - Card container for content
+- `s-stack` - Stack layout for vertical/horizontal arrangement
+- `s-heading` - Heading text (levels 1-6)
+- `s-paragraph` - Paragraph text
+- `s-text` - Inline text with variants
+- `s-list`, `s-list-item` - List components
+- `s-divider` - Visual separator
+
+**Type definitions location:** `app/polaris-app-home-elements.d.ts`
+
+For more information, see the [Polaris App Home documentation](https://shopify.dev/docs/apps/build/app-home).
+
 ## 📦 Deployment
 
 **Important:** This app requires TWO separate deployments:
