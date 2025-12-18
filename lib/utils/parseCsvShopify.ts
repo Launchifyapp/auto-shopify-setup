@@ -1,4 +1,4 @@
-import { parse } from "csv-parse/lib/sync";
+import { parse } from "csv-parse/sync";
 
 export function parseCsvShopify(csvText: string): any[] {
   return parse(csvText, {
