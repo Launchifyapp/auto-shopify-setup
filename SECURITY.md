@@ -8,12 +8,12 @@ This document outlines the security measures and best practices implemented in t
 
 This app is built to comply with Shopify's security requirements:
 
-### ✅ App Bridge v3 from Shopify CDN
+### ✅ App Bridge from Shopify CDN
 
 The app loads App Bridge from Shopify's Content Delivery Network:
 
 ```html
-<script src="https://cdn.shopify.com/shopifycloud/app-bridge/v3"></script>
+<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
 ```
 
 **Benefits:**
