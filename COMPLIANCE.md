@@ -12,7 +12,7 @@ This app is **fully compliant** with Shopify's latest requirements:
 
 **Implementation:**
 - Location: `app/layout.tsx`
-- Script: `<script src="https://cdn.shopify.com/shopifycloud/app-bridge/v3"></script>`
+- Script: `<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>`
 - Benefit: Automatic security updates and fixes from Shopify
 
 **Why it matters:**
@@ -184,7 +184,7 @@ For questions about:
 ## Summary
 
 This app is fully compliant with Shopify's requirements:
-- ✅ App Bridge v3 from CDN
+- ✅ App Bridge from CDN (using latest `app-bridge.js`)
 - ✅ Session token authentication
 - ✅ Secure configuration management
 - ✅ Two-deployment process

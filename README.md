@@ -6,7 +6,7 @@ A Next.js application for automated Shopify store setup, compliant with Shopify'
 
 This app is built to comply with Shopify's app requirements:
 
-- ✅ **App Bridge v3** - Loads the latest App Bridge script from Shopify's CDN
+- ✅ **App Bridge** - Loads the latest App Bridge script from Shopify's CDN (`app-bridge.js`)
 - ✅ **Session Token Authentication** - Uses short-lived JWT tokens for secure API calls
 - ✅ **Secure Configuration** - Sensitive data stored in environment variables, not in code
 
@@ -222,7 +222,7 @@ export async function GET(req: NextRequest) {
 The app loads App Bridge from Shopify's CDN in `app/layout.tsx`:
 
 ```html
-<script src="https://cdn.shopify.com/shopifycloud/app-bridge/v3"></script>
+<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
 ```
 
 This ensures:
