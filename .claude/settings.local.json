@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init)",
+      "Bash(git config user.email \"launchify.business@gmail.com\")",
+      "Bash(git config user.name \"Launchify\")",
+      "Bash(git add .)",
+      "Bash(git commit:*)"
+    ]
+  }
+}
