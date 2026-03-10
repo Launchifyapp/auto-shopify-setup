@@ -1,16 +1,37 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Language, t } from "@/lib/i18n";
 
 // OAuth scopes - must match lib/scopes.ts ALL_SCOPES
 const SCOPES = "read_products,write_products,read_content,write_content,read_files,write_files,read_themes,write_themes,read_online_store_pages,write_online_store_pages,read_online_store_navigation,write_online_store_navigation,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects";
 
-export default function InstallLanding() {
+function InstallLandingContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [shop, setShop] = useState("");
   const [displayLang, setDisplayLang] = useState<Language>("fr");
+  const [redirecting, setRedirecting] = useState(false);
   
   const CLIENT_ID = process.env.NEXT_PUBLIC_SHOPIFY_API_KEY || "ta_cle_api_shopify";
   const REDIRECT_URI = "https://launchify.tech/api/auth/callback";
+
+  // When the app is opened from Shopify Admin (embedded), Shopify adds
+  // both "shop" and "host" query parameters to the URL. Detect this and
+  // redirect to the language selection page instead of showing the
+  // installation form.
+  useEffect(() => {
+    const shopParam = searchParams?.get("shop");
+    const hostParam = searchParams?.get("host");
+    if (shopParam && hostParam) {
+      setRedirecting(true);
+      router.push(`/select-language?shop=${encodeURIComponent(shopParam)}`);
+    }
+  }, [searchParams, router]);
+
+  if (redirecting) {
+    return <div style={{ textAlign: "center", marginTop: "8rem" }}>Redirecting…</div>;
+  }
 
   function startInstall() {
     if (!shop.endsWith(".myshopify.com")) {
@@ -59,5 +80,13 @@ export default function InstallLanding() {
         {t(displayLang, "afterInstallDetails")}
       </p>
     </main>
+  );
+}
+
+export default function InstallLanding() {
+  return (
+    <Suspense fallback={<div style={{ textAlign: "center", marginTop: "8rem" }}>Loading…</div>}>
+      <InstallLandingContent />
+    </Suspense>
   );
 }
