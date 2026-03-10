@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Language, t } from "@/lib/i18n";
 
 // OAuth scopes - must match lib/scopes.ts ALL_SCOPES
@@ -8,7 +8,6 @@ const SCOPES = "read_products,write_products,read_content,write_content,read_fil
 
 function InstallLandingContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const [shop, setShop] = useState("");
   const [displayLang, setDisplayLang] = useState<Language>("fr");
   const [redirecting, setRedirecting] = useState(false);
@@ -20,14 +19,17 @@ function InstallLandingContent() {
   // both "shop" and "host" query parameters to the URL. Detect this and
   // redirect to the language selection page instead of showing the
   // installation form.
+  // Use window.location.href instead of router.push() because Next.js
+  // client-side navigation does not work reliably inside the Shopify
+  // Admin embedded iframe with App Bridge loaded.
   useEffect(() => {
     const shopParam = searchParams?.get("shop");
     const hostParam = searchParams?.get("host");
     if (shopParam && hostParam) {
       setRedirecting(true);
-      router.push(`/select-language?shop=${encodeURIComponent(shopParam)}`);
+      window.location.href = `/select-language?shop=${encodeURIComponent(shopParam)}`;
     }
-  }, [searchParams, router]);
+  }, [searchParams]);
 
   if (redirecting) {
     return <div style={{ textAlign: "center", marginTop: "8rem" }}>Redirecting…</div>;
