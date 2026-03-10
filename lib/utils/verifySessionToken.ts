@@ -161,9 +161,9 @@ export function getSessionTokenFromRequest(req: NextRequest): string | null {
 
 /**
  * Middleware-style function to verify session token from request
- * Returns shop domain if valid, null otherwise
+ * Returns shop domain and the raw session token if valid, null otherwise
  */
-export function authenticateRequest(req: NextRequest): { shop: string } | null {
+export function authenticateRequest(req: NextRequest): { shop: string; token: string } | null {
   const token = getSessionTokenFromRequest(req);
   if (!token) {
     console.log('[Session Token] No token in request');
@@ -175,5 +175,5 @@ export function authenticateRequest(req: NextRequest): { shop: string } | null {
     return null;
   }
 
-  return { shop: result.shop };
+  return { shop: result.shop, token };
 }
