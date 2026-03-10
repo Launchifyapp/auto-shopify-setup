@@ -3,8 +3,11 @@ import { setupShop } from "@/lib/setupShop";
 import { Session } from "@shopify/shopify-api";
 import { Language } from "@/lib/i18n";
 import { DEFAULT_SESSION_SCOPE } from "@/lib/scopes";
-import { getToken } from "@/lib/utils/tokenStore";
+import { getAccessToken } from "@/lib/utils/tokenExchange";
 import { authenticateRequest } from "@/lib/utils/verifySessionToken";
+
+// Allow up to 120 s on Vercel Pro (default is 10 s on Hobby)
+export const maxDuration = 120;
 
 function getSession(shop: string, accessToken: string, scope: string): Session {
   if (!shop || typeof shop !== "string") {
@@ -43,23 +46,14 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const shop = sessionAuth.shop;
+  const { shop, token: sessionToken } = sessionAuth;
   console.log("[setup-shop] Authenticated via session token for shop:", shop);
 
-  // Get token from store
-  const tokenData = getToken(shop);
-  if (!tokenData) {
-    return new Response(
-      JSON.stringify({ ok: false, error: "No access token found. Please reinstall the app." }),
-      { status: 401, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
-  const { accessToken, scope } = tokenData;
-
-  console.log("[DEBUG setup-shop] shop:", shop, "token:", !!accessToken, "scope:", scope, "lang:", lang);
-
   try {
+    // Get access token – tries in-memory cache first, then Token Exchange API
+    const { accessToken, scope } = await getAccessToken(shop, sessionToken);
+    console.log("[setup-shop] shop:", shop, "token:", !!accessToken, "scope:", scope, "lang:", lang);
+
     const session = getSession(shop, accessToken, scope);
     await setupShop({ session, lang });
 

@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { publishTheme } from "@/lib/publishTheme";
-import { getToken } from "@/lib/utils/tokenStore";
+import { getAccessToken } from "@/lib/utils/tokenExchange";
 import { authenticateRequest } from "@/lib/utils/verifySessionToken";
+
+// Allow up to 120 s on Vercel Pro (default is 10 s on Hobby)
+export const maxDuration = 120;
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -13,21 +16,21 @@ export async function GET(req: NextRequest) {
     return Response.json({ ok: false, error: "Unauthorized. Session token required." }, { status: 401 });
   }
 
-  const shop = sessionAuth.shop;
+  const { shop, token: sessionToken } = sessionAuth;
   console.log("[publish-theme] Authenticated via session token for shop:", shop);
 
   if (!themeId) {
     return Response.json({ ok: false, error: "Missing themeId parameter!" }, { status: 400 });
   }
 
-  // Get token from store
-  const tokenData = getToken(shop);
-  if (!tokenData) {
-    return Response.json({ ok: false, error: "No access token found. Please reinstall the app." }, { status: 401 });
+  try {
+    // Get access token – tries in-memory cache first, then Token Exchange API
+    const { accessToken: token } = await getAccessToken(shop, sessionToken);
+
+    const result = await publishTheme({ shop, token, themeId });
+    return Response.json(result);
+  } catch (err) {
+    console.error("[publish-theme] Error:", err);
+    return Response.json({ ok: false, error: String(err) }, { status: 500 });
   }
-
-  const { accessToken: token } = tokenData;
-
-  const result = await publishTheme({ shop, token, themeId });
-  return Response.json(result);
 }
