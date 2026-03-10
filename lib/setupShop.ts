@@ -589,11 +589,12 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
     const idsToPublish: string[] = [];
 
     // --- UPLOAD GENERIC IMAGES TO SHOPIFY FILES ---
+    const baseUrl = process.env.SHOPIFY_APP_URL || "https://auto-shopify-setup.vercel.app";
     const imagesUrls = [
-      "https://auto-shopify-setup.vercel.app/image1.jpg",
-      "https://auto-shopify-setup.vercel.app/image2.jpg",
-      "https://auto-shopify-setup.vercel.app/image3.jpg",
-      "https://auto-shopify-setup.vercel.app/image4.webp"
+      `${baseUrl}/image1.jpg`,
+      `${baseUrl}/image2.jpg`,
+      `${baseUrl}/image3.jpg`,
+      `${baseUrl}/image4.webp`
     ];
     await uploadImagesToShopifyFiles(session, imagesUrls);
 
@@ -644,16 +645,18 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
 
     // --- Products setup ---
     // Select CSV based on language
-    // Note: For English, once products-en.csv is added to public/, it will be used
     const csvUrl = lang === "en"
-      ? "https://auto-shopify-setup.vercel.app/products-en.csv"
-      : "https://auto-shopify-setup.vercel.app/products.csv";
+      ? `${baseUrl}/products-en.csv`
+      : `${baseUrl}/products.csv`;
     
     // Both CSV files use semicolon delimiter
     const csvDelimiter = ";";
     
-    const response = await fetch(csvUrl);
-    const csvText = await response.text();
+    const csvResponse = await fetch(csvUrl);
+    if (!csvResponse.ok) {
+      throw new Error(`Failed to fetch product CSV: ${csvResponse.status} ${csvResponse.statusText}`);
+    }
+    const csvText = await csvResponse.text();
     const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: csvDelimiter });
 
     const productsByHandle: Record<string, any[]> = {};
@@ -818,5 +821,6 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
 
   } catch (err) {
     console.error("Global setupShop error:", err);
+    throw err;
   }
 }
