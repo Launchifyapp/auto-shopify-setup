@@ -50,8 +50,8 @@ export async function GET(req: NextRequest) {
   console.log("[setup-shop] Authenticated via session token for shop:", shop);
 
   try {
-    // Get access token – tries in-memory cache first, then Token Exchange API
-    const { accessToken, scope } = await getAccessToken(shop, sessionToken);
+    // Get access token – tries in-memory cache, then cookie, then Token Exchange API
+    const { accessToken, scope } = await getAccessToken(shop, sessionToken, req);
     console.log("[setup-shop] shop:", shop, "token:", !!accessToken, "scope:", scope, "lang:", lang);
 
     const session = getSession(shop, accessToken, scope);

@@ -1,35 +1,40 @@
 /**
- * Shopify Token Exchange API utility
+ * Shopify access-token resolver.
  *
- * Exchanges a session token (from App Bridge) for an offline access token.
- * This eliminates the need for persistent server-side token storage because
- * each API request can obtain a fresh access token using the session token
- * already present in the Authorization header.
- *
- * Reference:
- * https://shopify.dev/docs/apps/build/authentication-authorization/access-tokens/token-exchange
+ * Priority:
+ * 1. In-memory cache (fast path for warm Vercel containers)
+ * 2. Encrypted cookie set during OAuth callback (survives cold starts)
+ * 3. Token Exchange API (last resort – requires Shopify Partner dashboard config)
  */
 
+import { NextRequest } from "next/server";
 import { getToken, storeToken } from "./tokenStore";
+import { readTokenCookie } from "./cookieToken";
 
-/**
- * Get a Shopify access token for the given shop.
- *
- * 1. Checks the in-memory cache first (fast path for warm containers).
- * 2. Falls back to the Token Exchange API using the session token from
- *    App Bridge (works across cold starts / different serverless instances).
- */
 export async function getAccessToken(
   shop: string,
-  sessionToken: string
+  sessionToken: string,
+  req?: NextRequest
 ): Promise<{ accessToken: string; scope: string }> {
-  // Fast path – token already cached in this container
+  // 1. In-memory cache
   const cached = getToken(shop);
   if (cached) {
     return cached;
   }
 
-  console.log(`[TokenExchange] Cache miss for ${shop} – exchanging session token`);
+  // 2. Encrypted cookie (set during OAuth callback)
+  if (req) {
+    const fromCookie = readTokenCookie(req);
+    if (fromCookie && fromCookie.shop.replace(/\.myshopify\.com$/, "") === shop.replace(/\.myshopify\.com$/, "")) {
+      console.log(`[TokenResolver] Using cookie token for ${shop}`);
+      // Cache in memory for subsequent calls in the same container
+      storeToken(fromCookie.shop, fromCookie.accessToken, fromCookie.scope);
+      return { accessToken: fromCookie.accessToken, scope: fromCookie.scope };
+    }
+  }
+
+  // 3. Token Exchange API (last resort)
+  console.log(`[TokenResolver] Cache + cookie miss for ${shop} – trying Token Exchange`);
 
   const clientId = process.env.SHOPIFY_API_KEY;
   const clientSecret = process.env.SHOPIFY_API_SECRET;
@@ -70,9 +75,7 @@ export async function getAccessToken(
   const accessToken: string = data.access_token;
   const scope: string = data.scope || "";
 
-  // Cache for the lifetime of this container
   storeToken(shop, accessToken, scope);
-
   console.log(`[TokenExchange] Success for ${shop}, scope: ${scope}`);
   return { accessToken, scope };
 }

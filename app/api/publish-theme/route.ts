@@ -24,8 +24,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Get access token – tries in-memory cache first, then Token Exchange API
-    const { accessToken: token } = await getAccessToken(shop, sessionToken);
+    const { accessToken: token } = await getAccessToken(shop, sessionToken, req);
 
     const result = await publishTheme({ shop, token, themeId });
     return Response.json(result);

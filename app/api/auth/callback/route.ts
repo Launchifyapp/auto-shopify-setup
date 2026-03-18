@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { storeToken } from "@/lib/utils/tokenStore";
+import { buildTokenCookie } from "@/lib/utils/cookieToken";
 
 // ATTENTION : Utilise une URL ABSOLUE pour Response.redirect !
 
@@ -72,5 +73,13 @@ export async function GET(req: NextRequest) {
   const apiKey = process.env.SHOPIFY_API_KEY!;
   const redirectUrl = `https://${shop}/admin/apps/${apiKey}/select-language?displayLang=${displayLang}`;
 
-  return Response.redirect(redirectUrl, 302);
+  // Persist the access token in an encrypted cookie so it survives Vercel cold starts
+  const res = new Response(null, {
+    status: 302,
+    headers: {
+      Location: redirectUrl,
+      "Set-Cookie": buildTokenCookie(shop, data.access_token, grantedScope),
+    },
+  });
+  return res;
 }

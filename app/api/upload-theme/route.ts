@@ -22,8 +22,7 @@ export async function GET(req: NextRequest) {
   console.log("[upload-theme] Authenticated via session token for shop:", shop);
 
   try {
-    // Get access token – tries in-memory cache first, then Token Exchange API
-    const { accessToken: token } = await getAccessToken(shop, sessionToken);
+    const { accessToken: token } = await getAccessToken(shop, sessionToken, req);
 
     const themeId = await uploadTheme({ shop, token, lang });
     return Response.json({ ok: !!themeId, themeId });
