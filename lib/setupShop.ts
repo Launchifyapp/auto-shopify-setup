@@ -218,7 +218,17 @@ async function createShippingPageWithSDK(session: Session, lang: Language): Prom
 }
 
 function normalizeImageUrl(url: string): string {
-  return url.replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
+  // Images are hosted in /public/products_images/ on Vercel
+  const appUrl = process.env.SHOPIFY_APP_URL || "https://auto-shopify-setup.vercel.app";
+
+  // Rewrite old Shopify CDN URLs → our Vercel-hosted images
+  const cdnMatch = url.match(/cdn\.shopify\.com\/.*\/files\/([^?]+)/);
+  if (cdnMatch) {
+    return `${appUrl}/products_images/${cdnMatch[1]}`;
+  }
+
+  return url
+    .replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
 
 function extractCheckboxMetafields(row: any): any[] {
