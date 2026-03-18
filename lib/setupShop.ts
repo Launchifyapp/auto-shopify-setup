@@ -422,19 +422,6 @@ async function getAllProductVariants(session: Session, productId: string) {
   return (response?.data?.product?.variants?.edges ?? []).map((e: any) => e.node);
 }
 
-/** Wait until all product media reach READY (or FAILED), with a single polling loop */
-async function waitForAllMediaReady(session: Session, productId: string, timeoutMs = 25000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const media = await getAllProductMedia(session, productId);
-    if (media.length && media.every((m: any) => m.status === "READY" || m.status === "FAILED")) {
-      return media;
-    }
-    await new Promise(res => setTimeout(res, 2000));
-  }
-  return await getAllProductMedia(session, productId);
-}
-
 /** Extract filename from a URL (ignoring query params) */
 function getFilenameFromUrl(url: string): string {
   try {
@@ -720,6 +707,7 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
 
     let successCount = 0;
     const totalProducts = Object.keys(productsByHandle).length;
+    const deferredVariantImages: { productId: string; variantRows: any[]; main: any }[] = [];
 
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
@@ -827,25 +815,51 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
           await updateDefaultVariantWithSDK(session, productId, firstVariantId, main);
         }
 
-        // Attach variant images — single poll for all media, then match by filename
+        // Collect variant image info for deferred attachment
         const variantRows = group.filter(row => {
           const vi = row["Variant Image"];
           return vi && vi.trim() && vi !== "nan" && vi !== "null" && vi !== "undefined";
         });
         if (variantRows.length > 0) {
-          const readyMedia = await waitForAllMediaReady(session, productId);
+          deferredVariantImages.push({ productId, variantRows, main });
+        }
+
+        successCount++;
+      } catch (err) {
+        console.error("GraphQL product creation error", handleUnique, err);
+      }
+    }
+    
+    console.log(`[setupShop] Product creation complete: ${successCount}/${totalProducts} products created successfully.`);
+
+    if (successCount === 0) {
+      throw new Error(`No products were created out of ${totalProducts}. Check logs above for userErrors.`);
+    }
+
+    // --- ATTACH VARIANT IMAGES (deferred — media had time to process) ---
+    if (deferredVariantImages.length > 0) {
+      console.log(`[setupShop] Attaching variant images for ${deferredVariantImages.length} products...`);
+      // Single wait: give Shopify time to process all media (created during product loop)
+      await new Promise(res => setTimeout(res, 5000));
+
+      for (const { productId, variantRows, main } of deferredVariantImages) {
+        try {
+          const allMedia = await getAllProductMedia(session, productId);
+          const readyMedia = allMedia.filter((m: any) => m.status === "READY");
+          if (readyMedia.length === 0) {
+            console.log(`[VariantImages] No ready media for ${productId}, skipping`);
+            continue;
+          }
           const allVariants = await getAllProductVariants(session, productId);
 
           for (const row of variantRows) {
             const variantImageFilename = getFilenameFromUrl(normalizeImageUrl(row["Variant Image"]));
             const filenameBase = variantImageFilename.replace(/\.[^.]+$/, "");
-            // Find matching media by filename stem
             const matchedMedia = readyMedia.find((m: any) =>
-              m.status === "READY" && m.image?.url && getFilenameFromUrl(m.image.url).includes(filenameBase)
+              m.image?.url && getFilenameFromUrl(m.image.url).includes(filenameBase)
             );
             if (!matchedMedia) continue;
 
-            // Find matching variant by option values
             const matchedVariant = allVariants.find((v: any) =>
               v.selectedOptions?.every((opt: any) => {
                 for (let i = 1; i <= 3; i++) {
@@ -860,18 +874,12 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
               await appendMediaToVariant(session, productId, matchedVariant.id, matchedMedia.id);
             }
           }
+          console.log(`[VariantImages] Attached images for product ${productId}`);
+        } catch (err) {
+          console.error(`[VariantImages] Error for product ${productId}:`, err);
         }
-
-        successCount++;
-      } catch (err) {
-        console.error("GraphQL product creation error", handleUnique, err);
       }
-    }
-    
-    console.log(`[setupShop] Product creation complete: ${successCount}/${totalProducts} products created successfully.`);
-
-    if (successCount === 0) {
-      throw new Error(`No products were created out of ${totalProducts}. Check logs above for userErrors.`);
+      console.log(`[setupShop] Variant image attachment complete.`);
     }
 
     // --- PUBLISH PRODUCTS AND COLLECTIONS TO "ONLINE STORE" ---
