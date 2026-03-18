@@ -359,7 +359,11 @@ async function createProductMedia(session: Session, productId: string, imageUrl:
     alt: altText
   }]};
   const response: any = await client.request(query, { variables });
-  return response?.data?.productCreateMedia?.media?.[0]?.id;
+  const result = response?.data?.productCreateMedia;
+  if (result?.mediaUserErrors?.length) {
+    console.error(`[createProductMedia] errors for product ${productId}:`, JSON.stringify(result.mediaUserErrors));
+  }
+  return result?.media?.[0]?.id;
 }
 
 async function getProductMediaStatus(session: Session, productId: string, mediaId: string) {
@@ -493,8 +497,11 @@ async function bulkCreateVariantsWithSDK(
     variants,
   };
   const response: any = await client.request(query, { variables });
-  const data = response;
-  return data?.data?.productVariantsBulkCreate;
+  const result = response?.data?.productVariantsBulkCreate;
+  if (result?.userErrors?.length) {
+    console.error(`[bulkCreateVariants] userErrors for product ${productId}:`, JSON.stringify(result.userErrors));
+  }
+  return result;
 }
 
 async function createProductWithSDK(session: Session, product: any) {
@@ -516,8 +523,11 @@ async function createProductWithSDK(session: Session, product: any) {
   `;
   const variables = { input: product };
   const response: any = await client.request(query, { variables });
-  const data = response;
-  return data?.data?.productCreate;
+  const result = response?.data?.productCreate;
+  if (result?.userErrors?.length) {
+    console.error(`[productCreate] userErrors for "${product.title}":`, JSON.stringify(result.userErrors));
+  }
+  return result;
 }
 
 // Get Online Store publication ID
@@ -665,6 +675,9 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
       productsByHandle[row.Handle].push(row);
     }
 
+    let successCount = 0;
+    const totalProducts = Object.keys(productsByHandle).length;
+
     for (const [handle, group] of Object.entries(productsByHandle)) {
       const main = group[0];
       type ProductOption = { name: string, values: { name: string }[] };
@@ -771,37 +784,18 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
           await updateDefaultVariantWithSDK(session, productId, firstVariantId, main);
         }
 
-        // Attach variant images
-        if (variantEdges && variantEdges.length) {
-          for (const edge of variantEdges) {
-            const variantId = edge.node.id;
-            const matchingRow = group.find(row =>
-              edge.node.selectedOptions.every((opt: any) =>
-                row[`Option${opt.index + 1} Value`] === opt.value
-              )
-            ) || group[0];
-            const variantImageUrl = matchingRow["Variant Image"];
-            if (variantImageUrl && variantImageUrl.trim() &&
-                variantImageUrl !== "nan" && variantImageUrl !== "null" && variantImageUrl !== "undefined") {
-              const normalizedUrl = normalizeImageUrl(variantImageUrl);
-              const mediaId = await createProductMedia(session, productId, normalizedUrl, "");
-              if (mediaId) {
-                const ready = await waitForMediaReady(session, productId, mediaId, 20000);
-                if (ready) {
-                  await appendMediaToVariant(session, productId, variantId, mediaId);
-                } else {
-                  console.error("Media not READY after upload: not attaching", mediaId);
-                }
-              }
-            }
-          }
-        }
-        await new Promise((res) => setTimeout(res, 300));
+        successCount++;
       } catch (err) {
         console.error("GraphQL product creation error", handleUnique, err);
       }
     }
     
+    console.log(`[setupShop] Product creation complete: ${successCount}/${totalProducts} products created successfully.`);
+
+    if (successCount === 0) {
+      throw new Error(`No products were created out of ${totalProducts}. Check logs above for userErrors.`);
+    }
+
     // --- PUBLISH PRODUCTS AND COLLECTIONS TO "ONLINE STORE" ---
     console.log("Resource creation complete. Starting publication...");
 
@@ -810,7 +804,6 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
     if (onlineStorePublicationId && idsToPublish.length > 0) {
       for (const resourceId of idsToPublish) {
         await publishResource(session, resourceId, onlineStorePublicationId);
-        await new Promise((res) => setTimeout(res, 300));
       }
       console.log("All resources have been processed for publication.");
     } else if (!onlineStorePublicationId) {

@@ -14,16 +14,17 @@ function getHostName() {
   }
 }
 
+if (!process.env.SHOPIFY_API_KEY || !process.env.SHOPIFY_API_SECRET) {
+  console.error("[shopify] SHOPIFY_API_KEY and SHOPIFY_API_SECRET must be set!");
+}
+
 export const shopify = shopifyApi({
   apiKey: process.env.SHOPIFY_API_KEY!,
   apiSecretKey: process.env.SHOPIFY_API_SECRET!,
   apiVersion: ApiVersion.January25,
-  isCustomStoreApp: true,
-  adminApiAccessToken: process.env.SHOPIFY_ADMIN_TOKEN!,
-  privateAppStorefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN!,
+  isCustomStoreApp: false,
   hostName: getHostName(),
-  isEmbeddedApp: true, // Set to true to match shopify.app.toml embedded=true
-  // sessionStorage: ... (optionnel)
+  isEmbeddedApp: true,
 });
 
 // Fonction GraphQL - PATCH v12+ : utilise .request() au lieu de .query()
