@@ -444,16 +444,6 @@ function getFilenameFromUrl(url: string): string {
   }
 }
 
-async function waitForMediaReady(session: Session, productId: string, mediaId: string, timeoutMs = 15000) {
-  const start = Date.now();
-  while (true) {
-    const status = await getProductMediaStatus(session, productId, mediaId);
-    if (status === "READY") return true;
-    if (Date.now() - start > timeoutMs) return false;
-    await new Promise(res => setTimeout(res, 1500));
-  }
-}
-
 async function appendMediaToVariant(session: Session, productId: string, variantId: string, mediaId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
