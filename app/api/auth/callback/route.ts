@@ -67,10 +67,10 @@ export async function GET(req: NextRequest) {
   // Store the access token server-side for session token authentication
   storeToken(shop, data.access_token, grantedScope);
 
-  // Redirect to store language selection page (before loader)
-  // Note: We no longer pass the token in URL - it's stored server-side
-  const appBase = process.env.NEXT_PUBLIC_BASE_URL || "https://auto-shopify-setup.vercel.app";
-  const redirectUrl = `${appBase}/select-language?shop=${encodeURIComponent(shop)}&displayLang=${displayLang}`;
+  // Redirect through Shopify admin so the app stays embedded in the iframe.
+  // This is critical: App Bridge CDN only works inside Shopify's admin iframe.
+  const apiKey = process.env.SHOPIFY_API_KEY!;
+  const redirectUrl = `https://${shop}/admin/apps/${apiKey}/select-language?displayLang=${displayLang}`;
 
   return Response.redirect(redirectUrl, 302);
 }
