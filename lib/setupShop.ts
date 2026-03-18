@@ -376,12 +376,13 @@ async function createProductMedia(session: Session, productId: string, imageUrl:
   return result?.media?.[0]?.id;
 }
 
-async function getProductMediaStatus(session: Session, productId: string, mediaId: string) {
+/** Get all media for a product (id, status, url) */
+async function getAllProductMedia(session: Session, productId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     query getProductMedia($id: ID!) {
       product(id: $id) {
-        media(first: 20) {
+        media(first: 50) {
           edges {
             node {
               ... on MediaImage {
@@ -396,9 +397,51 @@ async function getProductMediaStatus(session: Session, productId: string, mediaI
     }
   `;
   const response: any = await client.request(query, { variables: { id: productId } });
-  const edges = response?.data?.product?.media?.edges ?? [];
-  const node = edges.find((e: any) => e?.node?.id === mediaId)?.node;
-  return node ? node.status : undefined;
+  return (response?.data?.product?.media?.edges ?? []).map((e: any) => e.node).filter(Boolean);
+}
+
+/** Get all variant IDs for a product */
+async function getAllProductVariants(session: Session, productId: string) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    query getProductVariants($id: ID!) {
+      product(id: $id) {
+        variants(first: 100) {
+          edges {
+            node {
+              id
+              title
+              selectedOptions { name value }
+            }
+          }
+        }
+      }
+    }
+  `;
+  const response: any = await client.request(query, { variables: { id: productId } });
+  return (response?.data?.product?.variants?.edges ?? []).map((e: any) => e.node);
+}
+
+/** Wait until all product media reach READY (or FAILED), with a single polling loop */
+async function waitForAllMediaReady(session: Session, productId: string, timeoutMs = 25000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const media = await getAllProductMedia(session, productId);
+    if (media.length && media.every((m: any) => m.status === "READY" || m.status === "FAILED")) {
+      return media;
+    }
+    await new Promise(res => setTimeout(res, 2000));
+  }
+  return await getAllProductMedia(session, productId);
+}
+
+/** Extract filename from a URL (ignoring query params) */
+function getFilenameFromUrl(url: string): string {
+  try {
+    return new URL(url).pathname.split("/").pop() || "";
+  } catch {
+    return url.split("/").pop()?.split("?")[0] || "";
+  }
 }
 
 async function waitForMediaReady(session: Session, productId: string, mediaId: string, timeoutMs = 15000) {
@@ -792,6 +835,41 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
         if (variantEdges && variantEdges.length) {
           const firstVariantId = variantEdges[0].node.id;
           await updateDefaultVariantWithSDK(session, productId, firstVariantId, main);
+        }
+
+        // Attach variant images — single poll for all media, then match by filename
+        const variantRows = group.filter(row => {
+          const vi = row["Variant Image"];
+          return vi && vi.trim() && vi !== "nan" && vi !== "null" && vi !== "undefined";
+        });
+        if (variantRows.length > 0) {
+          const readyMedia = await waitForAllMediaReady(session, productId);
+          const allVariants = await getAllProductVariants(session, productId);
+
+          for (const row of variantRows) {
+            const variantImageFilename = getFilenameFromUrl(normalizeImageUrl(row["Variant Image"]));
+            const filenameBase = variantImageFilename.replace(/\.[^.]+$/, "");
+            // Find matching media by filename stem
+            const matchedMedia = readyMedia.find((m: any) =>
+              m.status === "READY" && m.image?.url && getFilenameFromUrl(m.image.url).includes(filenameBase)
+            );
+            if (!matchedMedia) continue;
+
+            // Find matching variant by option values
+            const matchedVariant = allVariants.find((v: any) =>
+              v.selectedOptions?.every((opt: any) => {
+                for (let i = 1; i <= 3; i++) {
+                  const csvOptName = main[`Option${i} Name`]?.trim();
+                  const csvOptValue = row[`Option${i} Value`]?.trim();
+                  if (csvOptName === opt.name && csvOptValue === opt.value) return true;
+                }
+                return false;
+              })
+            );
+            if (matchedVariant) {
+              await appendMediaToVariant(session, productId, matchedVariant.id, matchedMedia.id);
+            }
+          }
         }
 
         successCount++;
