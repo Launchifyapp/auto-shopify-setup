@@ -73,6 +73,19 @@ Reste du monde : 7-14 jours
     privacyContactTitle: "Nous contacter",
     privacyContactText: "Si vous avez des questions concernant cette politique de confidentialité ou nos pratiques en matière de données, veuillez nous contacter à :",
     privacyLastUpdated: "Dernière mise à jour : Novembre 2025",
+
+    // Upsell branding page
+    upsellBrandingSpecialOffer: "Offre spéciale — uniquement après installation",
+    upsellBrandingTitle: "Boostez votre boutique avec un branding premium",
+    upsellBrandingSubtitle: "Un design professionnel pour maximiser vos ventes dès le premier jour.",
+    upsellBrandingPackTitle: "Pack Branding Premium",
+    upsellBrandingPriceIntro: "À partir de 29€ seulement",
+    upsellBrandingFeature1: "Logo professionnel personnalisé",
+    upsellBrandingFeature2: "Bannières et visuels de marque",
+    upsellBrandingFeature3: "Kit réseaux sociaux complet",
+    upsellBrandingNote: "Livré sous 48h. Inclut les fichiers sources et un guide d'utilisation.",
+    upsellBrandingCTA: "Ajouter le Pack Branding",
+    upsellBrandingSkip: "Non merci, continuer sans branding",
   },
   en: {
     // Landing page (only display language, no store language)
@@ -146,6 +159,19 @@ Rest of the world: 10-21 business days
     privacyContactTitle: "Contact Us",
     privacyContactText: "If you have any questions about this privacy policy or our data practices, please contact us at :",
     privacyLastUpdated: "Last updated: November 2025",
+
+    // Upsell branding page
+    upsellBrandingSpecialOffer: "Special offer — only after installation",
+    upsellBrandingTitle: "Boost your store with premium branding",
+    upsellBrandingSubtitle: "A professional design to maximize your sales from day one.",
+    upsellBrandingPackTitle: "Premium Branding Pack",
+    upsellBrandingPriceIntro: "Starting from only $29",
+    upsellBrandingFeature1: "Custom professional logo",
+    upsellBrandingFeature2: "Brand banners and visuals",
+    upsellBrandingFeature3: "Complete social media kit",
+    upsellBrandingNote: "Delivered within 48h. Includes source files and a usage guide.",
+    upsellBrandingCTA: "Add Branding Pack",
+    upsellBrandingSkip: "No thanks, continue without branding",
   }
 };
 
