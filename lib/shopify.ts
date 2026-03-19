@@ -1,11 +1,10 @@
-import '@shopify/shopify-api/adapters/node'; // ← Adapter Node obligatoire
+import '@shopify/shopify-api/adapters/node';
 import { shopifyApi, Session, ApiVersion } from "@shopify/shopify-api";
 import { DEFAULT_SESSION_SCOPE } from "@/lib/scopes";
 
-// Host extraction sécurisé
 function getHostName() {
   const appUrl = process.env.SHOPIFY_APP_URL;
-  if (!appUrl) throw new Error("Variable d'environnement SHOPIFY_APP_URL manquante !");
+  if (!appUrl) return "localhost";
   try {
     const parsedUrl = new URL(appUrl);
     return parsedUrl.host;
@@ -27,7 +26,6 @@ export const shopify = shopifyApi({
   isEmbeddedApp: true,
 });
 
-// Fonction GraphQL - PATCH v12+ : utilise .request() au lieu de .query()
 export async function shopifyGraphQL(
   shop: string,
   token: string,
@@ -47,9 +45,6 @@ export async function shopifyGraphQL(
   });
 
   const client = new shopify.clients.Graphql({ session });
-
-  // Utilise .request(), pas .query() (corrigé v12+)
   const response: any = await client.request(query, variables);
-
   return response;
 }
