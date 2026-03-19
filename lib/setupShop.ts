@@ -2,6 +2,7 @@ import { parse } from "csv-parse/sync";
 import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
 import { Language, t } from "@/lib/i18n";
+import { getProductLimit } from "@/lib/utils/licenseStore";
 
 // Search for main collection ID
 async function getAllProductsCollectionId(session: Session): Promise<string | null> {
@@ -490,14 +491,21 @@ async function updateDefaultVariantWithSDK(
   const variant: any = {
     id: variantId,
     price: main["Variant Price"] ?? "0",
-    tracked: false,
     ...(main["Variant Compare At Price"] ? { compareAtPrice: main["Variant Compare At Price"] } : {}),
     ...(main["Variant SKU"] ? { sku: main["Variant SKU"] } : {}),
     ...(main["Variant Barcode"] ? { barcode: main["Variant Barcode"] } : {}),
   };
+  // Filter out invalid fields for ProductVariantsBulkInput
+  const cleanedVariant: any = {};
+  const validFields = ['id', 'sku', 'price', 'compareAtPrice', 'barcode', 'optionValues', 'taxable', 'weight', 'weightUnit'];
+  for (const field of validFields) {
+    if (field in variant) {
+      cleanedVariant[field] = variant[field];
+    }
+  }
   const variables = {
     productId,
-    variants: [variant],
+    variants: [cleanedVariant],
   };
   const response: any = await client.request(query, { variables });
   const data = response?.data?.productVariantsBulkUpdate;
@@ -523,9 +531,20 @@ async function bulkCreateVariantsWithSDK(
       }
     }
   `;
+  // Filter out invalid fields for ProductVariantsBulkInput
+  const cleanedVariants = variants.map(v => {
+    const cleaned: any = {};
+    const validFields = ['id', 'sku', 'price', 'compareAtPrice', 'barcode', 'optionValues', 'taxable', 'weight', 'weightUnit'];
+    for (const field of validFields) {
+      if (field in v) {
+        cleaned[field] = v[field];
+      }
+    }
+    return cleaned;
+  });
   const variables = {
     productId,
-    variants,
+    variants: cleanedVariants,
   };
   const response: any = await client.request(query, { variables });
   const result = response?.data?.productVariantsBulkCreate;
@@ -706,11 +725,21 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
       productsByHandle[row.Handle].push(row);
     }
 
+    // Limit products based on the shop's plan (basic = 20, premium = 40)
+    const productLimit = await getProductLimit(session.shop);
+    const allHandles = Object.keys(productsByHandle);
+    const allowedHandles = allHandles.slice(0, productLimit);
+    console.log(`[setupShop] Plan allows ${productLimit} products. CSV has ${allHandles.length}. Importing ${allowedHandles.length}.`);
+
     let successCount = 0;
-    const totalProducts = Object.keys(productsByHandle).length;
+    const totalProducts = allowedHandles.length;
     const deferredVariantImages: { productId: string; variantRows: any[]; main: any }[] = [];
 
     for (const [handle, group] of Object.entries(productsByHandle)) {
+      // Skip products beyond the plan's limit
+      if (!allowedHandles.includes(handle)) {
+        continue;
+      }
       const main = group[0];
       type ProductOption = { name: string, values: { name: string }[] };
       const productOptions: ProductOption[] = [];
@@ -793,7 +822,6 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
               const variant: any = {
                 price: row["Variant Price"] || main["Variant Price"] || "0",
                 optionValues,
-                tracked: false,
               };
               if (row["Variant SKU"]) variant.sku = row["Variant SKU"];
               if (row["Variant Barcode"]) variant.barcode = row["Variant Barcode"];

@@ -5,7 +5,11 @@
       "Bash(git config user.email \"launchify.business@gmail.com\")",
       "Bash(git config user.name \"Launchify\")",
       "Bash(git add .)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git add:*)",
+      "Bash(git rebase:*)",
+      "Bash(GIT_EDITOR=true git rebase --continue)"
     ]
   }
 }
