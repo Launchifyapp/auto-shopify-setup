@@ -490,6 +490,7 @@ async function updateDefaultVariantWithSDK(
   const variant: any = {
     id: variantId,
     price: main["Variant Price"] ?? "0",
+    tracked: false,
     ...(main["Variant Compare At Price"] ? { compareAtPrice: main["Variant Compare At Price"] } : {}),
     ...(main["Variant SKU"] ? { sku: main["Variant SKU"] } : {}),
     ...(main["Variant Barcode"] ? { barcode: main["Variant Barcode"] } : {}),
@@ -792,6 +793,7 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
               const variant: any = {
                 price: row["Variant Price"] || main["Variant Price"] || "0",
                 optionValues,
+                tracked: false,
               };
               if (row["Variant SKU"]) variant.sku = row["Variant SKU"];
               if (row["Variant Barcode"]) variant.barcode = row["Variant Barcode"];
