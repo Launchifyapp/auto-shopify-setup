@@ -13,17 +13,23 @@ function getHostName() {
   }
 }
 
-if (!process.env.SHOPIFY_API_KEY || !process.env.SHOPIFY_API_SECRET) {
-  console.error("[shopify] SHOPIFY_API_KEY and SHOPIFY_API_SECRET must be set!");
-}
+// Lazy initialization to avoid crashing at build time when env vars are missing
+let _shopify: ReturnType<typeof shopifyApi> | null = null;
 
-export const shopify = shopifyApi({
-  apiKey: process.env.SHOPIFY_API_KEY!,
-  apiSecretKey: process.env.SHOPIFY_API_SECRET!,
-  apiVersion: ApiVersion.January25,
-  isCustomStoreApp: false,
-  hostName: getHostName(),
-  isEmbeddedApp: true,
+export const shopify = new Proxy({} as ReturnType<typeof shopifyApi>, {
+  get(_target, prop, receiver) {
+    if (!_shopify) {
+      _shopify = shopifyApi({
+        apiKey: process.env.SHOPIFY_API_KEY!,
+        apiSecretKey: process.env.SHOPIFY_API_SECRET!,
+        apiVersion: ApiVersion.January25,
+        isCustomStoreApp: false,
+        hostName: getHostName(),
+        isEmbeddedApp: true,
+      });
+    }
+    return Reflect.get(_shopify, prop, receiver);
+  },
 });
 
 export async function shopifyGraphQL(
