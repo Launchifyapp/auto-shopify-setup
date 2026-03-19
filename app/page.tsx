@@ -32,7 +32,14 @@ function InstallLandingContent() {
   }, [searchParams]);
 
   if (redirecting) {
-    return <div style={{ textAlign: "center", marginTop: "8rem" }}>Redirecting…</div>;
+    return (
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "center",
+        minHeight: "100vh", color: "#0B1B3A", fontSize: "1.1rem",
+      }}>
+        Redirecting…
+      </div>
+    );
   }
 
   function startInstall() {
@@ -46,38 +53,135 @@ function InstallLandingContent() {
     window.location.href = installUrl;
   }
 
+  const isValid = shop.endsWith(".myshopify.com");
+
   return (
-    <main style={{ textAlign:"center", marginTop:"8rem", position: "relative" }}>
-      <div style={{ position: "absolute", top: "-6rem", right: "1rem" }}>
+    <main style={{
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: "100vh",
+      padding: "2rem 1rem",
+    }}>
+      {/* Language switcher */}
+      <div style={{ position: "fixed", top: "1.25rem", right: "1.5rem", zIndex: 10 }}>
         <select
           value={displayLang}
           onChange={e => setDisplayLang(e.target.value as Language)}
-          style={{ fontSize: "0.9rem", padding: "0.4rem", borderRadius: "4px", border: "1px solid #ccc" }}
+          style={{
+            fontSize: "0.85rem",
+            padding: "0.45rem 0.75rem",
+            borderRadius: "10px",
+            border: "1px solid #dde1e6",
+            backgroundColor: "#fff",
+            color: "#0B1B3A",
+            cursor: "pointer",
+            fontFamily: "inherit",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+          }}
         >
           <option value="fr">🇫🇷 Français</option>
           <option value="en">🇬🇧 English</option>
         </select>
       </div>
-      
-      <h1 style={{ fontSize:"2rem" }}>{t(displayLang, "installTitle")}</h1>
-      <p>{t(displayLang, "installDescription")}</p>
-      
-      <input
-        type="text"
-        placeholder={t(displayLang, "shopPlaceholder")}
-        value={shop}
-        onChange={e => setShop(e.target.value)}
-        style={{ fontSize:"1.2rem", padding:"0.5rem", width:"320px", margin:"1rem" }}
-      />
-      <br />
-      <button
-        style={{ fontSize:"1.2rem", padding:"0.75rem 2rem" }}
-        onClick={startInstall}
-        disabled={!shop.endsWith(".myshopify.com")}
-      >
-        {t(displayLang, "installButton")}
-      </button>
-      <p style={{ marginTop:"2rem", color:"#888" }}>
+
+      {/* Logo */}
+      <div style={{
+        fontSize: "1.75rem",
+        fontWeight: 800,
+        color: "#0B1B3A",
+        letterSpacing: "0.08em",
+        marginBottom: "2rem",
+        textTransform: "uppercase",
+      }}>
+        <span style={{ color: "#00AAFF" }}>Launch</span>ify
+      </div>
+
+      {/* Card */}
+      <div style={{
+        backgroundColor: "#fff",
+        borderRadius: "16px",
+        boxShadow: "0 4px 24px rgba(11,27,58,0.08)",
+        padding: "2.5rem 2rem",
+        maxWidth: "460px",
+        width: "100%",
+        textAlign: "center",
+      }}>
+        <h1 style={{
+          fontSize: "1.65rem",
+          fontWeight: 800,
+          color: "#0B1B3A",
+          margin: "0 0 0.5rem 0",
+          lineHeight: 1.3,
+        }}>
+          {t(displayLang, "installTitle")}
+        </h1>
+        <p style={{
+          color: "#5a6a80",
+          fontSize: "0.95rem",
+          margin: "0 0 2rem 0",
+          lineHeight: 1.6,
+        }}>
+          {t(displayLang, "installDescription")}
+        </p>
+
+        <input
+          type="text"
+          placeholder={t(displayLang, "shopPlaceholder")}
+          value={shop}
+          onChange={e => setShop(e.target.value)}
+          style={{
+            fontSize: "1rem",
+            padding: "0.85rem 1rem",
+            width: "100%",
+            boxSizing: "border-box",
+            borderRadius: "12px",
+            border: "2px solid #dde1e6",
+            outline: "none",
+            fontFamily: "inherit",
+            color: "#0B1B3A",
+            transition: "border-color 0.2s",
+            marginBottom: "1.25rem",
+          }}
+          onFocus={e => (e.target.style.borderColor = "#00AAFF")}
+          onBlur={e => (e.target.style.borderColor = "#dde1e6")}
+        />
+
+        <button
+          style={{
+            fontSize: "0.95rem",
+            fontWeight: 800,
+            padding: "0.9rem 2rem",
+            width: "100%",
+            backgroundColor: isValid ? "#00AAFF" : "#b0d4f1",
+            color: "#fff",
+            border: "none",
+            borderRadius: "12px",
+            cursor: isValid ? "pointer" : "not-allowed",
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            fontFamily: "inherit",
+            boxShadow: isValid ? "0 4px 14px rgba(0,170,255,0.3)" : "none",
+            transition: "background-color 0.2s, box-shadow 0.2s",
+          }}
+          onClick={startInstall}
+          disabled={!isValid}
+          onMouseEnter={e => { if (isValid) (e.target as HTMLButtonElement).style.backgroundColor = "#0099ee"; }}
+          onMouseLeave={e => { if (isValid) (e.target as HTMLButtonElement).style.backgroundColor = "#00AAFF"; }}
+        >
+          {t(displayLang, "installButton")}
+        </button>
+      </div>
+
+      <p style={{
+        marginTop: "2rem",
+        color: "#8895a7",
+        fontSize: "0.85rem",
+        textAlign: "center",
+        lineHeight: 1.7,
+        maxWidth: "400px",
+      }}>
         {t(displayLang, "afterInstallMessage")} <br />
         {t(displayLang, "afterInstallDetails")}
       </p>
@@ -87,7 +191,7 @@ function InstallLandingContent() {
 
 export default function InstallLanding() {
   return (
-    <Suspense fallback={<div style={{ textAlign: "center", marginTop: "8rem" }}>Loading…</div>}>
+    <Suspense fallback={<div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", color: "#0B1B3A" }}>Loading…</div>}>
       <InstallLandingContent />
     </Suspense>
   );
