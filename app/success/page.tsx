@@ -18,16 +18,11 @@ function SuccessContent() {
       padding: "2rem 1rem",
     }}>
       {/* Logo */}
-      <div style={{
-        fontSize: "1.75rem",
-        fontWeight: 800,
-        color: "#0B1B3A",
-        letterSpacing: "0.08em",
-        marginBottom: "2rem",
-        textTransform: "uppercase",
-      }}>
-        <span style={{ color: "#00AAFF" }}>Launch</span>ify
-      </div>
+      <img
+        src="/images/logo.png"
+        alt="Launchify"
+        style={{ height: "40px", marginBottom: "2rem" }}
+      />
 
       {/* Card */}
       <div style={{
