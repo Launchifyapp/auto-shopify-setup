@@ -473,6 +473,79 @@ async function appendMediaToVariant(session: Session, productId: string, variant
   return response?.data?.productVariantAppendMedia?.productVariants;
 }
 
+// Set inventory quantity for a variant
+async function setInventoryQuantity(session: Session, inventoryItemId: string, quantity: number, locationId: string) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
+      inventorySetQuantities(input: $input) {
+        inventoryAdjustmentGroup { reason }
+        userErrors { field message }
+      }
+    }
+  `;
+  const variables = {
+    input: {
+      reason: "correction",
+      name: "available",
+      quantities: [
+        {
+          inventoryItemId,
+          locationId,
+          quantity,
+        },
+      ],
+    },
+  };
+  const response: any = await client.request(query, { variables });
+  if (response?.data?.inventorySetQuantities?.userErrors?.length) {
+    console.error("[Inventory] Error:", response.data.inventorySetQuantities.userErrors);
+  }
+}
+
+// Get the shop's primary location ID
+async function getPrimaryLocationId(session: Session): Promise<string | null> {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    query {
+      locations(first: 1) {
+        edges {
+          node { id name }
+        }
+      }
+    }
+  `;
+  const response: any = await client.request(query);
+  const loc = response?.data?.locations?.edges?.[0]?.node;
+  if (loc) {
+    console.log(`[Location] Primary: ${loc.name} (${loc.id})`);
+    return loc.id;
+  }
+  return null;
+}
+
+// Get variant inventory item IDs for a product
+async function getVariantInventoryItems(session: Session, productId: string) {
+  const client = new shopify.clients.Graphql({ session });
+  const query = `
+    query getProductVariants($id: ID!) {
+      product(id: $id) {
+        variants(first: 100) {
+          edges {
+            node {
+              id
+              inventoryItem { id }
+              selectedOptions { name value }
+            }
+          }
+        }
+      }
+    }
+  `;
+  const response: any = await client.request(query, { variables: { id: productId } });
+  return (response?.data?.product?.variants?.edges ?? []).map((e: any) => e.node);
+}
+
 async function updateDefaultVariantWithSDK(
   session: Session,
   productId: string,
@@ -731,6 +804,9 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
     const allowedHandles = allHandles.slice(0, productLimit);
     console.log(`[setupShop] Plan allows ${productLimit} products. CSV has ${allHandles.length}. Importing ${allowedHandles.length}.`);
 
+    // Get the shop's primary location for inventory
+    const locationId = await getPrimaryLocationId(session);
+
     let successCount = 0;
     const totalProducts = allowedHandles.length;
     const deferredVariantImages: { productId: string; variantRows: any[]; main: any }[] = [];
@@ -843,6 +919,30 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
         if (variantEdges && variantEdges.length) {
           const firstVariantId = variantEdges[0].node.id;
           await updateDefaultVariantWithSDK(session, productId, firstVariantId, main);
+        }
+
+        // Set inventory quantities for all variants
+        if (locationId) {
+          const variantsWithInventory = await getVariantInventoryItems(session, productId);
+          for (const v of variantsWithInventory) {
+            const matchingRow = group.find(row => {
+              if (!v.selectedOptions?.length) return true;
+              return v.selectedOptions.every((opt: any) => {
+                for (let i = 1; i <= 3; i++) {
+                  const csvOptName = main[`Option${i} Name`]?.trim();
+                  const csvOptValue = row[`Option${i} Value`]?.trim();
+                  if (csvOptName === opt.name && csvOptValue === opt.value) return true;
+                }
+                return false;
+              });
+            }) || main;
+            const qty = parseInt(matchingRow["Variant Inventory Qty"] || "0", 10);
+            const inventoryQty = qty > 0 ? qty : 100;
+            if (v.inventoryItem?.id) {
+              await setInventoryQuantity(session, v.inventoryItem.id, inventoryQty, locationId);
+            }
+          }
+          console.log(`[Inventory] Set quantities for product ${productId}`);
         }
 
         // Collect variant image info for deferred attachment

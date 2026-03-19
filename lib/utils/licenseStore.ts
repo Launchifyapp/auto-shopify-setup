@@ -54,8 +54,8 @@ export async function activateLicense(
  */
 export async function getLicense(shop: string): Promise<{ plan: Plan; email?: string }> {
   if (!redis) {
-    console.log(`[License] Redis not configured, defaulting to basic`);
-    return { plan: "basic" as Plan };
+    console.log(`[License] Redis not configured, defaulting to premium (no limit)`);
+    return { plan: "premium" as Plan };
   }
 
   const key = LICENSE_PREFIX + normalizeShop(shop);
