@@ -41,6 +41,13 @@ const METAOBJECT_SCOPES = [
   "write_metaobjects",
 ];
 
+// Inventory and location access
+const INVENTORY_SCOPES = [
+  "read_locations",
+  "read_inventory",
+  "write_inventory",
+];
+
 // All scopes combined - used in OAuth request
 // Note: Must match SCOPES constant in app/page.tsx
 export const ALL_SCOPES = [
@@ -50,6 +57,7 @@ export const ALL_SCOPES = [
   ...PAGES_SCOPES,
   ...NAVIGATION_SCOPES,
   ...METAOBJECT_SCOPES,
+  ...INVENTORY_SCOPES,
 ].join(",");
 
 // Default scopes for session creation (when OAuth scope not provided)

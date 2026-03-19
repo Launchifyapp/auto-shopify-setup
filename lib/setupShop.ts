@@ -515,11 +515,15 @@ async function getPrimaryLocationId(session: Session): Promise<string | null> {
       }
     }
   `;
-  const response: any = await client.request(query);
-  const loc = response?.data?.locations?.edges?.[0]?.node;
-  if (loc) {
-    console.log(`[Location] Primary: ${loc.name} (${loc.id})`);
-    return loc.id;
+  try {
+    const response: any = await client.request(query);
+    const loc = response?.data?.locations?.edges?.[0]?.node;
+    if (loc) {
+      console.log(`[Location] Primary: ${loc.name} (${loc.id})`);
+      return loc.id;
+    }
+  } catch (err: any) {
+    console.warn(`[Location] Cannot access locations (missing scope?): ${err?.message}`);
   }
   return null;
 }
