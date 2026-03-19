@@ -497,9 +497,16 @@ async function setInventoryQuantity(session: Session, inventoryItemId: string, q
       ],
     },
   };
-  const response: any = await client.request(query, { variables });
-  if (response?.data?.inventorySetQuantities?.userErrors?.length) {
-    console.error("[Inventory] Error:", response.data.inventorySetQuantities.userErrors);
+  try {
+    console.log(`[Inventory] Setting ${inventoryItemId} qty=${quantity} at ${locationId}`);
+    const response: any = await client.request(query, { variables });
+    if (response?.data?.inventorySetQuantities?.userErrors?.length) {
+      console.error("[Inventory] userErrors:", JSON.stringify(response.data.inventorySetQuantities.userErrors));
+    } else {
+      console.log(`[Inventory] OK for ${inventoryItemId}`);
+    }
+  } catch (err: any) {
+    console.error(`[Inventory] Failed for ${inventoryItemId}: ${err?.message}`);
   }
 }
 
@@ -810,6 +817,7 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
 
     // Get the shop's primary location for inventory
     const locationId = await getPrimaryLocationId(session);
+    console.log(`[setupShop] locationId: ${locationId ?? "NULL (inventory will be skipped)"}`);
 
     let successCount = 0;
     const totalProducts = allowedHandles.length;
