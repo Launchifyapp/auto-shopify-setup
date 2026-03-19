@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "app/api/setup-shop/route.ts": {
+      "maxDuration": 300
+    }
+  }
+}
