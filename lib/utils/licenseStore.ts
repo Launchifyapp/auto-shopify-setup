@@ -8,11 +8,12 @@
 
 import { Redis } from "@upstash/redis";
 
-// Initialize Redis client from environment variables
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-});
+// Initialize Redis client from environment variables (may be null if not configured)
+const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+const redis = redisUrl && redisToken
+  ? new Redis({ url: redisUrl, token: redisToken })
+  : null;
 
 export type Plan = "basic" | "premium";
 
@@ -39,6 +40,10 @@ export async function activateLicense(
     activatedAt: new Date().toISOString(),
     email,
   };
+  if (!redis) {
+    console.log(`[License] Redis not configured, skipping license activation`);
+    return;
+  }
   await redis.set(key, JSON.stringify(entry));
   console.log(`[License] Activated ${plan} license for ${normalizeShop(shop)}`);
 }
@@ -48,6 +53,11 @@ export async function activateLicense(
  * Returns "basic" if no license found (default free plan)
  */
 export async function getLicense(shop: string): Promise<{ plan: Plan; email?: string }> {
+  if (!redis) {
+    console.log(`[License] Redis not configured, defaulting to basic`);
+    return { plan: "basic" as Plan };
+  }
+
   const key = LICENSE_PREFIX + normalizeShop(shop);
   const data = await redis.get(key);
 
