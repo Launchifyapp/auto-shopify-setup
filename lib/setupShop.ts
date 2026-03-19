@@ -488,6 +488,7 @@ async function setInventoryQuantity(session: Session, inventoryItemId: string, q
     input: {
       reason: "correction",
       name: "available",
+      ignoreCompareQuantity: true,
       quantities: [
         {
           inventoryItemId,

@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Language, t } from "@/lib/i18n";
 
 // OAuth scopes - must match lib/scopes.ts ALL_SCOPES
-const SCOPES = "read_products,write_products,read_content,write_content,read_files,write_files,read_themes,write_themes,read_online_store_pages,write_online_store_pages,read_online_store_navigation,write_online_store_navigation,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_locations,read_inventory,write_inventory";
+const SCOPES = "read_products,write_products,read_content,write_content,read_files,write_files,read_themes,write_themes,read_online_store_pages,write_online_store_pages,read_online_store_navigation,write_online_store_navigation,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_locations,read_inventory,write_inventory,read_publications";
 
 function InstallLandingContent() {
   const searchParams = useSearchParams();

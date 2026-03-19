@@ -48,6 +48,11 @@ const INVENTORY_SCOPES = [
   "write_inventory",
 ];
 
+// Publication access (for publishing products to Online Store)
+const PUBLICATION_SCOPES = [
+  "read_publications",
+];
+
 // All scopes combined - used in OAuth request
 // Note: Must match SCOPES constant in app/page.tsx
 export const ALL_SCOPES = [
@@ -58,6 +63,7 @@ export const ALL_SCOPES = [
   ...NAVIGATION_SCOPES,
   ...METAOBJECT_SCOPES,
   ...INVENTORY_SCOPES,
+  ...PUBLICATION_SCOPES,
 ].join(",");
 
 // Default scopes for session creation (when OAuth scope not provided)
