@@ -474,40 +474,31 @@ async function appendMediaToVariant(session: Session, productId: string, variant
 }
 
 // Set inventory quantity for a variant
-async function setInventoryQuantity(session: Session, inventoryItemId: string, quantity: number, locationId: string) {
+async function disableInventoryTracking(session: Session, inventoryItemId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
-      inventorySetQuantities(input: $input) {
-        inventoryAdjustmentGroup { reason }
+    mutation inventoryItemUpdate($id: ID!, $input: InventoryItemInput!) {
+      inventoryItemUpdate(id: $id, input: $input) {
+        inventoryItem { id tracked }
         userErrors { field message }
       }
     }
   `;
   const variables = {
+    id: inventoryItemId,
     input: {
-      reason: "correction",
-      name: "available",
-      ignoreCompareQuantity: true,
-      quantities: [
-        {
-          inventoryItemId,
-          locationId,
-          quantity,
-        },
-      ],
+      tracked: false,
     },
   };
   try {
-    console.log(`[Inventory] Setting ${inventoryItemId} qty=${quantity} at ${locationId}`);
     const response: any = await client.request(query, { variables });
-    if (response?.data?.inventorySetQuantities?.userErrors?.length) {
-      console.error("[Inventory] userErrors:", JSON.stringify(response.data.inventorySetQuantities.userErrors));
+    if (response?.data?.inventoryItemUpdate?.userErrors?.length) {
+      console.error("[Inventory] userErrors:", JSON.stringify(response.data.inventoryItemUpdate.userErrors));
     } else {
-      console.log(`[Inventory] OK for ${inventoryItemId}`);
+      console.log(`[Inventory] Tracking disabled for ${inventoryItemId}`);
     }
   } catch (err: any) {
-    console.error(`[Inventory] Failed for ${inventoryItemId}: ${err?.message}`);
+    console.error(`[Inventory] Failed to disable tracking for ${inventoryItemId}: ${err?.message}`);
   }
 }
 
@@ -816,10 +807,6 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
     const allowedHandles = allHandles.slice(0, productLimit);
     console.log(`[setupShop] Plan allows ${productLimit} products. CSV has ${allHandles.length}. Importing ${allowedHandles.length}.`);
 
-    // Get the shop's primary location for inventory
-    const locationId = await getPrimaryLocationId(session);
-    console.log(`[setupShop] locationId: ${locationId ?? "NULL (inventory will be skipped)"}`);
-
     let successCount = 0;
     const totalProducts = allowedHandles.length;
     const deferredVariantImages: { productId: string; variantRows: any[]; main: any }[] = [];
@@ -934,28 +921,15 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
           await updateDefaultVariantWithSDK(session, productId, firstVariantId, main);
         }
 
-        // Set inventory quantities for all variants
-        if (locationId) {
+        // Disable inventory tracking for all variants
+        {
           const variantsWithInventory = await getVariantInventoryItems(session, productId);
           for (const v of variantsWithInventory) {
-            const matchingRow = group.find(row => {
-              if (!v.selectedOptions?.length) return true;
-              return v.selectedOptions.every((opt: any) => {
-                for (let i = 1; i <= 3; i++) {
-                  const csvOptName = main[`Option${i} Name`]?.trim();
-                  const csvOptValue = row[`Option${i} Value`]?.trim();
-                  if (csvOptName === opt.name && csvOptValue === opt.value) return true;
-                }
-                return false;
-              });
-            }) || main;
-            const qty = parseInt(matchingRow["Variant Inventory Qty"] || "0", 10);
-            const inventoryQty = qty > 0 ? qty : 100;
             if (v.inventoryItem?.id) {
-              await setInventoryQuantity(session, v.inventoryItem.id, inventoryQty, locationId);
+              await disableInventoryTracking(session, v.inventoryItem.id);
             }
           }
-          console.log(`[Inventory] Set quantities for product ${productId}`);
+          console.log(`[Inventory] Tracking disabled for product ${productId}`);
         }
 
         // Collect variant image info for deferred attachment
