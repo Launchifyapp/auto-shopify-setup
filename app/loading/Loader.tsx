@@ -14,6 +14,19 @@ async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
   }
 }
 
+/** Safely parse a response as JSON, with fallback for non-JSON (e.g. HTML error pages) */
+async function safeJson(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Server returned non-JSON (likely Next.js HTML error page)
+    throw new Error(
+      `Server error (${res.status}): ${text.substring(0, 200)}`
+    );
+  }
+}
+
 export default function Loader() {
   const searchParams = useSearchParams();
   const shop = searchParams?.get("shop") ?? "";
@@ -29,7 +42,7 @@ export default function Loader() {
         console.log("[Loader] Starting step 1 – setup shop");
         // 1. Setup boutique (session token auth via App Bridge)
         const res1 = await fetchWithTimeout(`/api/setup-shop?lang=${lang}`, 150_000);
-        const data1 = await res1.json();
+        const data1 = await safeJson(res1);
         console.log("[Loader] Step 1 response:", data1);
         if (!data1.ok) throw new Error(data1.error || t(lang, "errorSetup"));
 
@@ -37,7 +50,7 @@ export default function Loader() {
         console.log("[Loader] Starting step 2 – upload theme");
         // 2. Upload theme
         const res2 = await fetchWithTimeout(`/api/upload-theme?lang=${lang}`, 150_000);
-        const data2 = await res2.json();
+        const data2 = await safeJson(res2);
         console.log("[Loader] Step 2 response:", data2);
         if (!data2.ok || !data2.themeId) throw new Error(data2.error || t(lang, "errorThemeUpload"));
 
@@ -45,7 +58,7 @@ export default function Loader() {
         console.log("[Loader] Starting step 3 – publish theme");
         // 3. Publish theme
         const res3 = await fetchWithTimeout(`/api/publish-theme?themeId=${data2.themeId}`, 150_000);
-        const data3 = await res3.json();
+        const data3 = await safeJson(res3);
         console.log("[Loader] Step 3 response:", data3);
         if (!data3.ok) throw new Error(data3.error || t(lang, "errorThemePublish"));
 

@@ -33,23 +33,32 @@ function getSession(shop: string, accessToken: string, scope: string): Session {
 }
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const langParam = searchParams.get("lang");
-  const lang: Language = langParam === "en" ? "en" : "fr";
-
-  // Authenticate using session token (required for embedded apps)
-  const sessionAuth = authenticateRequest(req);
-  if (!sessionAuth) {
-    return new Response(
-      JSON.stringify({ ok: false, error: "Unauthorized. Session token required." }),
-      { status: 401, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
-  const { shop, token: sessionToken } = sessionAuth;
-  console.log("[setup-shop] Authenticated via session token for shop:", shop);
-
   try {
+    const { searchParams } = new URL(req.url);
+    const langParam = searchParams.get("lang");
+    const lang: Language = langParam === "en" ? "en" : "fr";
+
+    // Quick env var check
+    if (!process.env.SHOPIFY_API_KEY || !process.env.SHOPIFY_API_SECRET) {
+      console.error("[setup-shop] Missing SHOPIFY_API_KEY or SHOPIFY_API_SECRET env vars");
+      return new Response(
+        JSON.stringify({ ok: false, error: "Server misconfiguration: missing Shopify API credentials" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Authenticate using session token (required for embedded apps)
+    const sessionAuth = authenticateRequest(req);
+    if (!sessionAuth) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "Unauthorized. Session token required." }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const { shop, token: sessionToken } = sessionAuth;
+    console.log("[setup-shop] Authenticated via session token for shop:", shop);
+
     // Get access token – tries in-memory cache, then cookie, then Token Exchange API
     const { accessToken, scope } = await getAccessToken(shop, sessionToken, req);
     console.log("[setup-shop] shop:", shop, "token:", !!accessToken, "scope:", scope, "lang:", lang);
@@ -62,12 +71,11 @@ export async function GET(req: NextRequest) {
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (err: any) {
-    console.error("Global setupShop error:", err?.message, err?.stack);
+    console.error("[setup-shop] Global error:", err?.message, err?.stack);
     return new Response(
       JSON.stringify({
         ok: false,
         error: err?.message || String(err),
-        stack: err?.stack || ""
       }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );

@@ -8,26 +8,26 @@ import { authenticateRequest } from "@/lib/utils/verifySessionToken";
 export const maxDuration = 120;
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const langParam = searchParams.get("lang");
-  const lang: Language = langParam === "en" ? "en" : "fr";
-
-  // Authenticate using session token (required for embedded apps)
-  const sessionAuth = authenticateRequest(req);
-  if (!sessionAuth) {
-    return Response.json({ ok: false, error: "Unauthorized. Session token required." }, { status: 401 });
-  }
-
-  const { shop, token: sessionToken } = sessionAuth;
-  console.log("[upload-theme] Authenticated via session token for shop:", shop);
-
   try {
+    const { searchParams } = new URL(req.url);
+    const langParam = searchParams.get("lang");
+    const lang: Language = langParam === "en" ? "en" : "fr";
+
+    // Authenticate using session token (required for embedded apps)
+    const sessionAuth = authenticateRequest(req);
+    if (!sessionAuth) {
+      return Response.json({ ok: false, error: "Unauthorized. Session token required." }, { status: 401 });
+    }
+
+    const { shop, token: sessionToken } = sessionAuth;
+    console.log("[upload-theme] Authenticated via session token for shop:", shop);
+
     const { accessToken: token } = await getAccessToken(shop, sessionToken, req);
 
     const themeId = await uploadTheme({ shop, token, lang });
     return Response.json({ ok: !!themeId, themeId });
-  } catch (err) {
-    console.error("[upload-theme] Error:", err);
-    return Response.json({ ok: false, error: String(err) }, { status: 500 });
+  } catch (err: any) {
+    console.error("[upload-theme] Error:", err?.message, err?.stack);
+    return Response.json({ ok: false, error: err?.message || String(err) }, { status: 500 });
   }
 }
