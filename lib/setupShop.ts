@@ -720,303 +720,317 @@ async function publishResource(session: Session, resourceId: string, publication
 }
 
 
-export async function setupShop({ session, lang = "fr" }: { session: Session; lang?: Language }) {
-  try {
-    const idsToPublish: string[] = [];
+// ─── Redis helpers for multi-phase state ───
+import { Redis } from "@upstash/redis";
 
-    // --- UPLOAD GENERIC IMAGES TO SHOPIFY FILES ---
-    const baseUrl = process.env.SHOPIFY_APP_URL || "https://auto-shopify-setup.vercel.app";
-    const imagesUrls = [
-      `${baseUrl}/image1.jpg`,
-      `${baseUrl}/image2.jpg`,
-      `${baseUrl}/image3.jpg`,
-      `${baseUrl}/image4.webp`
-    ];
-    await uploadImagesToShopifyFiles(session, imagesUrls);
+const SETUP_PREFIX = "setup:";
+const SETUP_TTL = 3600; // 1 hour
 
-    // --- Create automated collections by TAG with language-specific names ---
-    const beautyCollection = await createAutomatedCollection(
-      session, 
-      t(lang, "collectionBeauty"), 
-      t(lang, "collectionBeautyHandle"), 
-      t(lang, "collectionBeautyTag")
-    );
-    if (beautyCollection?.id) idsToPublish.push(beautyCollection.id);
+function getRedis(): Redis | null {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  return url && token ? new Redis({ url, token }) : null;
+}
 
-    const homeCollection = await createAutomatedCollection(
-      session, 
-      t(lang, "collectionHome"), 
-      t(lang, "collectionHomeHandle"), 
-      t(lang, "collectionHomeTag")
-    );
-    if (homeCollection?.id) idsToPublish.push(homeCollection.id);
+interface SetupState {
+  lang: Language;
+  shop: string;
+  idsToPublish: string[];
+  productHandles: string[];
+  productsByHandle: Record<string, any[]>;
+  deferredVariantImages: { productId: string; variantRows: any[]; main: any }[];
+  productsCreated: number;
+}
 
-    // 1. Create Shipping page
-    const shippingPageId = await createShippingPageWithSDK(session, lang)
-      || await getPageIdByHandle(session, t(lang, "shippingPageHandle"));
+async function saveSetupState(setupId: string, state: SetupState) {
+  const redis = getRedis();
+  if (!redis) throw new Error("Redis not configured");
+  await redis.set(SETUP_PREFIX + setupId, JSON.stringify(state), { ex: SETUP_TTL });
+}
 
-    // 2. Get main collection ("all")
-    const mainCollectionId = await getAllProductsCollectionId(session);
+async function loadSetupState(setupId: string): Promise<SetupState | null> {
+  const redis = getRedis();
+  if (!redis) return null;
+  const data = await redis.get(SETUP_PREFIX + setupId);
+  if (!data) return null;
+  return typeof data === "string" ? JSON.parse(data) : data as SetupState;
+}
 
-    // 3. Get main menu ID & title
-    const mainMenuResult = await getMainMenuIdAndTitle(session);
+async function deleteSetupState(setupId: string) {
+  const redis = getRedis();
+  if (redis) await redis.del(SETUP_PREFIX + setupId);
+}
 
-    // 4. Find contact page ID
-    const contactPageId = await getPageIdByHandle(session, "contact");
+// ─── PHASE 1: Init (collections, pages, menu, parse CSV) ───
+export async function setupPhaseInit({ session, lang = "fr" }: { session: Session; lang?: Language }): Promise<{ setupId: string; totalBatches: number; totalProducts: number }> {
+  const idsToPublish: string[] = [];
+  const baseUrl = process.env.SHOPIFY_APP_URL || "https://auto-shopify-setup.vercel.app";
 
-    // 5. Update main menu with language-specific labels
-    if (mainMenuResult) {
-      await updateMainMenu(
-        session,
-        mainMenuResult.id,
-        mainMenuResult.title,
-        shippingPageId,
-        mainCollectionId,
-        contactPageId,
-        lang
-      );
-    } else {
-      console.error("Main menu not found!");
+  // Upload generic images
+  const imagesUrls = [
+    `${baseUrl}/image1.jpg`,
+    `${baseUrl}/image2.jpg`,
+    `${baseUrl}/image3.jpg`,
+    `${baseUrl}/image4.webp`
+  ];
+  await uploadImagesToShopifyFiles(session, imagesUrls);
+
+  // Create collections
+  const beautyCollection = await createAutomatedCollection(
+    session, t(lang, "collectionBeauty"), t(lang, "collectionBeautyHandle"), t(lang, "collectionBeautyTag")
+  );
+  if (beautyCollection?.id) idsToPublish.push(beautyCollection.id);
+
+  const homeCollection = await createAutomatedCollection(
+    session, t(lang, "collectionHome"), t(lang, "collectionHomeHandle"), t(lang, "collectionHomeTag")
+  );
+  if (homeCollection?.id) idsToPublish.push(homeCollection.id);
+
+  // Shipping page
+  const shippingPageId = await createShippingPageWithSDK(session, lang)
+    || await getPageIdByHandle(session, t(lang, "shippingPageHandle"));
+
+  // Main collection & menu
+  const mainCollectionId = await getAllProductsCollectionId(session);
+  const mainMenuResult = await getMainMenuIdAndTitle(session);
+  const contactPageId = await getPageIdByHandle(session, "contact");
+
+  if (mainMenuResult) {
+    await updateMainMenu(session, mainMenuResult.id, mainMenuResult.title, shippingPageId, mainCollectionId, contactPageId, lang);
+  }
+
+  // Parse CSV
+  const csvUrl = lang === "en" ? `${baseUrl}/products-en.csv` : `${baseUrl}/products.csv`;
+  const csvResponse = await fetch(csvUrl);
+  if (!csvResponse.ok) throw new Error(`Failed to fetch product CSV: ${csvResponse.status}`);
+  const csvText = await csvResponse.text();
+  const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: ";" });
+
+  const productsByHandle: Record<string, any[]> = {};
+  for (const row of records) {
+    if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
+    productsByHandle[row.Handle].push(row);
+  }
+
+  const productLimit = await getProductLimit(session.shop);
+  const allHandles = Object.keys(productsByHandle);
+  const productHandles = allHandles.slice(0, productLimit);
+  console.log(`[setupInit] Plan allows ${productLimit} products. CSV has ${allHandles.length}. Will import ${productHandles.length}.`);
+
+  // Save state to Redis
+  const setupId = `${session.shop}_${Date.now()}`;
+  const BATCH_SIZE = 4;
+  const totalBatches = Math.ceil(productHandles.length / BATCH_SIZE);
+
+  await saveSetupState(setupId, {
+    lang,
+    shop: session.shop,
+    idsToPublish,
+    productHandles,
+    productsByHandle,
+    deferredVariantImages: [],
+    productsCreated: 0,
+  });
+
+  return { setupId, totalBatches, totalProducts: productHandles.length };
+}
+
+// ─── PHASE 2: Create a batch of products ───
+const BATCH_SIZE = 4;
+
+export async function setupPhaseProducts({ session, setupId, batch }: { session: Session; setupId: string; batch: number }): Promise<{ ok: boolean; created: number; total: number }> {
+  const state = await loadSetupState(setupId);
+  if (!state) throw new Error("Setup state not found. Did you run phase init?");
+
+  const startIdx = batch * BATCH_SIZE;
+  const endIdx = Math.min(startIdx + BATCH_SIZE, state.productHandles.length);
+  const batchHandles = state.productHandles.slice(startIdx, endIdx);
+
+  console.log(`[setupProducts] Batch ${batch}: products ${startIdx}-${endIdx - 1} (${batchHandles.length} products)`);
+
+  let batchCreated = 0;
+
+  for (const handle of batchHandles) {
+    const group = state.productsByHandle[handle];
+    if (!group || !group.length) continue;
+
+    const main = group[0];
+    type ProductOption = { name: string, values: { name: string }[] };
+    const productOptions: ProductOption[] = [];
+    for (let i = 1; i <= 3; i++) {
+      const optionName = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
+      if (optionName) {
+        const optionValues = [
+          ...new Set(
+            group
+              .map((row) => (row[`Option${i} Value`] ? row[`Option${i} Value`].trim() : ""))
+              .filter((v) => !!v && v !== "Default Title")
+          ),
+        ].map((v) => ({ name: v }));
+        if (optionValues.length) productOptions.push({ name: optionName, values: optionValues });
+      }
     }
+    const productOptionsOrUndefined = productOptions.length ? productOptions : undefined;
+    const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
+    const productMetafields = extractCheckboxMetafields(main);
 
-    // --- Products setup ---
-    // Select CSV based on language
-    const csvUrl = lang === "en"
-      ? `${baseUrl}/products-en.csv`
-      : `${baseUrl}/products.csv`;
-    
-    // Both CSV files use semicolon delimiter
-    const csvDelimiter = ";";
-    
-    const csvResponse = await fetch(csvUrl);
-    if (!csvResponse.ok) {
-      throw new Error(`Failed to fetch product CSV: ${csvResponse.status} ${csvResponse.statusText}`);
-    }
-    const csvText = await csvResponse.text();
-    const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: csvDelimiter });
+    const product: any = {
+      title: main.Title,
+      descriptionHtml: main["Body (HTML)"] || "",
+      handle: handleUnique,
+      vendor: main.Vendor,
+      productType: main.Type,
+      tags: main.Tags?.split(",").map((t: string) => t.trim()),
+      productOptions: productOptionsOrUndefined,
+      metafields: productMetafields.length > 0 ? productMetafields : undefined,
+    };
 
-    const productsByHandle: Record<string, any[]> = {};
-    for (const row of records) {
-      if (!productsByHandle[row.Handle]) productsByHandle[row.Handle] = [];
-      productsByHandle[row.Handle].push(row);
-    }
-
-    // Limit products based on the shop's plan (basic = 20, premium = 40)
-    const productLimit = await getProductLimit(session.shop);
-    const allHandles = Object.keys(productsByHandle);
-    const allowedHandles = allHandles.slice(0, productLimit);
-    console.log(`[setupShop] Plan allows ${productLimit} products. CSV has ${allHandles.length}. Importing ${allowedHandles.length}.`);
-
-    let successCount = 0;
-    const totalProducts = allowedHandles.length;
-    const deferredVariantImages: { productId: string; variantRows: any[]; main: any }[] = [];
-
-    for (const [handle, group] of Object.entries(productsByHandle)) {
-      // Skip products beyond the plan's limit
-      if (!allowedHandles.includes(handle)) {
+    try {
+      const productCreateData = await createProductWithSDK(session, product);
+      const productData = productCreateData?.product;
+      const productId = productData?.id;
+      if (!productId) {
+        console.error("No productId generated.", JSON.stringify(productCreateData, null, 2));
         continue;
       }
-      const main = group[0];
-      type ProductOption = { name: string, values: { name: string }[] };
-      const productOptions: ProductOption[] = [];
-      for (let i = 1; i <= 3; i++) {
-        const optionName = main[`Option${i} Name`] ? main[`Option${i} Name`].trim() : "";
-        if (optionName) {
-          const optionValues = [
-            ...new Set(
-              group
-                .map((row) => (row[`Option${i} Value`] ? row[`Option${i} Value`].trim() : ""))
-                .filter((v) => !!v && v !== "Default Title")
-            ),
-          ].map((v) => ({ name: v }));
-          if (optionValues.length) {
-            productOptions.push({ name: optionName, values: optionValues });
-          }
+      console.log("Product created:", productId);
+      state.idsToPublish.push(productId);
+
+      // Upload product images
+      const allImages = [...new Set(group.map((row) => row["Image Src"]).filter(Boolean))];
+      for (const imgUrl of allImages) {
+        await createProductMedia(session, productId, normalizeImageUrl(imgUrl), "");
+      }
+
+      const variantEdges = productData?.variants?.edges;
+
+      // Create variants
+      if (productOptionsOrUndefined && productOptionsOrUndefined.length > 0) {
+        const seen = new Set<string>();
+        const variants = group
+          .map((row) => {
+            const optionValues: { name: string; optionName: string }[] = [];
+            productOptions.forEach((opt, optIdx) => {
+              const value = row[`Option${optIdx + 1} Value`]?.trim();
+              if (value && value !== "Default Title") {
+                optionValues.push({ name: value, optionName: opt.name });
+              }
+            });
+            const key = optionValues.map((ov) => ov.name).join("|");
+            if (seen.has(key)) return undefined;
+            seen.add(key);
+            if (!optionValues.length) return undefined;
+            const variant: any = { price: row["Variant Price"] || main["Variant Price"] || "0", optionValues };
+            if (row["Variant SKU"]) variant.sku = row["Variant SKU"];
+            if (row["Variant Barcode"]) variant.barcode = row["Variant Barcode"];
+            if (row["Variant Compare At Price"]) variant.compareAtPrice = row["Variant Compare At Price"];
+            return variant;
+          })
+          .filter((v) => v && v.optionValues && v.optionValues.length);
+
+        if (variants.length > 1) {
+          await bulkCreateVariantsWithSDK(session, productId, variants.slice(1));
         }
       }
-      const productOptionsOrUndefined = productOptions.length ? productOptions : undefined;
-      const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
-      const productMetafields = extractCheckboxMetafields(main);
 
-      const product: any = {
-        title: main.Title,
-        descriptionHtml: main["Body (HTML)"] || "",
-        handle: handleUnique,
-        vendor: main.Vendor,
-        productType: main.Type,
-        tags: main.Tags?.split(",").map((t: string) => t.trim()),
-        productOptions: productOptionsOrUndefined,
-        metafields: productMetafields.length > 0 ? productMetafields : undefined,
-      };
-
-      try {
-        const productCreateData = await createProductWithSDK(session, product);
-        const productData = productCreateData?.product;
-        const productId = productData?.id;
-        if (!productId) {
-          console.error(
-            "No productId generated.",
-            JSON.stringify(productCreateData, null, 2)
-          );
-          continue;
-        }
-        console.log("Product created with id:", productId);
-        idsToPublish.push(productId);
-
-        // Upload product images
-        const allImagesToAttach = [
-          ...new Set([
-            ...group.map((row) => row["Image Src"]).filter(Boolean),
-          ]),
-        ];
-        for (const imgUrl of allImagesToAttach) {
-          const normalizedUrl = normalizeImageUrl(imgUrl);
-          await createProductMedia(session, productId, normalizedUrl, "");
-        }
-
-        const variantEdges = productData?.variants?.edges;
-
-        // Product with variants (options)
-        if (productOptionsOrUndefined && productOptionsOrUndefined.length > 0) {
-          const seen = new Set<string>();
-          const variants = group
-            .map((row, idx) => {
-              const optionValues: { name: string; optionName: string }[] = [];
-              productOptions.forEach((opt, optIdx) => {
-                const value =
-                  row[`Option${optIdx + 1} Value`] &&
-                  row[`Option${optIdx + 1} Value`].trim();
-                if (value && value !== "Default Title") {
-                  optionValues.push({ name: value, optionName: opt.name });
-                }
-              });
-              const key = optionValues.map((ov) => ov.name).join("|");
-              if (seen.has(key)) return undefined;
-              seen.add(key);
-              if (!optionValues.length) return undefined;
-
-              const variant: any = {
-                price: row["Variant Price"] || main["Variant Price"] || "0",
-                optionValues,
-              };
-              if (row["Variant SKU"]) variant.sku = row["Variant SKU"];
-              if (row["Variant Barcode"]) variant.barcode = row["Variant Barcode"];
-              if (row["Variant Compare At Price"]) variant.compareAtPrice = row["Variant Compare At Price"];
-              return variant;
-            })
-            .filter((v) => v && v.optionValues && v.optionValues.length);
-
-          if (variants.length > 1) {
-            await bulkCreateVariantsWithSDK(
-              session,
-              productId,
-              variants.slice(1)
-            );
-          }
-        }
-
-        // Update the default/first variant with price and compareAtPrice
-        if (variantEdges && variantEdges.length) {
-          const firstVariantId = variantEdges[0].node.id;
-          await updateDefaultVariantWithSDK(session, productId, firstVariantId, main);
-        }
-
-        // Disable inventory tracking for all variants
-        {
-          const variantsWithInventory = await getVariantInventoryItems(session, productId);
-          for (const v of variantsWithInventory) {
-            if (v.inventoryItem?.id) {
-              await disableInventoryTracking(session, v.inventoryItem.id);
-            }
-          }
-          console.log(`[Inventory] Tracking disabled for product ${productId}`);
-        }
-
-        // Collect variant image info for deferred attachment
-        const variantRows = group.filter(row => {
-          const vi = row["Variant Image"];
-          return vi && vi.trim() && vi !== "nan" && vi !== "null" && vi !== "undefined";
-        });
-        if (variantRows.length > 0) {
-          deferredVariantImages.push({ productId, variantRows, main });
-        }
-
-        successCount++;
-      } catch (err) {
-        console.error("GraphQL product creation error", handleUnique, err);
+      // Update default variant
+      if (variantEdges?.length) {
+        await updateDefaultVariantWithSDK(session, productId, variantEdges[0].node.id, main);
       }
-    }
-    
-    console.log(`[setupShop] Product creation complete: ${successCount}/${totalProducts} products created successfully.`);
 
-    if (successCount === 0) {
-      throw new Error(`No products were created out of ${totalProducts}. Check logs above for userErrors.`);
-    }
-
-    // --- ATTACH VARIANT IMAGES (deferred — media had time to process) ---
-    if (deferredVariantImages.length > 0) {
-      console.log(`[setupShop] Attaching variant images for ${deferredVariantImages.length} products...`);
-      // Single wait: give Shopify time to process all media (created during product loop)
-      await new Promise(res => setTimeout(res, 5000));
-
-      for (const { productId, variantRows, main } of deferredVariantImages) {
-        try {
-          const allMedia = await getAllProductMedia(session, productId);
-          const readyMedia = allMedia.filter((m: any) => m.status === "READY");
-          if (readyMedia.length === 0) {
-            console.log(`[VariantImages] No ready media for ${productId}, skipping`);
-            continue;
-          }
-          const allVariants = await getAllProductVariants(session, productId);
-
-          for (const row of variantRows) {
-            const variantImageFilename = getFilenameFromUrl(normalizeImageUrl(row["Variant Image"]));
-            const filenameBase = variantImageFilename.replace(/\.[^.]+$/, "");
-            const matchedMedia = readyMedia.find((m: any) =>
-              m.image?.url && getFilenameFromUrl(m.image.url).includes(filenameBase)
-            );
-            if (!matchedMedia) continue;
-
-            const matchedVariant = allVariants.find((v: any) =>
-              v.selectedOptions?.every((opt: any) => {
-                for (let i = 1; i <= 3; i++) {
-                  const csvOptName = main[`Option${i} Name`]?.trim();
-                  const csvOptValue = row[`Option${i} Value`]?.trim();
-                  if (csvOptName === opt.name && csvOptValue === opt.value) return true;
-                }
-                return false;
-              })
-            );
-            if (matchedVariant) {
-              await appendMediaToVariant(session, productId, matchedVariant.id, matchedMedia.id);
-            }
-          }
-          console.log(`[VariantImages] Attached images for product ${productId}`);
-        } catch (err) {
-          console.error(`[VariantImages] Error for product ${productId}:`, err);
-        }
+      // Disable inventory tracking
+      const variantsWithInventory = await getVariantInventoryItems(session, productId);
+      for (const v of variantsWithInventory) {
+        if (v.inventoryItem?.id) await disableInventoryTracking(session, v.inventoryItem.id);
       }
-      console.log(`[setupShop] Variant image attachment complete.`);
-    }
 
-    // --- PUBLISH PRODUCTS AND COLLECTIONS TO "ONLINE STORE" ---
-    console.log("Resource creation complete. Starting publication...");
-
-    const onlineStorePublicationId = await getOnlineStorePublicationId(session);
-
-    if (onlineStorePublicationId && idsToPublish.length > 0) {
-      for (const resourceId of idsToPublish) {
-        await publishResource(session, resourceId, onlineStorePublicationId);
+      // Collect variant image info
+      const variantRows = group.filter(row => {
+        const vi = row["Variant Image"];
+        return vi && vi.trim() && vi !== "nan" && vi !== "null" && vi !== "undefined";
+      });
+      if (variantRows.length > 0) {
+        state.deferredVariantImages.push({ productId, variantRows, main });
       }
-      console.log("All resources have been processed for publication.");
-    } else if (!onlineStorePublicationId) {
-      console.error("Unable to publish resources because 'Online Store' ID was not found.");
-    } else {
-      console.log("No resources to publish.");
-    }
 
-  } catch (err) {
-    console.error("Global setupShop error:", err);
-    throw err;
+      batchCreated++;
+      state.productsCreated++;
+    } catch (err) {
+      console.error("GraphQL product creation error", handleUnique, err);
+    }
   }
+
+  // Save updated state back to Redis
+  await saveSetupState(setupId, state);
+
+  console.log(`[setupProducts] Batch ${batch} done: ${batchCreated} created. Total: ${state.productsCreated}/${state.productHandles.length}`);
+  return { ok: true, created: state.productsCreated, total: state.productHandles.length };
+}
+
+// ─── PHASE 3: Finalize (variant images + publish) ───
+export async function setupPhaseFinalize({ session, setupId }: { session: Session; setupId: string }): Promise<{ ok: boolean; published: number }> {
+  const state = await loadSetupState(setupId);
+  if (!state) throw new Error("Setup state not found.");
+
+  // Attach variant images
+  if (state.deferredVariantImages.length > 0) {
+    console.log(`[setupFinalize] Attaching variant images for ${state.deferredVariantImages.length} products...`);
+    for (const { productId, variantRows, main } of state.deferredVariantImages) {
+      try {
+        const allMedia = await getAllProductMedia(session, productId);
+        const readyMedia = allMedia.filter((m: any) => m.status === "READY");
+        if (readyMedia.length === 0) continue;
+        const allVariants = await getAllProductVariants(session, productId);
+
+        for (const row of variantRows) {
+          const variantImageFilename = getFilenameFromUrl(normalizeImageUrl(row["Variant Image"]));
+          const filenameBase = variantImageFilename.replace(/\.[^.]+$/, "");
+          const matchedMedia = readyMedia.find((m: any) =>
+            m.image?.url && getFilenameFromUrl(m.image.url).includes(filenameBase)
+          );
+          if (!matchedMedia) continue;
+          const matchedVariant = allVariants.find((v: any) =>
+            v.selectedOptions?.every((opt: any) => {
+              for (let i = 1; i <= 3; i++) {
+                const csvOptName = main[`Option${i} Name`]?.trim();
+                const csvOptValue = row[`Option${i} Value`]?.trim();
+                if (csvOptName === opt.name && csvOptValue === opt.value) return true;
+              }
+              return false;
+            })
+          );
+          if (matchedVariant) {
+            await appendMediaToVariant(session, productId, matchedVariant.id, matchedMedia.id);
+          }
+        }
+      } catch (err) {
+        console.error(`[VariantImages] Error for product ${productId}:`, err);
+      }
+    }
+  }
+
+  // Publish all resources
+  const onlineStorePublicationId = await getOnlineStorePublicationId(session);
+  let published = 0;
+  if (onlineStorePublicationId && state.idsToPublish.length > 0) {
+    for (const resourceId of state.idsToPublish) {
+      await publishResource(session, resourceId, onlineStorePublicationId);
+      published++;
+    }
+    console.log(`[setupFinalize] Published ${published} resources.`);
+  }
+
+  // Clean up Redis state
+  await deleteSetupState(setupId);
+
+  return { ok: true, published };
+}
+
+// ─── Legacy wrapper (kept for compatibility) ───
+export async function setupShop({ session, lang = "fr" }: { session: Session; lang?: Language }) {
+  const { setupId, totalBatches } = await setupPhaseInit({ session, lang });
+  for (let i = 0; i < totalBatches; i++) {
+    await setupPhaseProducts({ session, setupId, batch: i });
+  }
+  await setupPhaseFinalize({ session, setupId });
 }

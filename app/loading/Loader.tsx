@@ -20,10 +20,7 @@ async function safeJson(res: Response): Promise<any> {
   try {
     return JSON.parse(text);
   } catch {
-    // Server returned non-JSON (likely Next.js HTML error page)
-    throw new Error(
-      `Server error (${res.status}): ${text.substring(0, 200)}`
-    );
+    throw new Error(`Server error (${res.status}): ${text.substring(0, 200)}`);
   }
 }
 
@@ -33,36 +30,74 @@ export default function Loader() {
   const langParam = searchParams?.get("lang") ?? "fr";
   const lang: Language = langParam === "en" ? "en" : "fr";
   const [step, setStep] = useState(1);
+  const [subStep, setSubStep] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fullSetup() {
       try {
+        // ─── Step 1: Setup shop (multi-phase) ───
         setStep(1);
-        console.log("[Loader] Starting step 1 – setup shop");
-        // 1. Setup boutique (session token auth via App Bridge)
-        const res1 = await fetchWithTimeout(`/api/setup-shop?lang=${lang}`, 150_000);
+        setSubStep(lang === "fr" ? "Initialisation..." : "Initializing...");
+        console.log("[Loader] Phase 1 – init");
+
+        // Phase 1: Init (collections, pages, menu, CSV parse)
+        const res1 = await fetchWithTimeout(`/api/setup-shop?phase=init&lang=${lang}`, 30_000);
         const data1 = await safeJson(res1);
-        console.log("[Loader] Step 1 response:", data1);
+        console.log("[Loader] Init response:", data1);
         if (!data1.ok) throw new Error(data1.error || t(lang, "errorSetup"));
 
-        setStep(2);
-        console.log("[Loader] Starting step 2 – upload theme");
-        // 2. Upload theme
-        const res2 = await fetchWithTimeout(`/api/upload-theme?lang=${lang}`, 150_000);
-        const data2 = await safeJson(res2);
-        console.log("[Loader] Step 2 response:", data2);
-        if (!data2.ok || !data2.themeId) throw new Error(data2.error || t(lang, "errorThemeUpload"));
+        const { setupId, totalBatches, totalProducts } = data1;
 
+        // Phase 2: Create products in batches
+        for (let batch = 0; batch < totalBatches; batch++) {
+          const progress = Math.round(((batch + 1) / totalBatches) * 100);
+          setSubStep(
+            lang === "fr"
+              ? `Création des produits... ${progress}%`
+              : `Creating products... ${progress}%`
+          );
+          console.log(`[Loader] Phase 2 – products batch ${batch}/${totalBatches}`);
+
+          const res2 = await fetchWithTimeout(
+            `/api/setup-shop?phase=products&setupId=${encodeURIComponent(setupId)}&batch=${batch}`,
+            30_000
+          );
+          const data2 = await safeJson(res2);
+          console.log(`[Loader] Products batch ${batch} response:`, data2);
+          if (!data2.ok) throw new Error(data2.error || t(lang, "errorSetup"));
+        }
+
+        // Phase 3: Finalize (variant images + publish)
+        setSubStep(lang === "fr" ? "Publication..." : "Publishing...");
+        console.log("[Loader] Phase 3 – finalize");
+
+        const res3 = await fetchWithTimeout(
+          `/api/setup-shop?phase=finalize&setupId=${encodeURIComponent(setupId)}`,
+          30_000
+        );
+        const data3 = await safeJson(res3);
+        console.log("[Loader] Finalize response:", data3);
+        if (!data3.ok) throw new Error(data3.error || t(lang, "errorSetup"));
+
+        // ─── Step 2: Upload theme ───
+        setStep(2);
+        setSubStep("");
+        console.log("[Loader] Starting step 2 – upload theme");
+        const res4 = await fetchWithTimeout(`/api/upload-theme?lang=${lang}`, 150_000);
+        const data4 = await safeJson(res4);
+        console.log("[Loader] Step 2 response:", data4);
+        if (!data4.ok || !data4.themeId) throw new Error(data4.error || t(lang, "errorThemeUpload"));
+
+        // ─── Step 3: Publish theme ───
         setStep(3);
         console.log("[Loader] Starting step 3 – publish theme");
-        // 3. Publish theme
-        const res3 = await fetchWithTimeout(`/api/publish-theme?themeId=${data2.themeId}`, 150_000);
-        const data3 = await safeJson(res3);
-        console.log("[Loader] Step 3 response:", data3);
-        if (!data3.ok) throw new Error(data3.error || t(lang, "errorThemePublish"));
+        const res5 = await fetchWithTimeout(`/api/publish-theme?themeId=${data4.themeId}`, 150_000);
+        const data5 = await safeJson(res5);
+        console.log("[Loader] Step 3 response:", data5);
+        if (!data5.ok) throw new Error(data5.error || t(lang, "errorThemePublish"));
 
-        // 4. Success
+        // ─── Success ───
         window.location.href = `/success?lang=${lang}`;
       } catch (e: any) {
         console.error("[Loader] Error:", e);
@@ -123,10 +158,23 @@ export default function Loader() {
         <p style={{
           color: "#5a6a80",
           fontSize: "0.95rem",
-          margin: "0 0 2rem 0",
+          margin: "0 0 0.5rem 0",
         }}>
           {stepText}
         </p>
+
+        {/* Sub-step text (product progress) */}
+        {subStep && !error && (
+          <p style={{
+            color: "#00AAFF",
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            margin: "0 0 1.5rem 0",
+          }}>
+            {subStep}
+          </p>
+        )}
+        {!subStep && <div style={{ marginBottom: "1.5rem" }} />}
 
         {/* Progress steps */}
         <div style={{
