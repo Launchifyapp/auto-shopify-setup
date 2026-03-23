@@ -7,6 +7,8 @@ function SuccessContent() {
   const searchParams = useSearchParams();
   const langParam = searchParams?.get("lang") ?? "fr";
   const lang: Language = langParam === "en" ? "en" : "fr";
+  const shop = searchParams?.get("shop") ?? "";
+  const storeUrl = shop ? `https://${shop.replace(".myshopify.com", "")}.myshopify.com` : "";
 
   return (
     <main style={{
@@ -70,7 +72,7 @@ function SuccessContent() {
         </p>
 
         <a
-          href="https://admin.shopify.com/store"
+          href={storeUrl || "#"}
           target="_blank"
           style={{
             display: "inline-block",
@@ -90,7 +92,7 @@ function SuccessContent() {
           onMouseEnter={e => (e.target as HTMLAnchorElement).style.backgroundColor = "#0099ee"}
           onMouseLeave={e => (e.target as HTMLAnchorElement).style.backgroundColor = "#00AAFF"}
         >
-          {t(lang, "accessAdmin")}
+          {lang === "fr" ? "Voir ma boutique" : "View my store"}
         </a>
       </div>
 

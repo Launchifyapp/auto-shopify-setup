@@ -98,7 +98,7 @@ export default function Loader() {
         if (!data5.ok) throw new Error(data5.error || t(lang, "errorThemePublish"));
 
         // ─── Success ───
-        window.location.href = `/success?lang=${lang}`;
+        window.location.href = `/success?lang=${lang}&shop=${encodeURIComponent(shop)}`;
       } catch (e: any) {
         console.error("[Loader] Error:", e);
         const msg =
