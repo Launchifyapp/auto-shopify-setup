@@ -4,7 +4,7 @@ import { getAccessToken } from "@/lib/utils/tokenExchange";
 import { authenticateRequest } from "@/lib/utils/verifySessionToken";
 
 // Allow up to 120 s on Vercel Pro (default is 10 s on Hobby)
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
   try {

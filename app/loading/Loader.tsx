@@ -42,7 +42,7 @@ export default function Loader() {
         console.log("[Loader] Phase 1 – init");
 
         // Phase 1: Init (collections, pages, menu, CSV parse)
-        const res1 = await fetchWithTimeout(`/api/setup-shop?phase=init&lang=${lang}`, 30_000);
+        const res1 = await fetchWithTimeout(`/api/setup-shop?phase=init&lang=${lang}`, 120_000);
         const data1 = await safeJson(res1);
         console.log("[Loader] Init response:", data1);
         if (!data1.ok) throw new Error(data1.error || t(lang, "errorSetup"));
@@ -61,7 +61,7 @@ export default function Loader() {
 
           const res2 = await fetchWithTimeout(
             `/api/setup-shop?phase=products&setupId=${encodeURIComponent(setupId)}&batch=${batch}`,
-            30_000
+            120_000
           );
           const data2 = await safeJson(res2);
           console.log(`[Loader] Products batch ${batch} response:`, data2);
@@ -74,7 +74,7 @@ export default function Loader() {
 
         const res3 = await fetchWithTimeout(
           `/api/setup-shop?phase=finalize&setupId=${encodeURIComponent(setupId)}`,
-          30_000
+          120_000
         );
         const data3 = await safeJson(res3);
         console.log("[Loader] Finalize response:", data3);

@@ -6,8 +6,8 @@ import { DEFAULT_SESSION_SCOPE } from "@/lib/scopes";
 import { getAccessToken } from "@/lib/utils/tokenExchange";
 import { authenticateRequest } from "@/lib/utils/verifySessionToken";
 
-// 10 s is the Hobby limit; keep this for when user upgrades to Pro
-export const maxDuration = 60;
+// Pro plan allows up to 300s
+export const maxDuration = 300;
 
 function getSession(shop: string, accessToken: string, scope: string): Session {
   if (!shop || typeof shop !== "string") throw new Error("Missing or invalid shop parameter!");
