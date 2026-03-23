@@ -674,12 +674,14 @@ async function getOnlineStorePublicationId(session: Session): Promise<string | n
   try {
     const response: any = await client.request(query);
     const edges = response?.data?.publications?.edges ?? [];
-    const onlineStorePub = edges.find((e: any) => e?.node?.name === "Online Store");
+    const onlineStoreNames = ["Online Store", "Boutique en ligne"];
+    const onlineStorePub = edges.find((e: any) => onlineStoreNames.includes(e?.node?.name));
     if (onlineStorePub) {
-      console.log(`"Online Store" publication found with ID: ${onlineStorePub.node.id}`);
+      console.log(`"${onlineStorePub.node.name}" publication found with ID: ${onlineStorePub.node.id}`);
       return onlineStorePub.node.id;
     } else {
-      console.error('"Online Store" publication not found.');
+      console.log("Available publications:", edges.map((e: any) => e?.node?.name));
+      console.error('"Online Store" / "Boutique en ligne" publication not found.');
       return null;
     }
   } catch (error) {
