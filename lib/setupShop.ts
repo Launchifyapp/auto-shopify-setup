@@ -674,18 +674,29 @@ async function getOnlineStorePublicationId(session: Session): Promise<string | n
   try {
     const response: any = await client.request(query);
     const edges = response?.data?.publications?.edges ?? [];
+    console.log("[Publications] All available:", edges.map((e: any) => `${e?.node?.name} (${e?.node?.id})`));
+
+    // Try exact match first
     const onlineStoreNames = ["Online Store", "Boutique en ligne"];
-    const onlineStorePub = edges.find((e: any) => onlineStoreNames.includes(e?.node?.name));
+    let onlineStorePub = edges.find((e: any) => onlineStoreNames.includes(e?.node?.name));
+
+    // Fallback: case-insensitive partial match
+    if (!onlineStorePub) {
+      onlineStorePub = edges.find((e: any) => {
+        const name = (e?.node?.name || "").toLowerCase();
+        return name.includes("online store") || name.includes("boutique en ligne") || name.includes("online");
+      });
+    }
+
     if (onlineStorePub) {
-      console.log(`"${onlineStorePub.node.name}" publication found with ID: ${onlineStorePub.node.id}`);
+      console.log(`[Publications] Found: "${onlineStorePub.node.name}" (${onlineStorePub.node.id})`);
       return onlineStorePub.node.id;
     } else {
-      console.log("Available publications:", edges.map((e: any) => e?.node?.name));
-      console.error('"Online Store" / "Boutique en ligne" publication not found.');
+      console.error("[Publications] Online Store not found among:", edges.map((e: any) => e?.node?.name));
       return null;
     }
   } catch (error) {
-    console.error("Error fetching publications:", error);
+    console.error("[Publications] Error fetching:", error);
     return null;
   }
 }
