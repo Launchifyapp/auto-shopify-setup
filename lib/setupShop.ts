@@ -799,8 +799,16 @@ export async function setupPhaseInit({ session, lang = "fr" }: { session: Sessio
     await updateMainMenu(session, mainMenuResult.id, mainMenuResult.title, shippingPageId, mainCollectionId, contactPageId, lang);
   }
 
-  // Parse CSV
-  const csvUrl = lang === "en" ? `${baseUrl}/products-en.csv` : `${baseUrl}/products.csv`;
+  // Parse CSV - use the correct CSV based on the plan (20 or 40 products)
+  const productLimit = await getProductLimit(session.shop);
+  const is20Plan = productLimit <= 20;
+  let csvUrl: string;
+  if (lang === "en") {
+    csvUrl = is20Plan ? `${baseUrl}/products-20-en.csv` : `${baseUrl}/products-en.csv`;
+  } else {
+    csvUrl = is20Plan ? `${baseUrl}/products-20.csv` : `${baseUrl}/products.csv`;
+  }
+  console.log(`[setupInit] Plan allows ${productLimit} products. Using CSV: ${csvUrl}`);
   const csvResponse = await fetch(csvUrl);
   if (!csvResponse.ok) throw new Error(`Failed to fetch product CSV: ${csvResponse.status}`);
   const csvText = await csvResponse.text();
@@ -812,10 +820,9 @@ export async function setupPhaseInit({ session, lang = "fr" }: { session: Sessio
     productsByHandle[row.Handle].push(row);
   }
 
-  const productLimit = await getProductLimit(session.shop);
   const allHandles = Object.keys(productsByHandle);
-  const productHandles = allHandles.slice(0, productLimit);
-  console.log(`[setupInit] Plan allows ${productLimit} products. CSV has ${allHandles.length}. Will import ${productHandles.length}.`);
+  const productHandles = allHandles;
+  console.log(`[setupInit] CSV has ${allHandles.length} products. Will import all.`);
 
   // Save state to Redis
   const setupId = `${session.shop}_${Date.now()}`;
