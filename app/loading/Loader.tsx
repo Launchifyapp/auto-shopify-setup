@@ -92,7 +92,7 @@ export default function Loader() {
         // ─── Step 3: Publish theme ───
         setStep(3);
         console.log("[Loader] Starting step 3 – publish theme");
-        const res5 = await fetchWithTimeout(`/api/publish-theme?themeId=${data4.themeId}`, 150_000);
+        const res5 = await fetchWithTimeout(`/api/publish-theme?themeId=${data4.themeId}&lang=${lang}`, 150_000);
         const data5 = await safeJson(res5);
         console.log("[Loader] Step 3 response:", data5);
         if (!data5.ok) throw new Error(data5.error || t(lang, "errorThemePublish"));
