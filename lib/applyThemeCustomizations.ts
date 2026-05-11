@@ -26,6 +26,9 @@ const ASSETS_EN: Record<string, object> = {
   "templates/product.json": productEn,
 };
 
+const MAX_RETRIES = 10;
+const RETRY_DELAY_MS = 5000;
+
 async function uploadAsset({
   shop,
   token,
@@ -39,21 +42,32 @@ async function uploadAsset({
   key: string;
   value: object;
 }) {
-  const res = await fetch(`https://${shop}/admin/api/2023-07/themes/${themeId}/assets.json`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token,
-    },
-    body: JSON.stringify({
-      asset: {
-        key,
-        value: JSON.stringify(value),
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetch(`https://${shop}/admin/api/2023-07/themes/${themeId}/assets.json`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": token,
       },
-    }),
-  });
-  if (!res.ok) {
+      body: JSON.stringify({
+        asset: {
+          key,
+          value: JSON.stringify(value),
+        },
+      }),
+    });
+
+    if (res.ok) return;
+
     const text = await res.text();
+
+    // 404 means the theme is not fully ready yet — wait and retry
+    if (res.status === 404 && attempt < MAX_RETRIES) {
+      console.log(`[applyThemeCustomizations] Theme not ready (attempt ${attempt}/${MAX_RETRIES}), retrying in ${RETRY_DELAY_MS}ms...`);
+      await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+      continue;
+    }
+
     throw new Error(`Failed to upload asset ${key}: ${res.status} ${text}`);
   }
 }
