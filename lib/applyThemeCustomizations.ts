@@ -26,59 +26,59 @@ const ASSETS_EN: Record<string, object> = {
   "templates/product.json": productEn,
 };
 
-const API_VERSION = "2024-01";
+const GQL_ENDPOINT = (shop: string) =>
+  `https://${shop}/admin/api/2025-10/graphql.json`;
 
-async function verifyThemeExists({
+async function upsertThemeFile({
   shop,
   token,
-  themeId,
+  themeGid,
+  filename,
+  body,
 }: {
   shop: string;
   token: string;
-  themeId: number;
-}): Promise<void> {
-  console.log(`[applyThemeCustomizations] Verifying theme ${themeId} on shop ${shop}`);
-  const res = await fetch(`https://${shop}/admin/api/${API_VERSION}/themes/${themeId}.json`, {
-    headers: { "X-Shopify-Access-Token": token },
-  });
-  const text = await res.text();
-  console.log(`[applyThemeCustomizations] Theme verify response: ${res.status} ${text.substring(0, 200)}`);
-  if (!res.ok) {
-    throw new Error(`Theme ${themeId} not accessible via REST API: ${res.status} ${text}`);
-  }
-}
-
-async function uploadAsset({
-  shop,
-  token,
-  themeId,
-  key,
-  value,
-}: {
-  shop: string;
-  token: string;
-  themeId: number;
-  key: string;
-  value: object;
+  themeGid: string;
+  filename: string;
+  body: string;
 }) {
-  const url = `https://${shop}/admin/api/${API_VERSION}/themes/${themeId}/assets.json`;
-  const res = await fetch(url, {
-    method: "PUT",
+  const res = await fetch(GQL_ENDPOINT(shop), {
+    method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Shopify-Access-Token": token,
     },
     body: JSON.stringify({
-      asset: {
-        key,
-        value: JSON.stringify(value),
+      query: `
+        mutation ThemeFilesUpsert($themeId: ID!, $files: [OnlineStoreThemeFilesUpsertFileInput!]!) {
+          themeFilesUpsert(themeId: $themeId, files: $files) {
+            upsertedThemeFiles {
+              filename
+            }
+            userErrors {
+              filename
+              field
+              message
+            }
+          }
+        }
+      `,
+      variables: {
+        themeId: themeGid,
+        files: [{ filename, body }],
       },
     }),
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to upload asset ${key}: ${res.status} ${text}`);
+  const data = await res.json();
+  console.log(`[applyThemeCustomizations] upsert ${filename}:`, JSON.stringify(data).substring(0, 300));
+
+  const userErrors = data?.data?.themeFilesUpsert?.userErrors;
+  if (userErrors?.length) {
+    throw new Error(`GraphQL error for ${filename}: ${JSON.stringify(userErrors)}`);
+  }
+  if (data?.errors) {
+    throw new Error(`GraphQL request error for ${filename}: ${JSON.stringify(data.errors)}`);
   }
 }
 
@@ -93,12 +93,18 @@ export async function applyThemeCustomizations({
   themeId: number;
   lang?: Language;
 }) {
-  await verifyThemeExists({ shop, token, themeId });
+  const themeGid = `gid://shopify/OnlineStoreTheme/${themeId}`;
+  console.log(`[applyThemeCustomizations] Applying customizations via GraphQL. shop=${shop} themeGid=${themeGid}`);
 
   const assets = lang === "en" ? ASSETS_EN : ASSETS_FR;
-  for (const [key, value] of Object.entries(assets)) {
-    console.log(`[applyThemeCustomizations] Uploading ${key}...`);
-    await uploadAsset({ shop, token, themeId, key, value });
-    console.log(`[applyThemeCustomizations] ✓ ${key}`);
+
+  for (const [filename, value] of Object.entries(assets)) {
+    await upsertThemeFile({
+      shop,
+      token,
+      themeGid,
+      filename,
+      body: JSON.stringify(value),
+    });
   }
 }
