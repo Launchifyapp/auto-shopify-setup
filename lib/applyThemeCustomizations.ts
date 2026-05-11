@@ -26,59 +26,34 @@ const ASSETS_EN: Record<string, object> = {
   "templates/product.json": productEn,
 };
 
-const GQL_ENDPOINT = (shop: string) =>
-  `https://${shop}/admin/api/2025-10/graphql.json`;
-
 async function upsertThemeFile({
   shop,
   token,
-  themeGid,
+  themeId,
   filename,
   body,
 }: {
   shop: string;
   token: string;
-  themeGid: string;
+  themeId: number;
   filename: string;
   body: string;
 }) {
-  const res = await fetch(GQL_ENDPOINT(shop), {
-    method: "POST",
+  const url = `https://${shop}/admin/api/2023-07/themes/${themeId}/assets.json`;
+  const res = await fetch(url, {
+    method: "PUT",
     headers: {
       "Content-Type": "application/json",
       "X-Shopify-Access-Token": token,
     },
-    body: JSON.stringify({
-      query: `
-        mutation ThemeFilesUpsert($themeId: ID!, $files: [OnlineStoreThemeFilesUpsertFileInput!]!) {
-          themeFilesUpsert(themeId: $themeId, files: $files) {
-            upsertedThemeFiles {
-              filename
-            }
-            userErrors {
-              filename
-              field
-              message
-            }
-          }
-        }
-      `,
-      variables: {
-        themeId: themeGid,
-        files: [{ filename, body: { type: "TEXT", value: body } }],
-      },
-    }),
+    body: JSON.stringify({ asset: { key: filename, value: body } }),
   });
 
-  const data = await res.json();
-  console.log(`[applyThemeCustomizations] upsert ${filename}:`, JSON.stringify(data).substring(0, 300));
+  const text = await res.text();
+  console.log(`[applyThemeCustomizations] PUT ${filename}: status=${res.status} body=${text.substring(0, 200)}`);
 
-  const userErrors = data?.data?.themeFilesUpsert?.userErrors;
-  if (userErrors?.length) {
-    throw new Error(`GraphQL error for ${filename}: ${JSON.stringify(userErrors)}`);
-  }
-  if (data?.errors) {
-    throw new Error(`GraphQL request error for ${filename}: ${JSON.stringify(data.errors)}`);
+  if (!res.ok) {
+    throw new Error(`Failed to upload asset ${filename}: ${res.status} ${text}`);
   }
 }
 
@@ -93,8 +68,7 @@ export async function applyThemeCustomizations({
   themeId: number;
   lang?: Language;
 }) {
-  const themeGid = `gid://shopify/OnlineStoreTheme/${themeId}`;
-  console.log(`[applyThemeCustomizations] Applying customizations via GraphQL. shop=${shop} themeGid=${themeGid}`);
+  console.log(`[applyThemeCustomizations] Applying customizations via REST. shop=${shop} themeId=${themeId}`);
 
   const assets = lang === "en" ? ASSETS_EN : ASSETS_FR;
 
@@ -102,7 +76,7 @@ export async function applyThemeCustomizations({
     await upsertThemeFile({
       shop,
       token,
-      themeGid,
+      themeId,
       filename,
       body: JSON.stringify(value),
     });
