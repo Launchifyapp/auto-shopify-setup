@@ -12,8 +12,9 @@ export async function publishTheme({
   themeId: number;
   lang?: Language;
 }) {
-  let statusOk = false, tries = 0;
-  while (!statusOk && tries < 30) {
+  // Step 1: wait for processing flag to clear
+  let processingDone = false, tries = 0;
+  while (!processingDone && tries < 40) {
     await new Promise(res => setTimeout(res, 3000));
     tries++;
     const resTheme = await fetch(`https://${shop}/admin/api/2023-07/themes/${themeId}.json`, {
@@ -21,11 +22,30 @@ export async function publishTheme({
     });
     const themeDetail = await resTheme.json();
     if (themeDetail?.theme?.role === "unpublished" && themeDetail?.theme?.processing === false) {
-      statusOk = true;
+      processingDone = true;
     }
   }
-  if (!statusOk) {
+  if (!processingDone) {
     return { ok: false, error: "thème non prêt ou timeout" };
+  }
+
+  // Step 2: verify layout/theme.liquid is present (Theme Store install may lag behind processing flag)
+  let themeReady = false, readyTries = 0;
+  while (!themeReady && readyTries < 20) {
+    await new Promise(res => setTimeout(res, 5000));
+    readyTries++;
+    const resAsset = await fetch(
+      `https://${shop}/admin/api/2023-07/themes/${themeId}/assets.json?asset[key]=layout/theme.liquid`,
+      { headers: { "X-Shopify-Access-Token": token } }
+    );
+    if (resAsset.ok) {
+      themeReady = true;
+    } else {
+      console.log(`[publishTheme] layout/theme.liquid not ready yet (attempt ${readyTries}/20)`);
+    }
+  }
+  if (!themeReady) {
+    return { ok: false, error: "fichiers du thème introuvables après installation (layout/theme.liquid manquant)" };
   }
 
   await applyThemeCustomizations({ shop, token, themeId, lang });
