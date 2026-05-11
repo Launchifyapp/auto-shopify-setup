@@ -65,7 +65,7 @@ async function upsertThemeFile({
       `,
       variables: {
         themeId: themeGid,
-        files: [{ filename, body }],
+        files: [{ filename, body: JSON.parse(body) }],
       },
     }),
   });
