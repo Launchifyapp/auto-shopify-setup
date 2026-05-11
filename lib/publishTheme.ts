@@ -1,24 +1,17 @@
-import { Language } from "@/lib/i18n";
-import { applyThemeCustomizations } from "@/lib/applyThemeCustomizations";
-
 const GQL_ENDPOINT = (shop: string) => `https://${shop}/admin/api/2025-10/graphql.json`;
 
 export async function publishTheme({
   shop,
   token,
   themeId,
-  lang = "fr",
 }: {
   shop: string;
   token: string;
   themeId: number;
-  lang?: Language;
 }) {
-  // Apply theme file customizations first
-  await applyThemeCustomizations({ shop, token, themeId, lang });
-
-  // Publish the theme via GraphQL themePublish mutation
   const themeGid = `gid://shopify/OnlineStoreTheme/${themeId}`;
+  console.log(`[publishTheme] Publishing theme via themePublish. shop=${shop} themeGid=${themeGid}`);
+
   const res = await fetch(GQL_ENDPOINT(shop), {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },

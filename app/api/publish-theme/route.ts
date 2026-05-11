@@ -10,8 +10,6 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const themeId = Number(searchParams.get("themeId"));
-    const langParam = searchParams.get("lang") ?? "fr";
-    const lang = langParam === "en" ? "en" : "fr";
 
     // Authenticate using session token (required for embedded apps)
     const sessionAuth = authenticateRequest(req);
@@ -28,7 +26,7 @@ export async function GET(req: NextRequest) {
 
     const { accessToken: token } = await getAccessToken(shop, sessionToken, req);
 
-    const result = await publishTheme({ shop, token, themeId, lang });
+    const result = await publishTheme({ shop, token, themeId });
     return Response.json(result);
   } catch (err: any) {
     console.error("[publish-theme] Error:", err?.message, err?.stack);
