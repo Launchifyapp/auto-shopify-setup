@@ -1,33 +1,34 @@
 import { NextRequest } from "next/server";
-import { uploadTheme } from "@/lib/uploadTheme";
-import { Language } from "@/lib/i18n";
+import { findRefreshTheme } from "@/lib/findRefreshTheme";
 import { getAccessToken } from "@/lib/utils/tokenExchange";
 import { authenticateRequest } from "@/lib/utils/verifySessionToken";
 
-// Allow up to 120 s on Vercel Pro (default is 10 s on Hobby)
 export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const langParam = searchParams.get("lang");
-    const lang: Language = langParam === "en" ? "en" : "fr";
-
-    // Authenticate using session token (required for embedded apps)
     const sessionAuth = authenticateRequest(req);
     if (!sessionAuth) {
       return Response.json({ ok: false, error: "Unauthorized. Session token required." }, { status: 401 });
     }
 
     const { shop, token: sessionToken } = sessionAuth;
-    console.log("[upload-theme] Authenticated via session token for shop:", shop);
+    console.log("[find-theme] Authenticated via session token for shop:", shop);
 
     const { accessToken: token } = await getAccessToken(shop, sessionToken, req);
 
-    const themeId = await uploadTheme({ shop, token, lang });
-    return Response.json({ ok: !!themeId, themeId });
+    const theme = await findRefreshTheme({ shop, token });
+    if (!theme) {
+      return Response.json({
+        ok: false,
+        error: "Refresh theme not found. Please install it from the Shopify Theme Store first.",
+      });
+    }
+
+    console.log("[find-theme] Found Refresh theme:", theme);
+    return Response.json({ ok: true, themeId: theme.id });
   } catch (err: any) {
-    console.error("[upload-theme] Error:", err?.message, err?.stack);
+    console.error("[find-theme] Error:", err?.message, err?.stack);
     return Response.json({ ok: false, error: err?.message || String(err) }, { status: 500 });
   }
 }

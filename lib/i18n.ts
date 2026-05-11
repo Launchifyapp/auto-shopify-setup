@@ -24,9 +24,14 @@ export const translations = {
     loadingFallback: "Chargement…",
     missingParams: "Paramètres manquants.",
     errorSetup: "Erreur setup boutique",
-    errorThemeUpload: "Erreur upload thème",
+    errorThemeUpload: "Thème Refresh introuvable. Vérifiez qu'il est bien installé depuis le Shopify Theme Store.",
     errorThemePublish: "Erreur publication thème",
     generalError: "Erreur générale automatisation",
+    preInstallTitle: "Étape 1 — Installer le thème Refresh",
+    preInstallDescription: "Avant de configurer votre boutique, installez le thème Refresh gratuit depuis le Shopify Theme Store.",
+    preInstallInstruction: "Cliquez sur le bouton ci-dessous, ajoutez le thème à votre boutique, puis revenez ici et cliquez sur « Continuer ».",
+    preInstallOpenTheme: "Ouvrir le thème Refresh dans le Theme Store",
+    preInstallContinue: "J'ai installé le thème — Continuer",
     
     // Success page
     successTitle: "✅ Installation réussie !",
@@ -110,9 +115,14 @@ Reste du monde : 7-14 jours
     loadingFallback: "Loading…",
     missingParams: "Missing parameters.",
     errorSetup: "Store setup error",
-    errorThemeUpload: "Theme upload error",
+    errorThemeUpload: "Refresh theme not found. Please make sure it is installed from the Shopify Theme Store.",
     errorThemePublish: "Theme publish error",
     generalError: "General automation error",
+    preInstallTitle: "Step 1 — Install the Refresh theme",
+    preInstallDescription: "Before setting up your store, install the free Refresh theme from the Shopify Theme Store.",
+    preInstallInstruction: "Click the button below, add the theme to your store, then come back here and click \"Continue\".",
+    preInstallOpenTheme: "Open the Refresh theme in the Theme Store",
+    preInstallContinue: "I've installed the theme — Continue",
     
     // Success page
     successTitle: "✅ Installation successful!",
