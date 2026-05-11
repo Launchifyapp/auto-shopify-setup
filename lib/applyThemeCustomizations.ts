@@ -26,8 +26,27 @@ const ASSETS_EN: Record<string, object> = {
   "templates/product.json": productEn,
 };
 
-const MAX_RETRIES = 10;
-const RETRY_DELAY_MS = 5000;
+const API_VERSION = "2024-01";
+
+async function verifyThemeExists({
+  shop,
+  token,
+  themeId,
+}: {
+  shop: string;
+  token: string;
+  themeId: number;
+}): Promise<void> {
+  console.log(`[applyThemeCustomizations] Verifying theme ${themeId} on shop ${shop}`);
+  const res = await fetch(`https://${shop}/admin/api/${API_VERSION}/themes/${themeId}.json`, {
+    headers: { "X-Shopify-Access-Token": token },
+  });
+  const text = await res.text();
+  console.log(`[applyThemeCustomizations] Theme verify response: ${res.status} ${text.substring(0, 200)}`);
+  if (!res.ok) {
+    throw new Error(`Theme ${themeId} not accessible via REST API: ${res.status} ${text}`);
+  }
+}
 
 async function uploadAsset({
   shop,
@@ -42,32 +61,23 @@ async function uploadAsset({
   key: string;
   value: object;
 }) {
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const res = await fetch(`https://${shop}/admin/api/2023-07/themes/${themeId}/assets.json`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": token,
+  const url = `https://${shop}/admin/api/${API_VERSION}/themes/${themeId}/assets.json`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token,
+    },
+    body: JSON.stringify({
+      asset: {
+        key,
+        value: JSON.stringify(value),
       },
-      body: JSON.stringify({
-        asset: {
-          key,
-          value: JSON.stringify(value),
-        },
-      }),
-    });
+    }),
+  });
 
-    if (res.ok) return;
-
+  if (!res.ok) {
     const text = await res.text();
-
-    // 404 means the theme is not fully ready yet — wait and retry
-    if (res.status === 404 && attempt < MAX_RETRIES) {
-      console.log(`[applyThemeCustomizations] Theme not ready (attempt ${attempt}/${MAX_RETRIES}), retrying in ${RETRY_DELAY_MS}ms...`);
-      await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
-      continue;
-    }
-
     throw new Error(`Failed to upload asset ${key}: ${res.status} ${text}`);
   }
 }
@@ -83,9 +93,12 @@ export async function applyThemeCustomizations({
   themeId: number;
   lang?: Language;
 }) {
-  const assets = lang === "en" ? ASSETS_EN : ASSETS_FR;
+  await verifyThemeExists({ shop, token, themeId });
 
+  const assets = lang === "en" ? ASSETS_EN : ASSETS_FR;
   for (const [key, value] of Object.entries(assets)) {
+    console.log(`[applyThemeCustomizations] Uploading ${key}...`);
     await uploadAsset({ shop, token, themeId, key, value });
+    console.log(`[applyThemeCustomizations] ✓ ${key}`);
   }
 }
