@@ -58,7 +58,7 @@ Reste du monde : 7-14 jours
     collectionHome: "Maison & confort",
     collectionHomeHandle: "maison-confort",
     collectionHomeTag: "Maison & confort",
-    themeName: "Dreamify V2 FR",
+    themeName: "Refresh FR",
     
     // Privacy policy page
     privacyTitle: "Politique de confidentialité",
@@ -144,7 +144,7 @@ Rest of the world: 10-21 business days
     collectionHome: "Home & Comfort",
     collectionHomeHandle: "home-comfort",
     collectionHomeTag: "Home & Comfort",
-    themeName: "Dreamify V2 EN",
+    themeName: "Refresh EN",
     
     // Privacy policy page
     privacyTitle: "Privacy Policy",
