@@ -26,34 +26,49 @@ const ASSETS_EN: Record<string, object> = {
   "templates/product.json": productEn,
 };
 
+const GQL_ENDPOINT = (shop: string) => `https://${shop}/admin/api/2025-10/graphql.json`;
+
 async function upsertThemeFile({
   shop,
   token,
-  themeId,
+  themeGid,
   filename,
   body,
 }: {
   shop: string;
   token: string;
-  themeId: number;
+  themeGid: string;
   filename: string;
   body: string;
 }) {
-  const url = `https://${shop}/admin/api/2023-07/themes/${themeId}/assets.json`;
-  const res = await fetch(url, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token,
-    },
-    body: JSON.stringify({ asset: { key: filename, value: body } }),
+  const res = await fetch(GQL_ENDPOINT(shop), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({
+      query: `
+        mutation ThemeFilesUpsert($themeId: ID!, $files: [OnlineStoreThemeFilesUpsertFileInput!]!) {
+          themeFilesUpsert(themeId: $themeId, files: $files) {
+            upsertedThemeFiles { filename }
+            userErrors { filename field message }
+          }
+        }
+      `,
+      variables: {
+        themeId: themeGid,
+        files: [{ filename, body: { type: "TEXT", value: body } }],
+      },
+    }),
   });
 
-  const text = await res.text();
-  console.log(`[applyThemeCustomizations] PUT ${filename}: status=${res.status} body=${text.substring(0, 200)}`);
+  const data = await res.json();
+  console.log(`[applyThemeCustomizations] upsert ${filename}:`, JSON.stringify(data).substring(0, 300));
 
-  if (!res.ok) {
-    throw new Error(`Failed to upload asset ${filename}: ${res.status} ${text}`);
+  if (data?.errors) {
+    throw new Error(`GraphQL request error for ${filename}: ${JSON.stringify(data.errors)}`);
+  }
+  const userErrors = data?.data?.themeFilesUpsert?.userErrors;
+  if (userErrors?.length) {
+    throw new Error(`GraphQL error for ${filename}: ${JSON.stringify(userErrors)}`);
   }
 }
 
@@ -68,15 +83,29 @@ export async function applyThemeCustomizations({
   themeId: number;
   lang?: Language;
 }) {
-  console.log(`[applyThemeCustomizations] Applying customizations via REST. shop=${shop} themeId=${themeId}`);
+  console.log(`[applyThemeCustomizations] shop=${shop} themeId=${themeId} tokenPrefix=${token.substring(0, 8)}`);
 
+  // Check which scopes the token actually has
+  const scopeRes = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    body: JSON.stringify({ query: `{ app { installation { accessScopes { handle } } } }` }),
+  });
+  const scopeData = await scopeRes.json();
+  const scopes: string[] = scopeData?.data?.app?.installation?.accessScopes?.map((s: any) => s.handle) ?? [];
+  console.log(`[applyThemeCustomizations] Token scopes:`, scopes.join(", ") || "(none returned)");
+  if (!scopes.includes("write_themes")) {
+    throw new Error("Token missing write_themes scope. The merchant may need to reinstall the app to grant the updated permissions.");
+  }
+
+  const themeGid = `gid://shopify/OnlineStoreTheme/${themeId}`;
   const assets = lang === "en" ? ASSETS_EN : ASSETS_FR;
 
   for (const [filename, value] of Object.entries(assets)) {
     await upsertThemeFile({
       shop,
       token,
-      themeId,
+      themeGid,
       filename,
       body: JSON.stringify(value),
     });
