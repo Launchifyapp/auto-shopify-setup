@@ -1,5 +1,3 @@
-const GQL_ENDPOINT = (shop: string) => `https://${shop}/admin/api/2025-10/graphql.json`;
-
 export async function publishTheme({
   shop,
   token,
@@ -9,41 +7,22 @@ export async function publishTheme({
   token: string;
   themeId: number;
 }) {
-  const themeGid = `gid://shopify/OnlineStoreTheme/${themeId}`;
-  console.log(`[publishTheme] Publishing theme via themePublish. shop=${shop} themeGid=${themeGid}`);
+  console.log(`[publishTheme] Publishing theme via REST. shop=${shop} themeId=${themeId}`);
 
-  const res = await fetch(GQL_ENDPOINT(shop), {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-    body: JSON.stringify({
-      query: `
-        mutation PublishTheme($id: ID!) {
-          themePublish(id: $id) {
-            theme {
-              id
-              name
-              role
-            }
-            userErrors {
-              field
-              message
-            }
-          }
-        }
-      `,
-      variables: { id: themeGid },
-    }),
+  const res = await fetch(`https://${shop}/admin/api/2023-07/themes/${themeId}.json`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token,
+    },
+    body: JSON.stringify({ theme: { role: "main" } }),
   });
 
-  const data = await res.json();
-  console.log(`[publishTheme] themePublish response:`, JSON.stringify(data).substring(0, 400));
+  const text = await res.text();
+  console.log(`[publishTheme] PUT response: status=${res.status} body=${text.substring(0, 300)}`);
 
-  if (data?.errors) {
-    throw new Error(`GraphQL error publishing theme: ${JSON.stringify(data.errors)}`);
-  }
-  const userErrors = data?.data?.themePublish?.userErrors;
-  if (userErrors?.length) {
-    throw new Error(`Theme publish error: ${JSON.stringify(userErrors)}`);
+  if (!res.ok) {
+    throw new Error(`Failed to publish theme: ${res.status} ${text}`);
   }
 
   return { ok: true };
