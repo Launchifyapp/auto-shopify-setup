@@ -20,18 +20,11 @@ export const translations = {
     
     // Loading page
     loadingTitle: "Installation en cours…",
-    loadingStep: "Étape {step}/3. Merci de patienter pendant l'automatisation complète de votre boutique Shopify.",
+    loadingSubtitle: "Merci de patienter pendant l'automatisation complète de votre boutique Shopify.",
     loadingFallback: "Chargement…",
     missingParams: "Paramètres manquants.",
     errorSetup: "Erreur setup boutique",
-    errorThemeUpload: "Thème Refresh introuvable. Vérifiez qu'il est bien installé depuis le Shopify Theme Store.",
-    errorThemePublish: "Erreur publication thème",
     generalError: "Erreur générale automatisation",
-    preInstallTitle: "Étape 1 — Installer le thème Refresh",
-    preInstallDescription: "Avant de configurer votre boutique, installez le thème Refresh gratuit depuis le Shopify Theme Store.",
-    preInstallInstruction: "Cliquez sur le bouton ci-dessous, ajoutez le thème à votre boutique, puis revenez ici et cliquez sur « Continuer ».",
-    preInstallOpenTheme: "Ouvrir le thème Refresh dans le Theme Store",
-    preInstallContinue: "J'ai installé le thème — Continuer",
     
     // Success page
     successTitle: "✅ Installation réussie !",
@@ -63,7 +56,6 @@ Reste du monde : 7-14 jours
     collectionHome: "Maison & confort",
     collectionHomeHandle: "maison-confort",
     collectionHomeTag: "Maison & confort",
-    themeName: "Refresh FR",
     
     // Privacy policy page
     privacyTitle: "Politique de confidentialité",
@@ -111,18 +103,11 @@ Reste du monde : 7-14 jours
     
     // Loading page
     loadingTitle: "Installation in progress…",
-    loadingStep: "Step {step}/3. Please wait while we fully automate your Shopify store.",
+    loadingSubtitle: "Please wait while we fully automate your Shopify store.",
     loadingFallback: "Loading…",
     missingParams: "Missing parameters.",
     errorSetup: "Store setup error",
-    errorThemeUpload: "Refresh theme not found. Please make sure it is installed from the Shopify Theme Store.",
-    errorThemePublish: "Theme publish error",
     generalError: "General automation error",
-    preInstallTitle: "Step 1 — Install the Refresh theme",
-    preInstallDescription: "Before setting up your store, install the free Refresh theme from the Shopify Theme Store.",
-    preInstallInstruction: "Click the button below, add the theme to your store, then come back here and click \"Continue\".",
-    preInstallOpenTheme: "Open the Refresh theme in the Theme Store",
-    preInstallContinue: "I've installed the theme — Continue",
     
     // Success page
     successTitle: "✅ Installation successful!",
@@ -154,7 +139,6 @@ Rest of the world: 10-21 business days
     collectionHome: "Home & Comfort",
     collectionHomeHandle: "home-comfort",
     collectionHomeTag: "Home & Comfort",
-    themeName: "Refresh EN",
     
     // Privacy policy page
     privacyTitle: "Privacy Policy",
