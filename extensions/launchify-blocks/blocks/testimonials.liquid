@@ -1,0 +1,410 @@
+{{ 'launchify-blocks.css' | asset_url | stylesheet_tag }}
+
+<section class="lf-testimonials" style="
+  background-color: {{ block.settings.bg_color }};
+  padding: {{ block.settings.section_padding }}px 1.5rem;
+">
+  <div class="lf-testimonials__inner">
+
+    {%- if block.settings.title != blank -%}
+      <div class="lf-testimonials__header">
+        {%- if block.settings.label != blank -%}
+          <span class="lf-testimonials__label">{{ block.settings.label }}</span>
+        {%- endif -%}
+        <h2 class="lf-testimonials__title" style="color: {{ block.settings.title_color }}">
+          {{ block.settings.title }}
+        </h2>
+        {%- if block.settings.subtitle != blank -%}
+          <p class="lf-testimonials__subtitle" style="color: {{ block.settings.text_color }}">
+            {{ block.settings.subtitle }}
+          </p>
+        {%- endif -%}
+      </div>
+    {%- endif -%}
+
+    <div class="lf-testimonials__grid lf-testimonials__grid--{{ block.settings.columns }}">
+
+      {%- for i in (1..6) -%}
+        {%- assign quote_key    = 'quote_'    | append: i -%}
+        {%- assign author_key   = 'author_'   | append: i -%}
+        {%- assign role_key     = 'role_'     | append: i -%}
+        {%- assign rating_key   = 'rating_'   | append: i -%}
+        {%- assign photo_key    = 'photo_'    | append: i -%}
+
+        {%- assign quote  = block.settings[quote_key] -%}
+        {%- assign author = block.settings[author_key] -%}
+
+        {%- if quote != blank and author != blank -%}
+          {%- assign rating = block.settings[rating_key] | default: 5 -%}
+          {%- assign role   = block.settings[role_key] -%}
+          {%- assign photo  = block.settings[photo_key] -%}
+
+          <div class="lf-testimonials__card" style="
+            background: {{ block.settings.card_bg }};
+            border-color: {{ block.settings.card_border_color }};
+            border-radius: {{ block.settings.card_radius }}px;
+          ">
+            <div class="lf-testimonials__stars">
+              {%- for star in (1..5) -%}
+                <span class="lf-testimonials__star {% if star <= rating %}lf-testimonials__star--filled{% endif %}"
+                  style="color: {{ block.settings.star_color }}">★</span>
+              {%- endfor -%}
+            </div>
+
+            <p class="lf-testimonials__quote" style="color: {{ block.settings.text_color }}">
+              "{{ quote }}"
+            </p>
+
+            <div class="lf-testimonials__author-row">
+              {%- if photo != blank -%}
+                <img
+                  src="{{ photo | image_url: width: 80 }}"
+                  alt="{{ author }}"
+                  class="lf-testimonials__photo"
+                  width="40"
+                  height="40"
+                  loading="lazy"
+                >
+              {%- else -%}
+                <div class="lf-testimonials__avatar" style="background: {{ block.settings.accent_color }}">
+                  {{ author | slice: 0 | upcase }}
+                </div>
+              {%- endif -%}
+
+              <div>
+                <p class="lf-testimonials__name" style="color: {{ block.settings.title_color }}">
+                  {{ author }}
+                </p>
+                {%- if role != blank -%}
+                  <p class="lf-testimonials__role" style="color: {{ block.settings.text_color }}">
+                    {{ role }}
+                  </p>
+                {%- endif -%}
+              </div>
+            </div>
+          </div>
+        {%- endif -%}
+      {%- endfor -%}
+
+    </div>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Témoignages",
+  "target": "section",
+  "settings": [
+    {
+      "type": "header",
+      "content": "En-tête"
+    },
+    {
+      "type": "text",
+      "id": "label",
+      "label": "Label (ex: ⭐ AVIS CLIENTS)",
+      "default": "⭐ AVIS CLIENTS"
+    },
+    {
+      "type": "text",
+      "id": "title",
+      "label": "Titre",
+      "default": "Ce que disent nos clients"
+    },
+    {
+      "type": "text",
+      "id": "subtitle",
+      "label": "Sous-titre",
+      "default": "Des milliers de clients satisfaits nous font confiance."
+    },
+    {
+      "type": "header",
+      "content": "Mise en page"
+    },
+    {
+      "type": "select",
+      "id": "columns",
+      "label": "Colonnes",
+      "options": [
+        { "value": "1", "label": "1 colonne" },
+        { "value": "2", "label": "2 colonnes" },
+        { "value": "3", "label": "3 colonnes" }
+      ],
+      "default": "3"
+    },
+    {
+      "type": "range",
+      "id": "section_padding",
+      "label": "Espacement vertical",
+      "min": 20,
+      "max": 120,
+      "step": 4,
+      "default": 64
+    },
+    {
+      "type": "header",
+      "content": "Couleurs"
+    },
+    {
+      "type": "color",
+      "id": "bg_color",
+      "label": "Fond de section",
+      "default": "#f8f9fc"
+    },
+    {
+      "type": "color",
+      "id": "card_bg",
+      "label": "Fond des cartes",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "card_border_color",
+      "label": "Bordure des cartes",
+      "default": "#e8ecf0"
+    },
+    {
+      "type": "range",
+      "id": "card_radius",
+      "label": "Arrondi des cartes",
+      "min": 0,
+      "max": 32,
+      "step": 2,
+      "default": 16
+    },
+    {
+      "type": "color",
+      "id": "title_color",
+      "label": "Couleur titres",
+      "default": "#0B1B3A"
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "Couleur texte",
+      "default": "#5a6a80"
+    },
+    {
+      "type": "color",
+      "id": "star_color",
+      "label": "Couleur étoiles",
+      "default": "#f59e0b"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Couleur avatar (initiale)",
+      "default": "#00AAFF"
+    },
+    {
+      "type": "header",
+      "content": "Témoignage 1"
+    },
+    {
+      "type": "textarea",
+      "id": "quote_1",
+      "label": "Avis",
+      "default": "Produit incroyable, livraison rapide. Je recommande à 100% !"
+    },
+    {
+      "type": "text",
+      "id": "author_1",
+      "label": "Nom",
+      "default": "Sophie M."
+    },
+    {
+      "type": "text",
+      "id": "role_1",
+      "label": "Rôle / Ville"
+    },
+    {
+      "type": "range",
+      "id": "rating_1",
+      "label": "Note",
+      "min": 1,
+      "max": 5,
+      "step": 1,
+      "default": 5
+    },
+    {
+      "type": "image_picker",
+      "id": "photo_1",
+      "label": "Photo (optionnel)"
+    },
+    {
+      "type": "header",
+      "content": "Témoignage 2"
+    },
+    {
+      "type": "textarea",
+      "id": "quote_2",
+      "label": "Avis",
+      "default": "Je suis très satisfaite de ma commande. La qualité est au rendez-vous."
+    },
+    {
+      "type": "text",
+      "id": "author_2",
+      "label": "Nom",
+      "default": "Lucas T."
+    },
+    {
+      "type": "text",
+      "id": "role_2",
+      "label": "Rôle / Ville"
+    },
+    {
+      "type": "range",
+      "id": "rating_2",
+      "label": "Note",
+      "min": 1,
+      "max": 5,
+      "step": 1,
+      "default": 5
+    },
+    {
+      "type": "image_picker",
+      "id": "photo_2",
+      "label": "Photo (optionnel)"
+    },
+    {
+      "type": "header",
+      "content": "Témoignage 3"
+    },
+    {
+      "type": "textarea",
+      "id": "quote_3",
+      "label": "Avis",
+      "default": "Expérience d'achat parfaite. Je reviendrai sans hésiter !"
+    },
+    {
+      "type": "text",
+      "id": "author_3",
+      "label": "Nom",
+      "default": "Marie L."
+    },
+    {
+      "type": "text",
+      "id": "role_3",
+      "label": "Rôle / Ville"
+    },
+    {
+      "type": "range",
+      "id": "rating_3",
+      "label": "Note",
+      "min": 1,
+      "max": 5,
+      "step": 1,
+      "default": 5
+    },
+    {
+      "type": "image_picker",
+      "id": "photo_3",
+      "label": "Photo (optionnel)"
+    },
+    {
+      "type": "header",
+      "content": "Témoignage 4"
+    },
+    {
+      "type": "textarea",
+      "id": "quote_4",
+      "label": "Avis"
+    },
+    {
+      "type": "text",
+      "id": "author_4",
+      "label": "Nom"
+    },
+    {
+      "type": "text",
+      "id": "role_4",
+      "label": "Rôle / Ville"
+    },
+    {
+      "type": "range",
+      "id": "rating_4",
+      "label": "Note",
+      "min": 1,
+      "max": 5,
+      "step": 1,
+      "default": 5
+    },
+    {
+      "type": "image_picker",
+      "id": "photo_4",
+      "label": "Photo (optionnel)"
+    },
+    {
+      "type": "header",
+      "content": "Témoignage 5"
+    },
+    {
+      "type": "textarea",
+      "id": "quote_5",
+      "label": "Avis"
+    },
+    {
+      "type": "text",
+      "id": "author_5",
+      "label": "Nom"
+    },
+    {
+      "type": "text",
+      "id": "role_5",
+      "label": "Rôle / Ville"
+    },
+    {
+      "type": "range",
+      "id": "rating_5",
+      "label": "Note",
+      "min": 1,
+      "max": 5,
+      "step": 1,
+      "default": 5
+    },
+    {
+      "type": "image_picker",
+      "id": "photo_5",
+      "label": "Photo (optionnel)"
+    },
+    {
+      "type": "header",
+      "content": "Témoignage 6"
+    },
+    {
+      "type": "textarea",
+      "id": "quote_6",
+      "label": "Avis"
+    },
+    {
+      "type": "text",
+      "id": "author_6",
+      "label": "Nom"
+    },
+    {
+      "type": "text",
+      "id": "role_6",
+      "label": "Rôle / Ville"
+    },
+    {
+      "type": "range",
+      "id": "rating_6",
+      "label": "Note",
+      "min": 1,
+      "max": 5,
+      "step": 1,
+      "default": 5
+    },
+    {
+      "type": "image_picker",
+      "id": "photo_6",
+      "label": "Photo (optionnel)"
+    }
+  ],
+  "presets": [
+    {
+      "name": "Témoignages"
+    }
+  ]
+}
+{% endschema %}
