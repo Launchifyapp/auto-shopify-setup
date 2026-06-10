@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { findRefreshTheme } from "@/lib/findRefreshTheme";
+import { findMainTheme } from "@/lib/findMainTheme";
 import { getAccessToken } from "@/lib/utils/tokenExchange";
 import { authenticateRequest } from "@/lib/utils/verifySessionToken";
 
@@ -17,15 +17,15 @@ export async function GET(req: NextRequest) {
 
     const { accessToken: token } = await getAccessToken(shop, sessionToken, req);
 
-    const theme = await findRefreshTheme({ shop, token });
+    const theme = await findMainTheme({ shop, token });
     if (!theme) {
       return Response.json({
         ok: false,
-        error: "Refresh theme not found. Please install it from the Shopify Theme Store first.",
+        error: "No published theme found on this store.",
       });
     }
 
-    console.log("[find-theme] Found Refresh theme:", theme);
+    console.log("[find-theme] Found main theme:", theme);
     return Response.json({ ok: true, themeId: theme.id });
   } catch (err: any) {
     console.error("[find-theme] Error:", err?.message, err?.stack);
