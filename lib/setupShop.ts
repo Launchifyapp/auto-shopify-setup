@@ -220,7 +220,7 @@ async function createShippingPageWithSDK(session: Session, lang: Language): Prom
 
 function normalizeImageUrl(url: string): string {
   // Images are hosted in /public/products_images/ on Vercel
-  const appUrl = process.env.SHOPIFY_APP_URL || "https://auto-shopify-setup.vercel.app";
+  const appUrl = process.env.SHOPIFY_APP_URL || "https://launchify.tech";
 
   // Rewrite old Shopify CDN URLs → our Vercel-hosted images
   const cdnMatch = url.match(/cdn\.shopify\.com\/.*\/files\/([^?]+)/);
@@ -777,7 +777,7 @@ async function deleteSetupState(setupId: string) {
 // ─── PHASE 1: Init (collections, pages, menu, parse CSV) ───
 export async function setupPhaseInit({ session, lang = "fr" }: { session: Session; lang?: Language }): Promise<{ setupId: string; totalBatches: number; totalProducts: number }> {
   const idsToPublish: string[] = [];
-  const baseUrl = process.env.SHOPIFY_APP_URL || "https://auto-shopify-setup.vercel.app";
+  const baseUrl = process.env.SHOPIFY_APP_URL || "https://launchify.tech";
 
   // Upload generic images
   const imagesUrls = [

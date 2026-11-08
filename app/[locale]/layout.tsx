@@ -2,10 +2,9 @@ import { ReactNode } from "react";
 
 export default function LocaleLayout({
   children,
-  params: { locale },
 }: {
   children: ReactNode;
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
   return children;
 }

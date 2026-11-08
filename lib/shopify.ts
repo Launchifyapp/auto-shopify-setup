@@ -1,4 +1,4 @@
-import '@shopify/shopify-api/adapters/node';
+import '@shopify/shopify-api/adapters/web-api';
 import { shopifyApi, Session, ApiVersion } from "@shopify/shopify-api";
 import { DEFAULT_SESSION_SCOPE } from "@/lib/scopes";
 

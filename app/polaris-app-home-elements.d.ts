@@ -4,7 +4,7 @@
 
 import React from "react";
 
-declare global {
+declare module "react" {
   namespace JSX {
     interface IntrinsicElements {
       // Main page container
