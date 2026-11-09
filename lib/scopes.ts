@@ -51,6 +51,7 @@ const INVENTORY_SCOPES = [
 // Publication access (for publishing products to Online Store)
 const PUBLICATION_SCOPES = [
   "read_publications",
+  "write_publications",
 ];
 
 // All scopes combined - used in OAuth request

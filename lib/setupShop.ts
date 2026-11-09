@@ -702,7 +702,7 @@ async function getOnlineStorePublicationId(session: Session): Promise<string | n
 }
 
 // Publish a resource to a sales channel
-async function publishResource(session: Session, resourceId: string, publicationId: string): Promise<void> {
+async function publishResource(session: Session, resourceId: string, publicationId: string): Promise<boolean> {
   const client = new shopify.clients.Graphql({ session });
   const mutation = `
     mutation publishablePublish($id: ID!, $input: [PublicationInput!]!) {
@@ -724,11 +724,17 @@ async function publishResource(session: Session, resourceId: string, publication
     const response: any = await client.request(mutation, { variables });
     if (response?.data?.publishablePublish?.userErrors?.length > 0) {
       console.error(`Error publishing resource ${resourceId}:`, response.data.publishablePublish.userErrors);
-    } else {
-      console.log(`Resource ${resourceId} published successfully on ${publicationId}.`);
+      return false;
     }
-  } catch (error) {
-    console.error(`Exception publishing resource ${resourceId}:`, error);
+    console.log(`Resource ${resourceId} published successfully on ${publicationId}.`);
+    return true;
+  } catch (error: any) {
+    // Log Shopify's message and body: on Workers the bare error only shows a minified stack.
+    console.error(
+      `Exception publishing resource ${resourceId}: ${error?.message || error}`,
+      JSON.stringify(error?.body ?? error?.response?.errors ?? null)
+    );
+    return false;
   }
 }
 
@@ -748,6 +754,9 @@ function getRedis(): Redis | null {
 interface SetupState {
   lang: Language;
   shop: string;
+  /** Online Store publication, resolved once at init. Resources are published as soon as they exist. */
+  publicationId?: string | null;
+  /** Resources that could not be published right away; finalize retries them. */
   idsToPublish: string[];
   productHandles: string[];
   productsByHandle: Record<string, any[]>;
@@ -779,6 +788,14 @@ export async function setupPhaseInit({ session, lang = "fr" }: { session: Sessio
   const idsToPublish: string[] = [];
   const baseUrl = process.env.SHOPIFY_APP_URL || "https://launchify.tech";
 
+  // Resolve the Online Store channel once; each resource is published right after it is created.
+  // (Publishing everything in finalize exceeded the per-request subrequest budget on Cloudflare Workers.)
+  const publicationId = await getOnlineStorePublicationId(session);
+  const publishNow = async (id?: string) => {
+    if (!id) return;
+    if (!publicationId || !(await publishResource(session, id, publicationId))) idsToPublish.push(id);
+  };
+
   // Upload generic images
   const imagesUrls = [
     `${baseUrl}/image1.jpg`,
@@ -792,12 +809,12 @@ export async function setupPhaseInit({ session, lang = "fr" }: { session: Sessio
   const beautyCollection = await createAutomatedCollection(
     session, t(lang, "collectionBeauty"), t(lang, "collectionBeautyHandle"), t(lang, "collectionBeautyTag")
   );
-  if (beautyCollection?.id) idsToPublish.push(beautyCollection.id);
+  await publishNow(beautyCollection?.id);
 
   const homeCollection = await createAutomatedCollection(
     session, t(lang, "collectionHome"), t(lang, "collectionHomeHandle"), t(lang, "collectionHomeTag")
   );
-  if (homeCollection?.id) idsToPublish.push(homeCollection.id);
+  await publishNow(homeCollection?.id);
 
   // Shipping page
   const shippingPageId = await createShippingPageWithSDK(session, lang)
@@ -845,6 +862,7 @@ export async function setupPhaseInit({ session, lang = "fr" }: { session: Sessio
   await saveSetupState(setupId, {
     lang,
     shop: session.shop,
+    publicationId,
     idsToPublish,
     productHandles,
     productsByHandle,
@@ -914,7 +932,9 @@ export async function setupPhaseProducts({ session, setupId, batch }: { session:
         continue;
       }
       console.log("Product created:", productId);
-      state.idsToPublish.push(productId);
+      if (!state.publicationId || !(await publishResource(session, productId, state.publicationId))) {
+        state.idsToPublish.push(productId);
+      }
 
       // Upload product images
       const allImages = [...new Set(group.map((row) => row["Image Src"]).filter(Boolean))];
@@ -1029,15 +1049,16 @@ export async function setupPhaseFinalize({ session, setupId }: { session: Sessio
     }
   }
 
-  // Publish all resources
-  const onlineStorePublicationId = await getOnlineStorePublicationId(session);
+  // Retry resources that could not be published when they were created
   let published = 0;
-  if (onlineStorePublicationId && state.idsToPublish.length > 0) {
-    for (const resourceId of state.idsToPublish) {
-      await publishResource(session, resourceId, onlineStorePublicationId);
-      published++;
+  if (state.idsToPublish.length > 0) {
+    const onlineStorePublicationId = state.publicationId || await getOnlineStorePublicationId(session);
+    if (onlineStorePublicationId) {
+      for (const resourceId of state.idsToPublish) {
+        if (await publishResource(session, resourceId, onlineStorePublicationId)) published++;
+      }
     }
-    console.log(`[setupFinalize] Published ${published} resources.`);
+    console.log(`[setupFinalize] Published ${published}/${state.idsToPublish.length} remaining resources.`);
   }
 
   // Clean up Redis state
