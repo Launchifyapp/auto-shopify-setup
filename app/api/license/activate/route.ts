@@ -8,7 +8,8 @@
  * {
  *   "shop": "my-store.myshopify.com",
  *   "plan": "premium",
- *   "email": "customer@example.com"  (optional)
+ *   "email": "customer@example.com",  (optional)
+ *   "niche": "animaux"                (optional, one of NICHES in lib/niches.ts)
  * }
  *
  * Secured by a shared secret (LICENCE_WEBHOOK_SECRET) sent in the
@@ -17,6 +18,7 @@
 
 import { NextRequest } from "next/server";
 import { activateLicense, Plan } from "@/lib/utils/licenseStore";
+import { isNiche, NICHES } from "@/lib/niches";
 
 const VALID_PLANS: Plan[] = ["basic", "premium"];
 
@@ -50,7 +52,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { shop, plan, email } = body;
+  const { shop, plan, email, niche } = body;
 
   if (!shop || typeof shop !== "string") {
     return Response.json(
@@ -66,12 +68,19 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  if (niche !== undefined && !isNiche(niche)) {
+    return Response.json(
+      { ok: false, error: `Invalid 'niche'. Must be one of: ${NICHES.join(", ")}` },
+      { status: 400 }
+    );
+  }
+
   // 3. Activate license
   try {
-    await activateLicense(shop, plan as Plan, email);
+    await activateLicense(shop, plan as Plan, email, niche);
     return Response.json({
       ok: true,
-      message: `License activated: ${plan} for ${shop}`,
+      message: `License activated: ${plan}${niche ? ` (${niche})` : ""} for ${shop}`,
     });
   } catch (err: any) {
     console.error("[License Webhook] Error:", err);

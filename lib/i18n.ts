@@ -50,12 +50,6 @@ Reste du monde : 7-14 jours
     menuProducts: "Nos Produits",
     menuShipping: "Livraison",
     menuContact: "Contact",
-    collectionBeauty: "Beauté & soins",
-    collectionBeautyHandle: "beaute-soins",
-    collectionBeautyTag: "Beauté & soins",
-    collectionHome: "Maison & confort",
-    collectionHomeHandle: "maison-confort",
-    collectionHomeTag: "Maison & confort",
     
     // Privacy policy page
     privacyTitle: "Politique de confidentialité",
@@ -133,12 +127,6 @@ Rest of the world: 10-21 business days
     menuProducts: "Our Products",
     menuShipping: "Shipping",
     menuContact: "Contact",
-    collectionBeauty: "Beauty & Care",
-    collectionBeautyHandle: "beauty-care",
-    collectionBeautyTag: "Beauty & Care",
-    collectionHome: "Home & Comfort",
-    collectionHomeHandle: "home-comfort",
-    collectionHomeTag: "Home & Comfort",
     
     // Privacy policy page
     privacyTitle: "Privacy Policy",

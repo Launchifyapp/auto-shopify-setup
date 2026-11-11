@@ -2,7 +2,8 @@ import { parse } from "csv-parse/sync";
 import { shopify } from "@/lib/shopify";
 import { Session } from "@shopify/shopify-api";
 import { Language, t } from "@/lib/i18n";
-import { getProductLimit } from "@/lib/utils/licenseStore";
+import { getLicense, PRODUCT_LIMIT } from "@/lib/utils/licenseStore";
+import { BEST_SELLER_COLLECTION, BEST_SELLER_TAG, NICHE_COLLECTION } from "@/lib/niches";
 
 // Search for main collection ID
 async function getAllProductsCollectionId(session: Session): Promise<string | null> {
@@ -819,16 +820,23 @@ export async function setupPhaseInit({ session, lang = "fr" }: { session: Sessio
   ];
   await uploadImagesToShopifyFiles(session, imagesUrls);
 
-  // Create collections
-  const beautyCollection = await createAutomatedCollection(
-    session, t(lang, "collectionBeauty"), t(lang, "collectionBeautyHandle"), t(lang, "collectionBeautyTag")
-  );
-  await publishNow(beautyCollection?.id);
+  // The license (set from the funnel) decides the catalog: the chosen niche, 10 or 20 products.
+  const { plan, niche } = await getLicense(session.shop);
+  const productLimit = PRODUCT_LIMIT[plan];
 
-  const homeCollection = await createAutomatedCollection(
-    session, t(lang, "collectionHome"), t(lang, "collectionHomeHandle"), t(lang, "collectionHomeTag")
+  // Collections: the niche (all its products, tagged with the niche name) and, when the upsells
+  // are imported too, the best sellers (core products).
+  const nicheCollection = NICHE_COLLECTION[niche][lang];
+  const mainNicheCollection = await createAutomatedCollection(
+    session, nicheCollection.title, nicheCollection.handle, nicheCollection.title
   );
-  await publishNow(homeCollection?.id);
+  await publishNow(mainNicheCollection?.id);
+
+  if (productLimit > PRODUCT_LIMIT.basic) {
+    const best = BEST_SELLER_COLLECTION[lang];
+    const bestCollection = await createAutomatedCollection(session, best.title, best.handle, BEST_SELLER_TAG);
+    await publishNow(bestCollection?.id);
+  }
 
   // Shipping page
   const shippingPageId = await createShippingPageWithSDK(session, lang)
@@ -843,17 +851,16 @@ export async function setupPhaseInit({ session, lang = "fr" }: { session: Sessio
     await updateMainMenu(session, mainMenuResult.id, mainMenuResult.title, shippingPageId, mainCollectionId, contactPageId, lang);
   }
 
-  // Parse CSV - use the correct CSV based on the plan (20 or 40 products)
-  const productLimit = await getProductLimit(session.shop);
-  const is20Plan = productLimit <= 20;
-  let csvUrl: string;
-  if (lang === "en") {
-    csvUrl = is20Plan ? `${baseUrl}/products-20-en.csv` : `${baseUrl}/products-en.csv`;
-  } else {
-    csvUrl = is20Plan ? `${baseUrl}/products-20.csv` : `${baseUrl}/products.csv`;
+  // Parse the niche CSV (core products first). Niches without an English catalog yet fall back
+  // to the French one rather than to products from another niche.
+  let csvUrl = `${baseUrl}/products-${niche}${lang === "en" ? "-en" : ""}.csv`;
+  let csvResponse = await fetch(csvUrl);
+  if (!csvResponse.ok && lang === "en") {
+    console.warn(`[setupInit] No English catalog for ${niche} (${csvResponse.status}), using the French one`);
+    csvUrl = `${baseUrl}/products-${niche}.csv`;
+    csvResponse = await fetch(csvUrl);
   }
-  console.log(`[setupInit] Plan allows ${productLimit} products. Using CSV: ${csvUrl}`);
-  const csvResponse = await fetch(csvUrl);
+  console.log(`[setupInit] ${plan} plan, niche ${niche}: ${productLimit} products from ${csvUrl}`);
   if (!csvResponse.ok) throw new Error(`Failed to fetch product CSV: ${csvResponse.status}`);
   const csvText = await csvResponse.text();
   const records = parse(csvText, { columns: true, skip_empty_lines: true, delimiter: ";" });
@@ -865,8 +872,8 @@ export async function setupPhaseInit({ session, lang = "fr" }: { session: Sessio
   }
 
   const allHandles = Object.keys(productsByHandle);
-  const productHandles = allHandles;
-  console.log(`[setupInit] CSV has ${allHandles.length} products. Will import all.`);
+  const productHandles = allHandles.slice(0, productLimit);
+  console.log(`[setupInit] CSV has ${allHandles.length} products. Will import ${productHandles.length}.`);
 
   // Save state to Redis
   const setupId = `${session.shop}_${Date.now()}`;

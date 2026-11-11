@@ -1,12 +1,14 @@
 /**
  * License store using Upstash Redis
- * Stores shop licenses to determine product limits (20 basic / 40 premium)
+ * Stores shop licenses: the plan sets the product limit (10 basic / 20 premium) and the
+ * niche chosen in the funnel sets which catalog is imported.
  *
  * The external sales site (ClickFunnels) calls /api/license/activate
  * to register a shop's plan. The app reads it at setup time.
  */
 
 import { Redis } from "@upstash/redis";
+import { DEFAULT_NICHE, isNiche, Niche } from "@/lib/niches";
 
 // Initialize Redis client from environment variables (may be null if not configured)
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -17,10 +19,14 @@ const redis = redisUrl && redisToken
 
 export type Plan = "basic" | "premium";
 
+/** Products imported per plan: basic gets the 10 core products of its niche, premium all 20. */
+export const PRODUCT_LIMIT: Record<Plan, number> = { basic: 10, premium: 20 };
+
 interface LicenseEntry {
   plan: Plan;
   activatedAt: string;
   email?: string;
+  niche?: Niche;
 }
 
 const LICENSE_PREFIX = "license:";
@@ -32,30 +38,33 @@ const LICENSE_PREFIX = "license:";
 export async function activateLicense(
   shop: string,
   plan: Plan,
-  email?: string
+  email?: string,
+  niche?: Niche
 ): Promise<void> {
   const key = LICENSE_PREFIX + normalizeShop(shop);
   const entry: LicenseEntry = {
     plan,
     activatedAt: new Date().toISOString(),
     email,
+    niche,
   };
   if (!redis) {
     console.log(`[License] Redis not configured, skipping license activation`);
     return;
   }
   await redis.set(key, JSON.stringify(entry));
-  console.log(`[License] Activated ${plan} license for ${normalizeShop(shop)}`);
+  console.log(`[License] Activated ${plan} license (${niche ?? "no niche"}) for ${normalizeShop(shop)}`);
 }
 
 /**
  * Get the license/plan for a shop
- * Returns "basic" if no license found (default free plan)
+ * Returns "basic" if no license found (default free plan), and DEFAULT_NICHE when the license
+ * has no niche (activated before niches existed).
  */
-export async function getLicense(shop: string): Promise<{ plan: Plan; email?: string }> {
+export async function getLicense(shop: string): Promise<{ plan: Plan; email?: string; niche: Niche }> {
   if (!redis) {
     console.log(`[License] Redis not configured, defaulting to premium (no limit)`);
-    return { plan: "premium" as Plan };
+    return { plan: "premium" as Plan, niche: DEFAULT_NICHE };
   }
 
   const key = LICENSE_PREFIX + normalizeShop(shop);
@@ -63,12 +72,13 @@ export async function getLicense(shop: string): Promise<{ plan: Plan; email?: st
 
   if (!data) {
     console.log(`[License] No license found for ${normalizeShop(shop)}, defaulting to basic`);
-    return { plan: "basic" };
+    return { plan: "basic", niche: DEFAULT_NICHE };
   }
 
   const entry: LicenseEntry = typeof data === "string" ? JSON.parse(data) : data as LicenseEntry;
-  console.log(`[License] Found ${entry.plan} license for ${normalizeShop(shop)}`);
-  return { plan: entry.plan, email: entry.email };
+  const niche = isNiche(entry.niche) ? entry.niche : DEFAULT_NICHE;
+  console.log(`[License] Found ${entry.plan} license (${niche}) for ${normalizeShop(shop)}`);
+  return { plan: entry.plan, email: entry.email, niche };
 }
 
 /**
@@ -84,7 +94,7 @@ export async function isPremium(shop: string): Promise<boolean> {
  */
 export async function getProductLimit(shop: string): Promise<number> {
   const { plan } = await getLicense(shop);
-  return plan === "premium" ? 40 : 20;
+  return PRODUCT_LIMIT[plan];
 }
 
 /**
