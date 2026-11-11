@@ -59,14 +59,17 @@ export default function Loader() {
         if (!data2.ok) throw new Error(data2.error || t(lang, "errorSetup"));
       }
 
-      // ─── Finalize ───
+      // ─── Finalize (several calls: each one handles a slice, until done) ───
       setSubStep(lang === "fr" ? "Finalisation..." : "Finalizing...");
-      const res3 = await fetchWithTimeout(
-        `/api/setup-shop?phase=finalize&setupId=${encodeURIComponent(setupId)}`,
-        120_000
-      );
-      const data3 = await safeJson(res3);
-      if (!data3.ok) throw new Error(data3.error || t(lang, "errorSetup"));
+      for (let call = 0; call < 20; call++) {
+        const res3 = await fetchWithTimeout(
+          `/api/setup-shop?phase=finalize&setupId=${encodeURIComponent(setupId)}`,
+          120_000
+        );
+        const data3 = await safeJson(res3);
+        if (!data3.ok) throw new Error(data3.error || t(lang, "errorSetup"));
+        if (data3.done !== false) break;
+      }
 
       // ─── Success ───
       window.location.href = `/success?lang=${lang}&shop=${encodeURIComponent(shop)}`;

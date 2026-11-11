@@ -367,7 +367,8 @@ async function createAutomatedCollection(session: Session, title: string, handle
   return null;
 }
 
-async function createProductMedia(session: Session, productId: string, imageUrl: string, altText: string = ""): Promise<string | undefined> {
+/** Adds all the product images in one call (in order): one subrequest per product, not per image. */
+async function createProductMedia(session: Session, productId: string, imageUrls: string[]) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
     mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
@@ -379,63 +380,55 @@ async function createProductMedia(session: Session, productId: string, imageUrl:
       }
     }
   `;
-  const variables = { productId, media: [{
-    originalSource: imageUrl,
+  const variables = { productId, media: imageUrls.map((url) => ({
+    originalSource: url,
     mediaContentType: "IMAGE",
-    alt: altText
-  }]};
+    alt: "",
+  }))};
   const response: any = await client.request(query, { variables });
   const result = response?.data?.productCreateMedia;
   if (result?.mediaUserErrors?.length) {
     console.error(`[createProductMedia] errors for product ${productId}:`, JSON.stringify(result.mediaUserErrors));
   }
-  return result?.media?.[0]?.id;
 }
 
-/** Get all media for a product (id, status, url) */
-async function getAllProductMedia(session: Session, productId: string) {
+/** Ready product images and the variants, in one query (finalize). */
+async function getProductMediaAndVariants(session: Session, productId: string) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    query getProductMedia($id: ID!) {
+    query getProductMediaAndVariants($id: ID!) {
       product(id: $id) {
         media(first: 50) {
-          edges {
-            node {
-              ... on MediaImage {
-                id
-                status
-                image { url }
-              }
-            }
-          }
+          edges { node { ... on MediaImage { id status image { url } } } }
+        }
+        variants(first: 100) {
+          edges { node { id selectedOptions { name value } } }
         }
       }
     }
   `;
   const response: any = await client.request(query, { variables: { id: productId } });
-  return (response?.data?.product?.media?.edges ?? []).map((e: any) => e.node).filter(Boolean);
+  const product = response?.data?.product;
+  return {
+    media: (product?.media?.edges ?? []).map((e: any) => e.node).filter(Boolean),
+    variants: (product?.variants?.edges ?? []).map((e: any) => e.node),
+  };
 }
 
-/** Get all variant IDs for a product */
-async function getAllProductVariants(session: Session, productId: string) {
+/** Attaches an image to each listed variant, in one call per product. */
+async function appendMediaToVariants(session: Session, productId: string, variantMedia: { variantId: string; mediaIds: string[] }[]) {
   const client = new shopify.clients.Graphql({ session });
   const query = `
-    query getProductVariants($id: ID!) {
-      product(id: $id) {
-        variants(first: 100) {
-          edges {
-            node {
-              id
-              title
-              selectedOptions { name value }
-            }
-          }
-        }
+    mutation productVariantAppendMedia($productId: ID!, $variantMedia: [ProductVariantAppendMediaInput!]!) {
+      productVariantAppendMedia(productId: $productId, variantMedia: $variantMedia) {
+        userErrors { code field message }
       }
     }
   `;
-  const response: any = await client.request(query, { variables: { id: productId } });
-  return (response?.data?.product?.variants?.edges ?? []).map((e: any) => e.node);
+  const response: any = await client.request(query, { variables: { productId, variantMedia } });
+  if (response?.data?.productVariantAppendMedia?.userErrors?.length) {
+    console.error("Media attachment to variant error:", response.data.productVariantAppendMedia.userErrors);
+  }
 }
 
 /** Extract filename from a URL (ignoring query params) */
@@ -444,76 +437,6 @@ function getFilenameFromUrl(url: string): string {
     return new URL(url).pathname.split("/").pop() || "";
   } catch {
     return url.split("/").pop()?.split("?")[0] || "";
-  }
-}
-
-async function appendMediaToVariant(session: Session, productId: string, variantId: string, mediaId: string) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation productVariantAppendMedia($productId: ID!, $variantMedia: [ProductVariantAppendMediaInput!]!) {
-      productVariantAppendMedia(productId: $productId, variantMedia: $variantMedia) {
-        product { id }
-        productVariants {
-          id
-          media(first: 10) {
-            edges {
-              node {
-                mediaContentType
-                preview {
-                  image {
-                    url
-                  }
-                }
-              }
-            }
-          }
-        }
-        userErrors { code field message }
-      }
-    }
-  `;
-  const variables = {
-    productId,
-    variantMedia: [
-      {
-        variantId,
-        mediaIds: [mediaId]
-      }
-    ],
-  };
-  const response: any = await client.request(query, { variables });
-  if (response?.data?.productVariantAppendMedia?.userErrors?.length) {
-    console.error("Media attachment to variant error:", response.data.productVariantAppendMedia.userErrors);
-  }
-  return response?.data?.productVariantAppendMedia?.productVariants;
-}
-
-// Set inventory quantity for a variant
-async function disableInventoryTracking(session: Session, inventoryItemId: string) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    mutation inventoryItemUpdate($id: ID!, $input: InventoryItemInput!) {
-      inventoryItemUpdate(id: $id, input: $input) {
-        inventoryItem { id tracked }
-        userErrors { field message }
-      }
-    }
-  `;
-  const variables = {
-    id: inventoryItemId,
-    input: {
-      tracked: false,
-    },
-  };
-  try {
-    const response: any = await client.request(query, { variables });
-    if (response?.data?.inventoryItemUpdate?.userErrors?.length) {
-      console.error("[Inventory] userErrors:", JSON.stringify(response.data.inventoryItemUpdate.userErrors));
-    } else {
-      console.log(`[Inventory] Tracking disabled for ${inventoryItemId}`);
-    }
-  } catch (err: any) {
-    console.error(`[Inventory] Failed to disable tracking for ${inventoryItemId}: ${err?.message}`);
   }
 }
 
@@ -540,28 +463,6 @@ async function getPrimaryLocationId(session: Session): Promise<string | null> {
     console.warn(`[Location] Cannot access locations (missing scope?): ${err?.message}`);
   }
   return null;
-}
-
-// Get variant inventory item IDs for a product
-async function getVariantInventoryItems(session: Session, productId: string) {
-  const client = new shopify.clients.Graphql({ session });
-  const query = `
-    query getProductVariants($id: ID!) {
-      product(id: $id) {
-        variants(first: 100) {
-          edges {
-            node {
-              id
-              inventoryItem { id }
-              selectedOptions { name value }
-            }
-          }
-        }
-      }
-    }
-  `;
-  const response: any = await client.request(query, { variables: { id: productId } });
-  return (response?.data?.product?.variants?.edges ?? []).map((e: any) => e.node);
 }
 
 async function updateDefaultVariantWithSDK(
@@ -594,6 +495,7 @@ async function updateDefaultVariantWithSDK(
       cleanedVariant[field] = variant[field];
     }
   }
+  cleanedVariant.inventoryItem = { tracked: false }; // dropshipping: no stock to track
   const variables = {
     productId,
     variants: [cleanedVariant],
@@ -631,6 +533,7 @@ async function bulkCreateVariantsWithSDK(
         cleaned[field] = v[field];
       }
     }
+    cleaned.inventoryItem = { tracked: false }; // dropshipping: no stock to track
     return cleaned;
   });
   const variables = {
@@ -777,6 +680,9 @@ interface SetupState {
   productsByHandle: Record<string, any[]>;
   deferredVariantImages: { productId: string; variantRows: any[]; main: any }[];
   productsCreated: number;
+  /** Finalize runs over several requests: next deferredVariantImages entry, next idsToPublish entry. */
+  finalizeVariantIndex?: number;
+  finalizePublishIndex?: number;
 }
 
 async function saveSetupState(setupId: string, state: SetupState) {
@@ -959,8 +865,8 @@ export async function setupPhaseProducts({ session, setupId, batch }: { session:
 
       // Upload product images
       const allImages = [...new Set(group.map((row) => row["Image Src"]).filter(Boolean))];
-      for (const imgUrl of allImages) {
-        await createProductMedia(session, productId, normalizeImageUrl(imgUrl), "");
+      if (allImages.length) {
+        await createProductMedia(session, productId, allImages.map((url) => normalizeImageUrl(url)));
       }
 
       const variantEdges = productData?.variants?.edges;
@@ -999,11 +905,7 @@ export async function setupPhaseProducts({ session, setupId, batch }: { session:
         await updateDefaultVariantWithSDK(session, productId, variantEdges[0].node.id, main);
       }
 
-      // Disable inventory tracking
-      const variantsWithInventory = await getVariantInventoryItems(session, productId);
-      for (const v of variantsWithInventory) {
-        if (v.inventoryItem?.id) await disableInventoryTracking(session, v.inventoryItem.id);
-      }
+      // Inventory tracking is turned off in the variant mutations above (inventoryItem.tracked).
 
       // Collect variant image info
       const variantRows = group.filter(row => {
@@ -1028,21 +930,28 @@ export async function setupPhaseProducts({ session, setupId, batch }: { session:
   return { ok: true, created: state.productsCreated, total: state.productHandles.length };
 }
 
-// ─── PHASE 3: Finalize (variant images + publish) ───
-export async function setupPhaseFinalize({ session, setupId }: { session: Session; setupId: string }): Promise<{ ok: boolean; published: number }> {
+// ─── PHASE 3: Finalize (variant images + publish), over several requests ───
+// A Worker request may make 50 subrequests (Cloudflare Workers Free plan). Each call handles a
+// slice and returns done: false until everything is processed; the loader calls it again.
+const FINALIZE_PRODUCTS_PER_CALL = 8; // 2 Shopify calls per product
+const FINALIZE_PUBLISH_PER_CALL = 30;
+
+export async function setupPhaseFinalize({ session, setupId }: { session: Session; setupId: string }): Promise<{ ok: boolean; done: boolean; published: number }> {
   const state = await loadSetupState(setupId);
   if (!state) throw new Error("Setup state not found.");
 
   // Attach variant images
-  if (state.deferredVariantImages.length > 0) {
-    console.log(`[setupFinalize] Attaching variant images for ${state.deferredVariantImages.length} products...`);
-    for (const { productId, variantRows, main } of state.deferredVariantImages) {
+  const variantStart = state.finalizeVariantIndex ?? 0;
+  if (variantStart < state.deferredVariantImages.length) {
+    const slice = state.deferredVariantImages.slice(variantStart, variantStart + FINALIZE_PRODUCTS_PER_CALL);
+    console.log(`[setupFinalize] Variant images: products ${variantStart}-${variantStart + slice.length - 1} of ${state.deferredVariantImages.length}`);
+    for (const { productId, variantRows, main } of slice) {
       try {
-        const allMedia = await getAllProductMedia(session, productId);
-        const readyMedia = allMedia.filter((m: any) => m.status === "READY");
+        const { media, variants } = await getProductMediaAndVariants(session, productId);
+        const readyMedia = media.filter((m: any) => m.status === "READY");
         if (readyMedia.length === 0) continue;
-        const allVariants = await getAllProductVariants(session, productId);
 
+        const variantMedia: { variantId: string; mediaIds: string[] }[] = [];
         for (const row of variantRows) {
           const variantImageFilename = getFilenameFromUrl(normalizeImageUrl(row["Variant Image"]));
           const filenameBase = variantImageFilename.replace(/\.[^.]+$/, "");
@@ -1050,7 +959,7 @@ export async function setupPhaseFinalize({ session, setupId }: { session: Sessio
             m.image?.url && getFilenameFromUrl(m.image.url).includes(filenameBase)
           );
           if (!matchedMedia) continue;
-          const matchedVariant = allVariants.find((v: any) =>
+          const matchedVariant = variants.find((v: any) =>
             v.selectedOptions?.every((opt: any) => {
               for (let i = 1; i <= 3; i++) {
                 const csvOptName = main[`Option${i} Name`]?.trim();
@@ -1060,32 +969,43 @@ export async function setupPhaseFinalize({ session, setupId }: { session: Sessio
               return false;
             })
           );
-          if (matchedVariant) {
-            await appendMediaToVariant(session, productId, matchedVariant.id, matchedMedia.id);
+          if (matchedVariant && !variantMedia.some((vm) => vm.variantId === matchedVariant.id)) {
+            variantMedia.push({ variantId: matchedVariant.id, mediaIds: [matchedMedia.id] });
           }
         }
+        if (variantMedia.length) await appendMediaToVariants(session, productId, variantMedia);
       } catch (err) {
         console.error(`[VariantImages] Error for product ${productId}:`, err);
       }
     }
+    state.finalizeVariantIndex = variantStart + slice.length;
+    await saveSetupState(setupId, state);
+    return { ok: true, done: false, published: 0 };
   }
 
   // Retry resources that could not be published when they were created
   let published = 0;
-  if (state.idsToPublish.length > 0) {
+  const publishStart = state.finalizePublishIndex ?? 0;
+  if (publishStart < state.idsToPublish.length) {
+    const slice = state.idsToPublish.slice(publishStart, publishStart + FINALIZE_PUBLISH_PER_CALL);
     const onlineStorePublicationId = state.publicationId || await getOnlineStorePublicationId(session);
     if (onlineStorePublicationId) {
-      for (const resourceId of state.idsToPublish) {
+      for (const resourceId of slice) {
         if (await publishResource(session, resourceId, onlineStorePublicationId)) published++;
       }
     }
-    console.log(`[setupFinalize] Published ${published}/${state.idsToPublish.length} remaining resources.`);
+    console.log(`[setupFinalize] Published ${published}/${slice.length} remaining resources.`);
+    if (publishStart + slice.length < state.idsToPublish.length) {
+      state.finalizePublishIndex = publishStart + slice.length;
+      await saveSetupState(setupId, state);
+      return { ok: true, done: false, published };
+    }
   }
 
   // Clean up Redis state
   await deleteSetupState(setupId);
 
-  return { ok: true, published };
+  return { ok: true, done: true, published };
 }
 
 // ─── Legacy wrapper (kept for compatibility) ───
@@ -1094,5 +1014,5 @@ export async function setupShop({ session, lang = "fr" }: { session: Session; la
   for (let i = 0; i < totalBatches; i++) {
     await setupPhaseProducts({ session, setupId, batch: i });
   }
-  await setupPhaseFinalize({ session, setupId });
+  while (!(await setupPhaseFinalize({ session, setupId })).done) { /* next slice */ }
 }
