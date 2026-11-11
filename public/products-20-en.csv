@@ -1,4 +1,4 @@
-Handle;Title;Body (HTML);Vendor;Product Category;Type;Tags;Published;Option1 Name;Option1 Value;Option1 Linked To;Option2 Name;Option2 Value;Option2 Linked To;Option3 Name;Option3 Value;Option3 Linked To;Variant SKU;Variant Grams;Variant Inventory Tracker;Variant Inventory Qty;Variant Inventory Policy;Variant Fulfillment Service;Variant Price;Variant Compare At Price;Variant Requires Shipping;Variant Taxable;Unit Price Total Measure;Unit Price Total Measure Unit;Unit Price Base Measure;Unit Price Base Measure Unit;Variant Barcode;Image Src;Image Position;Image Alt Text;Gift Card;SEO Title;SEO Description;Variant Image;Variant Weight Unit;Variant Tax Code;Cost per item;Status
+Handle;Title;Body (HTML);Vendor;Product Category;Type;Tags;Published;Option1 Name;Option1 Value;Option1 Linked To;Option2 Name;Option2 Value;Option2 Linked To;Option3 Name;Option3 Value;Option3 Linked To;Variant SKU;Variant Grams;Variant Inventory Tracker;Variant Inventory Qty;Variant Inventory Policy;Variant Fulfillment Service;Variant Price;Variant Compare At Price;Variant Requires Shipping;Variant Taxable;Unit Price Total Measure;Unit Price Total Measure Unit;Unit Price Base Measure;Unit Price Base Measure Unit;Variant Barcode;Image Src;Image Position;Image Alt Text;Gift Card;SEO Title;SEO Description;Variant Image;Variant Weight Unit;Variant Tax Code;Cost per item;Status;Avis acheteurs (product.metafields.launchify.buyer_summary)
 cloud-slipper;Cloud slipper;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -65,8 +65,8 @@ cloud-slipper;Cloud slipper;"<h2 style=""text-align: center;"">
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Colour;Pink;;;;;;;;;0.0;;0;deny;manual;29.99;59.99;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/les-pantoufles-nuages-fr-rose-launchify-861156.jpg?v=1763745792;1;Les pantoufles nuages - Rose - Launchify;false;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/les-pantoufles-nuages-fr-rose-launchify-861156.jpg?v=1763745792;kg;;;active
-cloud-slipper;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/les-pantoufles-nuages-fr-rose-launchify-625371.jpg?v=1763745793;2;Les pantoufles nuages - Rose - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Colour;Pink;;;;;;;;;0.0;;0;deny;manual;29.99;59.99;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/les-pantoufles-nuages-fr-rose-launchify-861156.jpg?v=1763745792;1;Les pantoufles nuages - Rose - Launchify;false;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/les-pantoufles-nuages-fr-rose-launchify-861156.jpg?v=1763745792;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.3, ""count"": 1416, ""basis"": ""similar model""}], ""likes"": [""Very comfortable cloud-like feel"", ""Easy to wear at home or by the pool"", ""Easy to wash""], ""note"": ""They run small: order one size up."", ""count"": 1416, ""rating"": 4.3}"
+cloud-slipper;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/les-pantoufles-nuages-fr-rose-launchify-625371.jpg?v=1763745793;2;Les pantoufles nuages - Rose - Launchify;;;;;;;;;
 at-home-hydrafacial-device;At Home Hydrafacial Device;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -131,9 +131,9 @@ at-home-hydrafacial-device;At Home Hydrafacial Device;"<h2 style=""text-align: c
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;49.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/dispositif-hydrafacial-portable-beaute-soins-launchify-424934.jpg?v=1763745794;1;Dispositif Hydrafacial portable - Launchify;false;;;;kg;;;active
-at-home-hydrafacial-device;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/dispositif-hydrafacial-portable-beaute-soins-launchify-633738.jpg?v=1763745794;2;Dispositif Hydrafacial portable - Launchify;;;;;;;;
-at-home-hydrafacial-device;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/dispositif-hydrafacial-portable-beaute-soins-launchify-419632.jpg?v=1763745793;3;Dispositif Hydrafacial portable - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;49.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/dispositif-hydrafacial-portable-beaute-soins-launchify-424934.jpg?v=1763745794;1;Dispositif Hydrafacial portable - Launchify;false;;;;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.4, ""count"": 144, ""basis"": ""similar model""}], ""likes"": [""Easy to use"", ""Several tips and suction levels"", ""Good value for money""], ""note"": ""Start on level 1 and keep moving: higher levels can leave temporary redness."", ""count"": 144, ""rating"": 4.4}"
+at-home-hydrafacial-device;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/dispositif-hydrafacial-portable-beaute-soins-launchify-633738.jpg?v=1763745794;2;Dispositif Hydrafacial portable - Launchify;;;;;;;;;
+at-home-hydrafacial-device;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/dispositif-hydrafacial-portable-beaute-soins-launchify-419632.jpg?v=1763745793;3;Dispositif Hydrafacial portable - Launchify;;;;;;;;;
 5-in-1-hair-styler;5-in-1 hair styler;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -198,9 +198,9 @@ at-home-hydrafacial-device;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.co
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;59.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-boucleur-5-en-1-beaute-soins-launchify-550926.jpg?v=1763745794;1;Le boucleur 5 - en - 1 - Launchify;false;;;;kg;;;active
-5-in-1-hair-styler;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-boucleur-5-en-1-beaute-soins-launchify-587922.jpg?v=1763745794;2;Le boucleur 5 - en - 1 - Launchify;;;;;;;;
-5-in-1-hair-styler;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-boucleur-5-en-1-beaute-soins-launchify-615114.jpg?v=1763745794;3;Le boucleur 5 - en - 1 - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;59.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-boucleur-5-en-1-beaute-soins-launchify-550926.jpg?v=1763745794;1;Le boucleur 5 - en - 1 - Launchify;false;;;;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.1, ""count"": 305, ""basis"": ""similar model""}], ""likes"": [""Dries and styles in one tool"", ""Very effective for blow-outs"", ""Nice finish, good gift""], ""note"": ""The curling function takes practice, and it's fairly loud."", ""count"": 305, ""rating"": 4.1}"
+5-in-1-hair-styler;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-boucleur-5-en-1-beaute-soins-launchify-587922.jpg?v=1763745794;2;Le boucleur 5 - en - 1 - Launchify;;;;;;;;;
+5-in-1-hair-styler;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-boucleur-5-en-1-beaute-soins-launchify-615114.jpg?v=1763745794;3;Le boucleur 5 - en - 1 - Launchify;;;;;;;;;
 eyebrow-trimmer;Eyebrow Trimmer;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -265,9 +265,9 @@ eyebrow-trimmer;Eyebrow Trimmer;"<h2 style=""text-align: center;"">
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;29.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/taille-sourcils-electrique-beaute-soins-launchify-469510.jpg?v=1763745795;1;Taille - sourcils électrique - Launchify;false;;;;kg;;;active
-eyebrow-trimmer;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/taille-sourcils-electrique-beaute-soins-launchify-785236.jpg?v=1763745795;2;Taille - sourcils électrique - Launchify;;;;;;;;
-eyebrow-trimmer;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/taille-sourcils-electrique-beaute-soins-launchify-873100.jpg?v=1763745795;3;Taille - sourcils électrique - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;29.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/taille-sourcils-electrique-beaute-soins-launchify-469510.jpg?v=1763745795;1;Taille - sourcils électrique - Launchify;false;;;;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.5, ""count"": 5551, ""basis"": ""similar model""}], ""likes"": [""Precise, neat brows in 5 minutes"", ""Painless"", ""Rechargeable and compact""], ""note"": ""For a clean result, use on clean, dry skin."", ""count"": 5551, ""rating"": 4.5}"
+eyebrow-trimmer;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/taille-sourcils-electrique-beaute-soins-launchify-785236.jpg?v=1763745795;2;Taille - sourcils électrique - Launchify;;;;;;;;;
+eyebrow-trimmer;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/taille-sourcils-electrique-beaute-soins-launchify-873100.jpg?v=1763745795;3;Taille - sourcils électrique - Launchify;;;;;;;;;
 microcurrent-toning-device;Microcurrent toning device;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -332,8 +332,8 @@ microcurrent-toning-device;Microcurrent toning device;"<h2 style=""text-align: c
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Colour;Pink;;;;;;;;;0.0;;0;deny;manual;39.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/appareil-de-soin-tonifiant-visage-beaute-soins-pink-launchify-847353.jpg?v=1763745798;1;Appareil de soin tonifiant visage - Pink - Launchify;false;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/appareil-de-soin-tonifiant-visage-beaute-soins-pink-launchify-847353.jpg?v=1763745798;kg;;;active
-microcurrent-toning-device;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/appareil-de-soin-tonifiant-visage-beaute-soins-white-launchify-936751.jpg?v=1763745799;2;Appareil de soin tonifiant visage - White - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Colour;Pink;;;;;;;;;0.0;;0;deny;manual;39.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/appareil-de-soin-tonifiant-visage-beaute-soins-pink-launchify-847353.jpg?v=1763745798;1;Appareil de soin tonifiant visage - Pink - Launchify;false;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/appareil-de-soin-tonifiant-visage-beaute-soins-pink-launchify-847353.jpg?v=1763745798;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.0, ""count"": 2474, ""basis"": ""similar model""}], ""likes"": [""Easy to fit into an evening routine"", ""Results described as visible with regular use"", ""Compact, well-finished device""], ""note"": ""The happiest reviewers use it daily: it's a routine, not an instant fix."", ""count"": 2474, ""rating"": 4.0}"
+microcurrent-toning-device;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/appareil-de-soin-tonifiant-visage-beaute-soins-white-launchify-936751.jpg?v=1763745799;2;Appareil de soin tonifiant visage - White - Launchify;;;;;;;;;
 menstrual-relief-belt;Menstrual Relief Belt;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -398,9 +398,9 @@ menstrual-relief-belt;Menstrual Relief Belt;"<h2 style=""text-align: center;"">
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;49.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/ceinture-menstruelle-fr-launchify-563176.jpg?v=1763745800;1;Ceinture menstruelle - Launchify;false;;;;kg;;;active
-menstrual-relief-belt;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/ceinture-menstruelle-fr-launchify-765007.jpg?v=1763745800;2;Ceinture menstruelle - Launchify;;;;;;;;
-menstrual-relief-belt;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/ceinture-menstruelle-fr-launchify-928088.jpg?v=1763745799;3;Ceinture menstruelle - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;49.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/ceinture-menstruelle-fr-launchify-563176.jpg?v=1763745800;1;Ceinture menstruelle - Launchify;false;;;;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.4, ""count"": 1884, ""basis"": ""similar model""}], ""likes"": [""Warmth and vibration are much appreciated"", ""Several hours of battery reported"", ""Excellent value""], ""note"": ""The battery drains faster on high settings; how it feels varies from person to person."", ""count"": 1884, ""rating"": 4.4}"
+menstrual-relief-belt;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/ceinture-menstruelle-fr-launchify-765007.jpg?v=1763745800;2;Ceinture menstruelle - Launchify;;;;;;;;;
+menstrual-relief-belt;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/ceinture-menstruelle-fr-launchify-928088.jpg?v=1763745799;3;Ceinture menstruelle - Launchify;;;;;;;;;
 hair-fibers;Hair Fibers;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -465,8 +465,8 @@ hair-fibers;Hair Fibers;"<h2 style=""text-align: center;"">
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;39.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/fibres-capillaires-beaute-soins-launchify-954803.jpg?v=1763745800;1;Fibres capillaires - Launchify;false;;;;kg;;;active
-hair-fibers;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/fibres-capillaires-beaute-soins-launchify-169885.jpg?v=1763745800;2;Fibres capillaires - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;39.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/fibres-capillaires-beaute-soins-launchify-954803.jpg?v=1763745800;1;Fibres capillaires - Launchify;false;;;;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.0, ""count"": 54999, ""basis"": ""similar model""}], ""likes"": [""Instant fuller look"", ""Discreet, natural result"", ""Doesn't weigh hair down""], ""note"": ""Pick the right shade and apply to dry hair; it takes a little practice at first."", ""count"": 54999, ""rating"": 4.0}"
+hair-fibers;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/fibres-capillaires-beaute-soins-launchify-169885.jpg?v=1763745800;2;Fibres capillaires - Launchify;;;;;;;;;
 electric-callus-remover;Electric callus remover;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -531,9 +531,9 @@ electric-callus-remover;Electric callus remover;"<h2 style=""text-align: center;
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;49.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/rape-a-pied-electrique-beaute-soins-launchify-327533.jpg?v=1763745802;1;Rape à pied électrique - Launchify;false;;;;kg;;;active
-electric-callus-remover;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/rape-a-pied-electrique-beaute-soins-launchify-356473.jpg?v=1763745802;2;Rape à pied électrique - Launchify;;;;;;;;
-electric-callus-remover;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/rape-a-pied-electrique-beaute-soins-launchify-934588.webp?v=1763745802;3;Rape à pied électrique - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;49.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/rape-a-pied-electrique-beaute-soins-launchify-327533.jpg?v=1763745802;1;Rape à pied électrique - Launchify;false;;;;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.4, ""count"": 34329, ""basis"": ""similar model""}], ""likes"": [""Salon-like results at home"", ""Quick and simple"", ""Affordable""], ""note"": ""Very thick calluses need several passes."", ""count"": 34329, ""rating"": 4.4}"
+electric-callus-remover;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/rape-a-pied-electrique-beaute-soins-launchify-356473.jpg?v=1763745802;2;Rape à pied électrique - Launchify;;;;;;;;;
+electric-callus-remover;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/rape-a-pied-electrique-beaute-soins-launchify-934588.webp?v=1763745802;3;Rape à pied électrique - Launchify;;;;;;;;;
 heatless-hair-curler-kit;Heatless hair curler kit;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -598,11 +598,11 @@ heatless-hair-curler-kit;Heatless hair curler kit;"<h2 style=""text-align: cente
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Color;Pink;;;;;;;;;0.0;;0;deny;manual;29.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/kit-de-frisage-sans-chaleur-beaute-soins-rose-launchify-658350.jpg?v=1763745803;1;Kit de frisage sans chaleur - Rose - Launchify;false;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/kit-de-frisage-sans-chaleur-beaute-soins-rose-launchify-658350.jpg?v=1763745803;kg;;;active
-heatless-hair-curler-kit;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/kit-de-frisage-sans-chaleur-beaute-soins-rose-launchify-738619.jpg?v=1763745803;2;Kit de frisage sans chaleur - Rose - Launchify;;;;;;;;
-heatless-hair-curler-kit;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/kit-de-frisage-sans-chaleur-beaute-soins-rose-launchify-848547.jpg?v=1763745803;3;Kit de frisage sans chaleur - Rose - Launchify;;;;;;;;
-heatless-hair-curler-kit;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/kit-de-frisage-sans-chaleur-beaute-soins-rose-launchify-631728.jpg?v=1763745803;4;Kit de frisage sans chaleur - Rose - Launchify;;;;;;;;
-heatless-hair-curler-kit;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/kit-de-frisage-sans-chaleur-beaute-soins-rose-launchify-767776.jpg?v=1763745803;5;Kit de frisage sans chaleur - Rose - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Color;Pink;;;;;;;;;0.0;;0;deny;manual;29.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/kit-de-frisage-sans-chaleur-beaute-soins-rose-launchify-658350.jpg?v=1763745803;1;Kit de frisage sans chaleur - Rose - Launchify;false;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/kit-de-frisage-sans-chaleur-beaute-soins-rose-launchify-658350.jpg?v=1763745803;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 3.6, ""count"": 6256, ""basis"": ""similar model""}], ""likes"": [""Heat-free curls overnight"", ""Comfortable to sleep in"", ""Nice result once you have the technique""], ""note"": ""Ratings are lower because hair can slip: wrap thin sections on slightly damp hair."", ""count"": 6256, ""rating"": 3.6}"
+heatless-hair-curler-kit;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/kit-de-frisage-sans-chaleur-beaute-soins-rose-launchify-738619.jpg?v=1763745803;2;Kit de frisage sans chaleur - Rose - Launchify;;;;;;;;;
+heatless-hair-curler-kit;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/kit-de-frisage-sans-chaleur-beaute-soins-rose-launchify-848547.jpg?v=1763745803;3;Kit de frisage sans chaleur - Rose - Launchify;;;;;;;;;
+heatless-hair-curler-kit;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/kit-de-frisage-sans-chaleur-beaute-soins-rose-launchify-631728.jpg?v=1763745803;4;Kit de frisage sans chaleur - Rose - Launchify;;;;;;;;;
+heatless-hair-curler-kit;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/kit-de-frisage-sans-chaleur-beaute-soins-rose-launchify-767776.jpg?v=1763745803;5;Kit de frisage sans chaleur - Rose - Launchify;;;;;;;;;
 heated-lash-curler;Heated Lash Curler;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -667,7 +667,7 @@ heated-lash-curler;Heated Lash Curler;"<h2 style=""text-align: center;"">
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Colour;Pink;;;;;;;;;0.0;;0;deny;manual;24.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/recourbe-cils-chauffant-beaute-soins-rose-launchify-729773.jpg?v=1763745803;1;Recourbe - cils chauffant - Rose - Launchify;false;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/recourbe-cils-chauffant-beaute-soins-rose-launchify-729773.jpg?v=1763745803;kg;;;active
+</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Colour;Pink;;;;;;;;;0.0;;0;deny;manual;24.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/recourbe-cils-chauffant-beaute-soins-rose-launchify-729773.jpg?v=1763745803;1;Recourbe - cils chauffant - Rose - Launchify;false;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/recourbe-cils-chauffant-beaute-soins-rose-launchify-729773.jpg?v=1763745803;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.2, ""count"": 102, ""basis"": ""similar model""}], ""likes"": [""Works even on straight lashes"", ""Light and easy to handle"", ""Several heat levels""], ""note"": ""Hold varies: a coat of mascara helps set the curl."", ""count"": 102, ""rating"": 4.2}"
 snooze-cap;Migraine Cap;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -732,9 +732,9 @@ snooze-cap;Migraine Cap;"<h2 style=""text-align: center;"">
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Color;Black;;;;;;;;;0.0;;0;deny;manual;39.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/bonnet-anti-migraine-fr-launchify-985763.jpg?v=1763745805;1;Bonnet anti - migraine - Launchify;false;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/bonnet-anti-migraine-fr-launchify-192636.jpg?v=1763745805;kg;;;active
-snooze-cap;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/bonnet-anti-migraine-fr-launchify-192636.jpg?v=1763745805;2;Bonnet anti - migraine - Launchify;;;;;;;;
-snooze-cap;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/bonnet-anti-migraine-fr-launchify-361962.jpg?v=1763745805;3;Bonnet anti - migraine - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Color;Black;;;;;;;;;0.0;;0;deny;manual;39.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/bonnet-anti-migraine-fr-launchify-985763.jpg?v=1763745805;1;Bonnet anti - migraine - Launchify;false;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/bonnet-anti-migraine-fr-launchify-192636.jpg?v=1763745805;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.5, ""count"": 13399, ""basis"": ""similar model""}], ""likes"": [""Wrap-around cold and pressure is a favourite"", ""Soft, comfortable, no smell"", ""Keeps ready to use in the fridge""], ""note"": ""The cold lasts a limited time: put it back in the fridge between uses. Can feel snug on larger heads."", ""count"": 13399, ""rating"": 4.5}"
+snooze-cap;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/bonnet-anti-migraine-fr-launchify-192636.jpg?v=1763745805;2;Bonnet anti - migraine - Launchify;;;;;;;;;
+snooze-cap;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/bonnet-anti-migraine-fr-launchify-361962.jpg?v=1763745805;3;Bonnet anti - migraine - Launchify;;;;;;;;;
 4-in-1-makeup-pen;4 in 1 Makeup Pen;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -799,9 +799,9 @@ snooze-cap;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;24.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-stylo-magique-4-en-1-beaute-soins-launchify-518976.jpg?v=1763745808;1;Le stylo magique 4 - en - 1 - Launchify;false;;;;kg;;;active
-4-in-1-makeup-pen;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-stylo-magique-4-en-1-4pen.jpg?v=1763750111;2;;;;;;;;;
-4-in-1-makeup-pen;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-stylo-magique-4-en-1-benefits.png?v=1763750112;3;;;;;;;;;
+</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;24.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-stylo-magique-4-en-1-beaute-soins-launchify-518976.jpg?v=1763745808;1;Le stylo magique 4 - en - 1 - Launchify;false;;;;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 3.9, ""count"": 685, ""basis"": ""similar model""}], ""likes"": [""4 products in one, perfect for your bag"", ""Good colour payoff"", ""Handy for touch-ups""], ""note"": ""Less precise than a dedicated pencil; it takes a little practice."", ""count"": 685, ""rating"": 3.9}"
+4-in-1-makeup-pen;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-stylo-magique-4-en-1-4pen.jpg?v=1763750111;2;;;;;;;;;;
+4-in-1-makeup-pen;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-stylo-magique-4-en-1-benefits.png?v=1763750112;3;;;;;;;;;;
 4d-insoles;4D Insoles;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -866,8 +866,8 @@ snooze-cap;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;29.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/semelles-4d-fr-launchify-372966.jpg?v=1763745809;1;Semelles 4D - Launchify;false;;;;kg;;;active
-4d-insoles;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/semelles-4d-fr-launchify-869945.jpg?v=1763745809;2;Semelles 4D - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;29.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/semelles-4d-fr-launchify-372966.jpg?v=1763745809;1;Semelles 4D - Launchify;false;;;;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.5, ""count"": 2163, ""basis"": ""similar model""}], ""likes"": [""Very comfortable for long hours on your feet"", ""Great cushioning in work shoes"", ""Soft from day one""], ""note"": ""These are comfort insoles, not custom orthotics."", ""count"": 2163, ""rating"": 4.5}"
+4d-insoles;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/semelles-4d-fr-launchify-869945.jpg?v=1763745809;2;Semelles 4D - Launchify;;;;;;;;;
 beard-straightener;Beard Straightener;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -932,8 +932,8 @@ beard-straightener;Beard Straightener;"<h2 style=""text-align: center;"">
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;49.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-lisseur-a-barbe-beaute-soins-launchify-368329.jpg?v=1763745809;1;Le lisseur à barbe - Launchify;false;;;;kg;;;active
-beard-straightener;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-lisseur-a-barbe-beaute-soins-launchify-919155.jpg?v=1763745810;2;Le lisseur à barbe - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;49.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-lisseur-a-barbe-beaute-soins-launchify-368329.jpg?v=1763745809;1;Le lisseur à barbe - Launchify;false;;;;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.3, ""count"": 7201, ""basis"": ""similar model""}], ""likes"": [""Heats up very fast"", ""Tames unruly beards"", ""Works on hair too""], ""note"": ""Works best on medium to long beards rather than short ones."", ""count"": 7201, ""rating"": 4.3}"
+beard-straightener;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/le-lisseur-a-barbe-beaute-soins-launchify-919155.jpg?v=1763745810;2;Le lisseur à barbe - Launchify;;;;;;;;;
 automatic-cordless-hair-curler;Automatic Cordless Hair Curler;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -998,9 +998,9 @@ automatic-cordless-hair-curler;Automatic Cordless Hair Curler;"<h2 style=""text-
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;49.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/boucleur-automatique-sans-fil-beaute-soins-launchify-716133.jpg?v=1763745812;1;Boucleur automatique sans fil - Launchify;false;;;;kg;;;active
-automatic-cordless-hair-curler;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/boucleur-automatique-sans-fil-beaute-soins-launchify-873735.jpg?v=1763745812;2;Boucleur automatique sans fil - Launchify;;;;;;;;
-automatic-cordless-hair-curler;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/boucleur-automatique-sans-fil-beaute-soins-launchify-190677.jpg?v=1763745812;3;Boucleur automatique sans fil - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;Beauty & care, EN;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;49.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/boucleur-automatique-sans-fil-beaute-soins-launchify-716133.jpg?v=1763745812;1;Boucleur automatique sans fil - Launchify;false;;;;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.6, ""count"": 18479, ""basis"": ""similar model""}], ""likes"": [""Very easy, even for people who never style their hair"", ""Nice curls in about ten minutes"", ""Great value for money""], ""note"": ""A few reviewers found it less suited to very short or very damaged hair."", ""count"": 18479, ""rating"": 4.6}"
+automatic-cordless-hair-curler;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/boucleur-automatique-sans-fil-beaute-soins-launchify-873735.jpg?v=1763745812;2;Boucleur automatique sans fil - Launchify;;;;;;;;;
+automatic-cordless-hair-curler;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/boucleur-automatique-sans-fil-beaute-soins-launchify-190677.jpg?v=1763745812;3;Boucleur automatique sans fil - Launchify;;;;;;;;;
 absorbent-bathroom-mat;Magic Bathroom Mat;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -1065,8 +1065,8 @@ absorbent-bathroom-mat;Magic Bathroom Mat;"<h2 style=""text-align: center;"">
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Color;Blue;;;;;;;;;0.0;;0;deny;manual;39.99;79.99;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/tapis-de-salle-de-bain-magique-fr-blue-launchify-525889.jpg?v=1763745813;1;Tapis de salle de bain magique - Blue - Launchify;false;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/tapis-de-salle-de-bain-magique-fr-blue-launchify-525889.jpg?v=1763745813;kg;;;active
-absorbent-bathroom-mat;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/tapis-de-salle-de-bain-magique-fr-blue-launchify-342828.jpg?v=1763745813;2;Tapis de salle de bain magique - Blue - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Color;Blue;;;;;;;;;0.0;;0;deny;manual;39.99;79.99;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/tapis-de-salle-de-bain-magique-fr-blue-launchify-525889.jpg?v=1763745813;1;Tapis de salle de bain magique - Blue - Launchify;false;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/tapis-de-salle-de-bain-magique-fr-blue-launchify-525889.jpg?v=1763745813;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.4, ""count"": 6115, ""basis"": ""similar model""}], ""likes"": [""Soft and plush underfoot"", ""Absorbent and non-slip"", ""Machine washable""], ""note"": ""It soaks up a lot: let it dry well between showers."", ""count"": 6115, ""rating"": 4.4}"
+absorbent-bathroom-mat;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/tapis-de-salle-de-bain-magique-fr-blue-launchify-342828.jpg?v=1763745813;2;Tapis de salle de bain magique - Blue - Launchify;;;;;;;;;
 headband-sleeping-mask;Earphone Sleeping Mask;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -1120,7 +1120,7 @@ headband-sleeping-mask;Earphone Sleeping Mask;"<h2 style=""text-align: center;""
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;29.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/masque-de-sommeil-avec-ecouteurs-integres-fr-launchify-579547.jpg?v=1763745814;1;Masque de sommeil avec écouteurs intégrés - Launchify;false;;;;kg;;;active
+</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;29.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/masque-de-sommeil-avec-ecouteurs-integres-fr-launchify-579547.jpg?v=1763745814;1;Masque de sommeil avec écouteurs intégrés - Launchify;false;;;;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.2, ""count"": 22794, ""basis"": ""similar model""}], ""likes"": [""Very comfortable, you forget you're wearing it"", ""Blocks light well"", ""Good Bluetooth sound""], ""note"": ""The speakers are flat and built in: sound is headband-level, not headphone-level."", ""count"": 22794, ""rating"": 4.2}"
 sandscape-moving-sand;Sandscape Moving Sand;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -1185,8 +1185,8 @@ sandscape-moving-sand;Sandscape Moving Sand;"<h2 style=""text-align: center;"">
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Color;Blue;;;;;;;;;0.0;;0;deny;manual;49.99;99.99;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/sandscape-sable-en-mouvement-fr-bleu-launchify-113453.jpg?v=1763745815;1;Sandscape - Sable en mouvement - Bleu - Launchify;false;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/sandscape-sable-en-mouvement-fr-bleu-launchify-113453.jpg?v=1763745815;kg;;;active
-sandscape-moving-sand;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/sandscape-sable-en-mouvement-fr-violet-launchify-918311.jpg?v=1763745815;2;Sandscape - Sable en mouvement - Violet - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Color;Blue;;;;;;;;;0.0;;0;deny;manual;49.99;99.99;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/sandscape-sable-en-mouvement-fr-bleu-launchify-113453.jpg?v=1763745815;1;Sandscape - Sable en mouvement - Bleu - Launchify;false;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/sandscape-sable-en-mouvement-fr-bleu-launchify-113453.jpg?v=1763745815;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.0, ""count"": 1380, ""basis"": ""similar model""}], ""likes"": [""Mesmerising to watch"", ""Beautiful decor piece"", ""Still working after months""], ""note"": ""The air level may need a small adjustment on arrival for perfect flow."", ""count"": 1380, ""rating"": 4.0}"
+sandscape-moving-sand;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/sandscape-sable-en-mouvement-fr-violet-launchify-918311.jpg?v=1763745815;2;Sandscape - Sable en mouvement - Violet - Launchify;;;;;;;;;
 mini-car-vacuum-cleaner;Mini Car Vacuum Cleaner;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -1252,8 +1252,8 @@ mini-car-vacuum-cleaner;Mini Car Vacuum Cleaner;"<h2 style=""text-align: center;
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;49.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/mini-aspirateur-de-voiture-fr-launchify-532915.jpg?v=1763745817;1;Mini aspirateur de voiture - Launchify;false;;;;kg;;;active
-mini-car-vacuum-cleaner;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/mini-aspirateur-de-voiture-fr-launchify-732986.jpg?v=1763745817;2;Mini aspirateur de voiture - Launchify;;;;;;;;
+</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Title;Default Title;;;;;;;;;0.0;;0;deny;manual;49.99;;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/mini-aspirateur-de-voiture-fr-launchify-532915.jpg?v=1763745817;1;Mini aspirateur de voiture - Launchify;false;;;;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 4.7, ""count"": 319, ""basis"": ""similar model""}], ""likes"": [""Powerful for its size"", ""Easy to handle, ideal for the car"", ""Lots of attachments""], ""note"": ""Made for quick clean-ups, not to replace a full-size vacuum."", ""count"": 319, ""rating"": 4.7}"
+mini-car-vacuum-cleaner;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/mini-aspirateur-de-voiture-fr-launchify-732986.jpg?v=1763745817;2;Mini aspirateur de voiture - Launchify;;;;;;;;;
 2-in-1-smartwatch-earpods;2 in 1 Smartwatch & Earpods;"<h2 style=""text-align: center;"">
 <strong></strong><br>
 </h2>
@@ -1318,4 +1318,4 @@ mini-car-vacuum-cleaner;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;https://cdn.shopify.com/s
 <span style=""font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; font-size: 0.875rem;""><span>  </span></span><strong></strong>
 </div>
 </div>
-</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Color;Black;;;;;;;;;0.0;;0;deny;manual;49.99;99.99;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/montre-connectee-et-ecouteurs-2-en-1-fr-gris-fonce-launchify-449673.jpg?v=1763745820;1;Montre connectée et écouteurs 2 - en - 1 - Gris foncé - Launchify;false;;;;kg;;;active
+</div>";OneScale;Uncategorized;;EN, Home & Comfort;true;Color;Black;;;;;;;;;0.0;;0;deny;manual;49.99;99.99;true;true;;;;;;https://cdn.shopify.com/s/files/1/1012/9765/2051/files/montre-connectee-et-ecouteurs-2-en-1-fr-gris-fonce-launchify-449673.jpg?v=1763745820;1;Montre connectée et écouteurs 2 - en - 1 - Gris foncé - Launchify;false;;;;kg;;;active;"{""lang"": ""en"", ""sources"": [{""site"": ""Amazon.fr"", ""rating"": 3.4, ""count"": 155, ""basis"": ""similar model""}], ""likes"": [""Clever concept: earbuds stored in the watch"", ""A great surprise gift"", ""Good finish""], ""note"": ""Battery life is short with every feature on: switch off the ones you don't need."", ""count"": 155, ""rating"": 3.4}"

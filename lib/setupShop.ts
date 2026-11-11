@@ -232,7 +232,7 @@ function normalizeImageUrl(url: string): string {
     .replace("auto-shopify-setup-launchifyapp.vercel.app", "auto-shopify-setup.vercel.app");
 }
 
-function extractCheckboxMetafields(row: any): any[] {
+function extractProductMetafields(row: any): any[] {
   const metafields: any[] = [];
   if (row["Checkbox 1 (product.metafields.custom.checkbox_1)"] !== undefined) {
     metafields.push({
@@ -256,6 +256,20 @@ function extractCheckboxMetafields(row: any): any[] {
       key: "checkbox_3",
       type: "single_line_text_field",
       value: row["Checkbox 3 (product.metafields.custom.checkbox_3)"].toString()
+    });
+  }
+  // Other "Label (product.metafields.<namespace>.<key>)" columns, e.g. the buyer-review
+  // summary (launchify.buyer_summary). JSON values are stored as json metafields.
+  for (const [column, raw] of Object.entries(row)) {
+    const m = column.match(/\(product\.metafields\.([\w-]+)\.([\w-]+)\)\s*$/);
+    if (!m || m[1] === "custom" && /^checkbox_\d$/.test(m[2])) continue;
+    const value = raw == null ? "" : String(raw).trim();
+    if (!value) continue;
+    metafields.push({
+      namespace: m[1],
+      key: m[2],
+      type: /^[\[{]/.test(value) ? "json" : "multi_line_text_field",
+      value,
     });
   }
   return metafields;
@@ -910,7 +924,7 @@ export async function setupPhaseProducts({ session, setupId, batch }: { session:
     }
     const productOptionsOrUndefined = productOptions.length ? productOptions : undefined;
     const handleUnique = handle + "-" + Math.random().toString(16).slice(2, 7);
-    const productMetafields = extractCheckboxMetafields(main);
+    const productMetafields = extractProductMetafields(main);
 
     const product: any = {
       title: main.Title,

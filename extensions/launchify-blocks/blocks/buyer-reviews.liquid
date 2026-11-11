@@ -1,0 +1,166 @@
+{%- comment -%}
+  "Ce que les acheteurs en disent" — synthesis of PUBLIC reviews (Amazon.fr / AliExpress) for this
+  product or an equivalent model, stored by the Launchify import in the product metafield
+  launchify.buyer_summary (json): {"lang", "sources": [{"site", "rating", "count", "basis"}], "likes", "note"}.
+  Renders nothing for products without a summary. Self-contained styles so it works in any OS 2.0 theme.
+{%- endcomment -%}
+{%- liquid
+  assign d = product.metafields.launchify.buyer_summary.value
+  assign rv = product.metafields.launchify.buyer_reviews.value
+  assign fr = false
+  if d.lang == 'fr'
+    assign fr = true
+  elsif d == blank and request.locale.iso_code contains 'fr'
+    assign fr = true
+  endif
+  if fr
+    assign sep = '&nbsp;'
+  else
+    assign sep = ','
+  endif
+-%}
+{%- if d != blank or rv.items.size > 0 -%}
+<section id="lf-buyer-reviews" class="lfbr" style="--lfbr-bg: {{ block.settings.bg_color }}; --lfbr-card: {{ block.settings.card_color }}; --lfbr-fg: {{ block.settings.text_color }}; --lfbr-accent: {{ block.settings.accent_color }}; --lfbr-star: {{ block.settings.star_color }};">
+  <div class="lfbr__inner">
+    {%- if d != blank -%}
+    <h2 class="lfbr__title">{% if fr %}{{ block.settings.heading }}{% else %}{{ block.settings.heading_en }}{% endif %}</h2>
+    <div class="lfbr__grid">
+      {%- liquid
+        assign sites = d.sources | map: 'site' | uniq | join: ' + '
+        assign pct = d.rating | times: 20
+        assign k = d.count | divided_by: 1000 | floor
+        assign rest = d.count | modulo: 1000 | append: '' | prepend: '00' | slice: -3, 3
+        if fr
+          assign score = d.rating | append: '' | replace: '.', ','
+        else
+          assign score = d.rating
+        endif
+      -%}
+      <div class="lfbr__sources">
+        <div class="lfbr__src">
+          <div class="lfbr__score">{{ score }}<span>/5</span></div>
+          <span class="lfbr__stars" style="--lfbr-pct: {{ pct }}%" role="img" aria-label="{{ score }} / 5"></span>
+          <p class="lfbr__srcname"><strong>{% if d.count >= 1000 %}{{ k }}{{ sep }}{{ rest }}{% else %}{{ d.count }}{% endif %} {% if fr %}avis{% else %}reviews{% endif %}</strong></p>
+          <p class="lfbr__basis">{{ sites }}</p>
+        </div>
+      </div>
+      <div class="lfbr__body">
+        <h3 class="lfbr__h3">{% if fr %}Ce qu'ils apprécient le plus{% else %}What they like most{% endif %}</h3>
+        <ul class="lfbr__likes">
+          {%- for like in d.likes -%}<li>{{ like }}</li>{%- endfor -%}
+        </ul>
+        {%- if d.note != blank -%}
+          <div class="lfbr__note">
+            <strong>{% if fr %}Bon à savoir{% else %}Good to know{% endif %}</strong>
+            <p>{{ d.note }}</p>
+          </div>
+        {%- endif -%}
+      </div>
+    </div>
+    {%- assign sites = d.sources | map: 'site' | uniq | join: ' et ' -%}
+    <p class="lfbr__legal">
+      {%- if fr -%}
+        {% if d.sources.size > 1 %}Note combinée (moyenne pondérée par le nombre d'avis) et synthèse{% else %}Note et synthèse{% endif %} établies par notre équipe à partir des avis publiés sur {{ sites }} pour ce modèle ou un modèle équivalent. Ces avis ne portent pas sur les commandes passées dans notre boutique.
+      {%- else -%}
+        {% if d.sources.size > 1 %}Combined rating (weighted by number of reviews) and summary{% else %}Rating and summary{% endif %} compiled by our team from reviews published on {{ sites | replace: ' et ', ' and ' }} for this or an equivalent model. These reviews are not about orders placed in our store.
+      {%- endif -%}
+    </p>
+    {%- endif -%}
+    {%- if rv.items.size > 0 -%}
+      {%- assign shown = block.settings.reviews_shown | default: 6 -%}
+      {%- assign more = rv.items.size | minus: shown -%}
+      <div class="lfbr__rv">
+        <h3 class="lfbr__h3 lfbr__rvh">{% if fr %}{{ rv.items.size }} avis publié{% if rv.items.size > 1 %}s{% endif %} sur {{ rv.site }}{% else %}{{ rv.items.size }} review{% if rv.items.size > 1 %}s{% endif %} published on {{ rv.site }}{% endif %}</h3>
+        <p class="lfbr__legal lfbr__rvlegal">
+          {%- if fr -%}
+            Avis rédigés par des acheteurs {% if rv.basis == 'même modèle' %}de ce modèle{% else %}d'un modèle équivalent{% endif %} sur {{ rv.site }}, reproduits sans nom et raccourcis si besoin («&nbsp;…&nbsp;»), dans l'ordre d'affichage du site, sans tri selon la note, hors avis évoquant la santé. Ils ne sont pas vérifiés par notre boutique.
+          {%- else -%}
+            Reviews written by buyers of {% if rv.basis == 'même modèle' %}this model{% else %}an equivalent model{% endif %} on {{ rv.site }}, reproduced without names and shortened where needed ("…"), in the site's display order, not sorted by rating, leaving out reviews that discuss health. They are not verified by our store.
+          {%- endif -%}
+        </p>
+        <ul class="lfbr__list">
+          {%- for it in rv.items -%}
+            <li class="lfbr__item{% if forloop.index > shown %} lfbr__item--more{% endif %}">
+              <span class="lfbr__rstars" role="img" aria-label="{{ it.r }} / 5">{% for i in (1..5) %}{% if i <= it.r %}★{% else %}<span>★</span>{% endif %}{% endfor %}</span>
+              {%- if it.t != blank -%}<p class="lfbr__rtitle">{{ it.t }}</p>{%- endif -%}
+              <p class="lfbr__rtext">{{ it.x }}</p>
+              <p class="lfbr__rmeta">{{ rv.site }}{% if it.d != blank %} · {{ it.d }}{% endif %}{% if it.tr %} · {% if fr %}traduit automatiquement{% else %}machine-translated{% endif %}{% endif %}</p>
+            </li>
+          {%- endfor -%}
+        </ul>
+        {%- if more > 0 -%}
+          <div class="lfbr__actions"><button type="button" class="lfbr__btn" onclick="this.closest('.lfbr__rv').classList.add('is-open');this.parentNode.remove()">{% if fr %}Voir {{ more }} avis de plus{% else %}Show {{ more }} more reviews{% endif %}</button></div>
+        {%- endif -%}
+      </div>
+    {%- endif -%}
+  </div>
+</section>
+<style>
+  .lfbr { background: var(--lfbr-bg); color: var(--lfbr-fg); padding: clamp(40px, 6vw, 72px) 16px; }
+  .lfbr *, .lfbr *::before, .lfbr *::after { box-sizing: border-box; }
+  .lfbr__inner { max-width: 1080px; margin: 0 auto; }
+  .lfbr__title { text-align: center; margin: 0 0 clamp(20px, 3vw, 32px); font-size: clamp(26px, 3.4vw, 36px); line-height: 1.15; color: inherit; }
+  .lfbr__grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 16px; align-items: start; }
+  .lfbr__sources { display: grid; gap: 12px; }
+  .lfbr__src, .lfbr__body { background: var(--lfbr-card); border-radius: 16px; padding: 22px 24px; }
+  .lfbr__score { font-size: clamp(34px, 4vw, 44px); font-weight: 700; line-height: 1; }
+  .lfbr__score span { font-size: .4em; opacity: .55; margin-left: 2px; }
+  .lfbr__stars { position: relative; display: inline-block; margin: 10px 0 8px; font-size: 18px; line-height: 1; letter-spacing: 3px; color: color-mix(in srgb, currentColor 18%, transparent); }
+  .lfbr__stars::before, .lfbr__stars::after { content: "★★★★★"; }
+  .lfbr__stars::after { position: absolute; left: 0; top: 0; width: var(--lfbr-pct, 100%); overflow: hidden; white-space: nowrap; color: var(--lfbr-star); }
+  .lfbr__srcname, .lfbr__basis { margin: 0; font-size: 15px; }
+  .lfbr__basis { margin-top: 4px; font-size: 13px; opacity: .65; }
+  .lfbr__h3 { margin: 0 0 14px; font-size: 19px; color: inherit; }
+  .lfbr__likes { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .lfbr__likes li { position: relative; padding-left: 34px; font-size: 16px; line-height: 1.45; }
+  .lfbr__likes li::before { content: "✓"; position: absolute; left: 0; top: -1px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--lfbr-accent); color: #fff; }
+  .lfbr__note { margin-top: 20px; padding: 14px 16px; border-radius: 10px; border: 1.5px dashed color-mix(in srgb, currentColor 22%, transparent); }
+  .lfbr__note strong { display: block; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 4px; }
+  .lfbr__note p { margin: 0; font-size: 15px; line-height: 1.5; opacity: .85; }
+  .lfbr__legal { max-width: 760px; margin: 20px auto 0; text-align: center; font-size: 12px; line-height: 1.5; opacity: .6; }
+  .lfbr__grid { align-items: stretch; }
+  .lfbr__sources, .lfbr__src { height: 100%; }
+  .lfbr__src { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+  .lfbr__score { font-size: clamp(52px, 6vw, 76px); }
+  .lfbr__stars { font-size: 22px; margin: 14px 0 12px; }
+  .lfbr__rv { margin-top: clamp(32px, 5vw, 52px); }
+  .lfbr__rvh { text-align: center; margin-bottom: 6px; }
+  .lfbr__rvlegal { margin: 0 auto 20px; }
+  .lfbr__list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; align-items: start; }
+  .lfbr__item { margin: 0; padding: 20px 22px; border-radius: 16px; background: var(--lfbr-card); }
+  .lfbr__item--more { display: none; }
+  .lfbr__rv.is-open .lfbr__item--more { display: block; }
+  .lfbr__rstars { display: block; font-size: 15px; letter-spacing: 2px; line-height: 1; color: var(--lfbr-star); }
+  .lfbr__rstars span { color: color-mix(in srgb, currentColor 18%, transparent); color: color-mix(in srgb, var(--lfbr-fg) 18%, transparent); }
+  .lfbr__rtitle { margin: 10px 0 0; font-weight: 600; font-size: 15px; line-height: 1.35; }
+  .lfbr__rtext { margin: 8px 0 0; font-size: 15px; line-height: 1.55; }
+  .lfbr__rmeta { margin: 12px 0 0; font-size: 12px; opacity: .55; }
+  .lfbr__actions { text-align: center; margin-top: 8px; }
+  .lfbr__btn { font: inherit; font-size: 14px; font-weight: 600; padding: 14px 28px; border-radius: 99px; border: 1.5px solid currentColor; background: transparent; color: inherit; cursor: pointer; }
+  @media (max-width: 749px) {
+    .lfbr__list { grid-template-columns: 1fr; }
+    .lfbr__grid { grid-template-columns: 1fr; }
+    .lfbr__sources { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+    .lfbr__src { padding: 18px; }
+  }
+</style>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Avis des acheteurs",
+  "target": "section",
+  "enabled_on": { "templates": ["product"] },
+  "settings": [
+    { "type": "text", "id": "heading", "label": "Titre (FR)", "default": "Ce que les acheteurs en disent" },
+    { "type": "text", "id": "heading_en", "label": "Titre (EN)", "default": "What buyers say" },
+    { "type": "range", "id": "reviews_shown", "label": "Avis affichés avant « voir plus »", "min": 2, "max": 12, "step": 1, "default": 6 },
+    { "type": "color", "id": "bg_color", "label": "Fond", "default": "#F7F5F2" },
+    { "type": "color", "id": "card_color", "label": "Fond des cartes", "default": "#FFFFFF" },
+    { "type": "color", "id": "text_color", "label": "Texte", "default": "#1A1A1A" },
+    { "type": "color", "id": "accent_color", "label": "Accent (coches)", "default": "#1A1A1A" },
+    { "type": "color", "id": "star_color", "label": "Étoiles", "default": "#F5B301" },
+    { "type": "paragraph", "content": "Synthèse des avis publics (Amazon.fr, AliExpress) remplie automatiquement à l'import Launchify. Avis publics (≈30 max) lus dans launchify.buyer_reviews. Le bloc ne s'affiche pas sur les produits sans données." }
+  ]
+}
+{% endschema %}

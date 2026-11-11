@@ -73,3 +73,8 @@ next-env.d.ts
 .open-next
 .wrangler
 .dev.vars
+
+# Sourcing working files (supplier downloads, preview cache)
+sourcing/raw/
+sourcing/.cache-preview/
+sourcing/raw-google/

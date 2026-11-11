@@ -1,0 +1,138 @@
+# Maison — market study (AliExpress + Amazon.fr reviews) and selling copy.
+
+def load(add):
+    N = "Maison"
+
+    add.slot("seche-chaussures-uv")
+
+    add(N, "Principal", "reveil-projecteur-plafond", "Réveil projecteur au plafond",
+        dict(note="AliExpress 4,7★ (620 avis) · Amazon.fr 4,5★ (24 457 avis, modèle équivalent)",
+             cible="Personnes qui se réveillent la nuit et regardent l'heure sur leur téléphone ; ados ; chambres d'enfants.",
+             probleme="Écran du téléphone qui éblouit à 3 h du matin ; lunettes nécessaires pour lire un réveil.",
+             declic="Réveils nocturnes ; nouvel aménagement de chambre.",
+             adorent="« J'aime regarder simplement le plafond et connaître l'heure », projection superbe, projection bleue « plus reposante que le rouge », luminosité réglable.",
+             objection="« C'est trop lumineux ? » → Luminosité réglable ; piles de sauvegarde non incluses, alimentation USB.",
+             angle="Le geste le plus paresseux du monde : ouvrir un œil. Attention : produit très établi sur Amazon (24 000+ avis), donc moins original."),
+        "L'heure s'affiche au plafond, comme par magie",
+        [("PROJECTION À 180°", "Orientez le bras pour afficher l'heure au plafond ou au mur."),
+         ("HEURE ET TEMPÉRATURE", "Tout ce qu'il faut savoir d'un seul coup d'œil."),
+         ("LUMINOSITÉ RÉGLABLE", "Assez lumineux pour lire l'heure, assez doux pour dormir."),
+         ("FINI LE TÉLÉPHONE LA NUIT", "Plus d'écran aveuglant à 3 h du matin.")],
+        ("Le geste le plus paresseux du monde",
+         "Réveillé en pleine nuit, vous attrapez votre téléphone et l'écran vous éblouit ? Avec ce réveil, il suffit d'ouvrir un œil : l'heure flotte au plafond, nette et lisible, même sans lunettes. Vous savez s'il vous reste deux heures ou dix minutes… sans bouger d'un millimètre."),
+        ("Un petit spectacle chaque soir",
+         "Dans le noir, sa projection crée une ambiance douce que les enfants comme les adultes adorent. Fonction snooze, affichage 12 ou 24 h, alimentation USB : il trouve sa place sur toutes les tables de nuit."))
+
+    add.slot("mini-nettoyeur-ultrasons")
+
+    add(N, "Principal", "lampe-bouteille-vin", "Lampe sans fil pour bouteille",
+        dict(note="AliExpress 4,6★ (384 avis) · Amazon.fr 4,5★ (854 avis, modèle équivalent)",
+             cible="Amateurs de déco et de vin, restaurants et bars, cadeau (crémaillère, anniversaire).",
+             probleme="Envie d'une lumière d'ambiance originale sans fil.",
+             declic="Une bouteille souvenir (mariage, voyage, grand cru) ; dîner entre amis.",
+             adorent="« Il suffit de la poser dans le col de la bouteille », trois teintes, luminosité réglable, « j'en ai racheté trois pour le jardin et la maison ».",
+             objection="Quelques retours sur l'autonomie et le tactile → tester la batterie à réception.",
+             angle="Transformer n'importe quelle bouteille en lampe design : upcycling chic et cadeau parfait."),
+        "Transformez n'importe quelle bouteille en lampe design",
+        [("SE POSE SUR VOS BOUTEILLES", "Vin, champagne, limonade vintage : choisissez votre bouteille préférée."),
+         ("SANS FIL", "Rechargeable, elle s'installe partout : table, terrasse, chevet."),
+         ("TACTILE", "Une touche pour l'allumer et régler la lumière."),
+         ("UPCYCLING CHIC", "Une bouteille qui raconte une histoire devient votre lampe.")],
+        ("La lampe que vous allez vouloir dans chaque pièce",
+         "Une bouteille d'un grand soir, d'un mariage, d'un voyage ? Posez cette tête de lampe sans fil dans le col : elle devient une lampe d'ambiance unique. Lumière chaleureuse, style bistrot chic, effet garanti sur une table de dîner. Beaucoup en rachètent pour la terrasse ou le jardin !"),
+        ("L'idée cadeau parfaite",
+         "Pour un amateur de vin, un anniversaire ou une crémaillère : offrez-la avec une belle bouteille et vous tenez le cadeau le plus original de la soirée."))
+
+    add(N, "Principal", "humidificateur-effet-flamme", "Humidificateur effet flamme",
+        dict(note="AliExpress 4,9★ (89 avis) · Amazon.fr 4,1★ (533 avis, diffuseur cheminée équivalent)",
+             cible="Amateurs de cocooning en appartement, bureaux, chambres ; cadeau.",
+             probleme="Envie d'une ambiance feu de cheminée sans cheminée ; air sec l'hiver.",
+             declic="Arrivée de l'automne ; vidéo de la flamme de brume.",
+             adorent="« Un vrai coup de cœur pour l'ambiance, l'effet cheminée avec la brume et les LED », compact.",
+             objection="« C'est grand ? » → Format compact (taille d'un smartphone selon un avis), fonctionne en USB-C sans adaptateur. Quelques pannes signalées sur Amazon.",
+             angle="Un feu de cheminée miniature, avec parfum d'huile essentielle."),
+        "Un feu de cheminée miniature sur votre table",
+        [("FLAMME DE BRUME", "Une brume éclairée qui danse comme une vraie flamme."),
+         ("HUILES ESSENTIELLES", "Quelques gouttes, et la pièce sent bon."),
+         ("AIR MOINS SEC", "Parfait en hiver, quand le chauffage assèche tout."),
+         ("FORMAT COMPACT", "Pas plus grand qu'un smartphone, il se branche en USB-C.")],
+        ("L'ambiance cocooning, sans bûche ni fumée",
+         "Vous rêvez d'un feu de cheminée mais vivez en appartement ? Cette petite flamme de brume crée la même magie : lumière dorée, mouvement hypnotique, parfum d'huile essentielle. Sur un bureau, une table de chevet ou une étagère, elle transforme instantanément l'atmosphère."),
+        ("Le cadeau des amoureux du cocooning",
+         "Plaids, bougies, tisanes… et maintenant cette flamme magique. Ceux qui la reçoivent ne peuvent plus s'en passer. Compacte, elle se branche en USB-C à un ordinateur ou à un adaptateur secteur."))
+
+    add(N, "Principal", "terrarium-mural-hydroponique", "Terrarium mural en verre",
+        dict(note="AliExpress 4,4★ (432 avis, « très petit ») · Amazon.fr 4,6★ (593 avis, terrariums suspendus)",
+             cible="Amateurs de plantes en appartement, déco scandinave/bohème.",
+             probleme="Pas de place au sol ni sur les rebords pour les plantes.",
+             declic="Envie de verdure, boutures de pothos à faire raciner, plantes aériennes (tillandsias).",
+             adorent="« Très joli et décoratif », « mes plantes aériennes s'y développent depuis plus d'un an ».",
+             objection="« C'est grand ? » → Petites sphères (avis AliExpress) : les présenter comme des mini-terrariums à composer en série. Verre fragile au transport.",
+             angle="Des bulles de verdure sur vos murs, zéro place au sol."),
+        "Des bulles de verre et de verdure sur vos murs",
+        [("VRAI VERRE", "Des sphères transparentes qui subliment racines et boutures."),
+         ("SANS TERRE", "Boutures dans l'eau ou plantes aériennes : propre et simple."),
+         ("ENTRETIEN MINIMAL", "Un peu d'eau ou une vaporisation de temps en temps."),
+         ("À COMPOSER EN SÉRIE", "Des mini-sphères pour créer votre mur végétal.")],
+        ("La déco végétale qui ne prend aucune place",
+         "Pas de place au sol, pas de rebord de fenêtre ? Fixez ces petites bulles de verre au mur et glissez-y une bouture de pothos, une fleur coupée ou une plante aérienne. Regarder les racines pousser dans l'eau, c'est apaisant et fascinant."),
+        ("Composez votre mur végétal",
+         "Seules, elles sont mignonnes. En série, elles deviennent un vrai mur végétal. Cuisine, salle de bain, entrée : à vous de jouer !"))
+
+    add.slot("robinet-rotatif-1080")
+
+    add(N, "Upsell", "mini-lampe-murale-rechargeable", "Liseuse murale aimantée sans fil",
+        dict(note="AliExpress 4,9★ (113 avis) · Amazon.fr 4,6★ (877 avis, applique sans fil équivalente)",
+             cible="Lecteurs au lit, locataires qui ne peuvent pas faire passer de câbles, couloirs et placards sombres.",
+             probleme="Pas de prise près du lit, lampe de chevet encombrante, électricien trop cher.",
+             declic="Envie d'un coin lecture ; aménagement d'une chambre en location.",
+             adorent="« Exactement ce que je recherche depuis des années : une lampe de tête de lit tactile sur batterie », adhère parfaitement à l'aimant, « bonne autonomie, jamais tombées à plat ».",
+             objection="« Ça tient longtemps ? » → Autonomie saluée sur Amazon ; plus petite qu'imaginé pour certains.",
+             angle="La liseuse murale sans fil ni électricien."),
+        "La liseuse murale sans fil que vous cherchiez depuis des années",
+        [("AIMANTÉE", "Elle se clipse sur son support et s'en retire d'un geste."),
+         ("TACTILE", "Un simple toucher pour l'allumer et l'éteindre."),
+         ("SANS FIL, SANS TRAVAUX", "Pas d'électricien, pas de câble qui pend."),
+         ("RECHARGEABLE EN USB", "Une recharge et elle repart pour de longues soirées de lecture.")],
+        ("Lire au lit sans réveiller personne",
+         "Une lumière douce et ciblée au-dessus de votre lit, sans fil qui pend et sans percer pour passer un câble. Fixez la base, posez la lampe dessus grâce à l'aimant : votre coin lecture est prêt. Sa lumière chaude est parfaite pour lire avant de dormir."),
+        ("Partout où il manque de la lumière",
+         "Tête de lit, placard, couloir, escalier, coin bureau : elle s'adapte à tous les recoins. Quand la batterie faiblit, retirez-la de son support et rechargez-la en USB."))
+
+    add(N, "Upsell", "pot-auto-arrosant", "Pot auto-arrosant transparent",
+        dict(note="AliExpress 4,7★ (716 avis) · Amazon.fr 4,5★ (657 avis, pots d'intérieur équivalents)",
+             cible="Débutants en plantes, voyageurs, amateurs d'aromatiques en cuisine.",
+             probleme="Plantes oubliées ou noyées, départs en week-end.",
+             declic="Une plante morte de trop ; envie d'un potager de cuisine.",
+             adorent="Parfait pour les herbes aromatiques et les succulentes, joli, « ma deuxième commande ».",
+             objection="« C'est petit ? » → Pots compacts, pour petites plantes et boutures.",
+             angle="Même sans la main verte, ça pousse."),
+        "Même ceux qui n'ont pas la main verte vont y arriver !",
+        [("RÉSERVOIR INTÉGRÉ", "Une double paroi qui stocke l'eau sous la plante."),
+         ("MÈCHE EN COTON", "L'eau remonte doucement, au rythme de la plante."),
+         ("NIVEAU VISIBLE", "Le pot transparent montre quand remplir."),
+         ("SPÉCIAL AROMATIQUES", "Basilic, menthe, persil… et succulentes.")],
+        ("Fini les plantes oubliées",
+         "Trop d'eau, pas assez, départ en week-end… Avec ce pot, la plante puise seule ce dont elle a besoin dans son réservoir. Vous remplissez de temps en temps, et elle reste verte et pimpante."),
+        ("Votre potager de cuisine",
+         "Alignez-en plusieurs sur le rebord de fenêtre pour cultiver vos herbes aromatiques. Compacts, ils sont parfaits pour les petites plantes et les boutures."))
+
+    add(N, "Upsell", "vase-ampoule-hydroponique", "Vase ampoule hydroponique de bureau",
+        dict(note="AliExpress 4,9★ (147 avis) · Amazon.fr 4,6★ (322 avis, stations de bouturage équivalentes)",
+             cible="Amateurs de plantes et de déco minimaliste ; cadeau de bureau.",
+             probleme="Envie d'un peu de nature sur le bureau sans entretien.",
+             declic="Boutures à faire raciner ; cadeau original.",
+             adorent="« Design élégant et moderne du plus bel effet », « bois de bonne qualité, verre épais, côté vintage réussi ».",
+             objection="« C'est fragile ? » → Verre épais, bien emballé selon les avis.",
+             angle="Une plante qui pousse dans une ampoule : déco vivante, zéro effort."),
+        "Une plante qui pousse dans une ampoule",
+        [("AMPOULE EN VERRE", "On voit les racines grandir semaine après semaine."),
+         ("SUPPORT EN BOIS", "Un design élégant au charme vintage."),
+         ("SANS TERRE", "De l'eau, une bouture, c'est tout."),
+         ("IDÉE CADEAU", "Original, joli et toujours apprécié.")],
+        ("Le petit coin de nature qui apaise",
+         "Sur un bureau, une étagère ou une table de chevet, cette ampoule de verre accueille une bouture qui grandit sous vos yeux. Un spectacle vivant, minimaliste et terriblement déco."),
+        ("Un entretien minimal",
+         "Complétez l'eau de temps en temps, c'est tout. Pothos, monstera, lierre : les boutures s'y plaisent et vous offrent un bout de jungle sans effort."))
+
+    add.slot("boules-lavage-anti-poils")
