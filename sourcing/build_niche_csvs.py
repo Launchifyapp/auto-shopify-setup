@@ -8,12 +8,13 @@ the first 10 for the basic plan and all 20 for premium (lib/setupShop.ts), so th
 - Existing products: their rows are copied from public/products.csv (or products-en.csv) and
   only the Tags column changes (niche tag + "Best-seller" for core products).
 - New products (sourcing/descriptions_data.py): built here, in the same Shopify format. Prices come
-  from produits-niches-aliexpress.csv; the product photos are the two reviewed description visuals
-  (plus the stand-in photo when there is no video), served from launchify.tech/media.
+  from produits-niches-aliexpress.csv. Product photos: the supplier photos picked in product_photos.py,
+  made square here as public/media/images/<handle>-photo-<n>.jpg (served from launchify.tech/media),
+  then the two description visuals.
 
 Run after build_descriptions.py, avis_acheteurs.py and avis_extraits.py.
 """
-import csv, io, json, sys
+import csv, glob, io, json, subprocess, sys, tempfile
 from pathlib import Path
 
 HERE = Path(__file__).parent
@@ -21,6 +22,9 @@ ROOT = HERE.parent
 PUBLIC = ROOT / "public"
 sys.path.insert(0, str(HERE))
 from descriptions_data import P  # noqa: E402
+from media_picks import VISUALS  # noqa: E402
+from google_picks import PICKS as GOOGLE_VISUALS  # noqa: E402
+from product_photos import PHOTOS  # noqa: E402
 
 MEDIA = "https://launchify.tech/media/images"
 SUMMARY = "Avis acheteurs (product.metafields.launchify.buyer_summary)"
@@ -116,12 +120,60 @@ def money(x):
     return f"{x:.2f}"
 
 
+PHOTO_SIZE = 1000
+
+
+def sips(*args):
+    subprocess.run(["sips", *map(str, args)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def size_of(path):
+    out = subprocess.run(["sips", "-g", "pixelWidth", "-g", "pixelHeight", str(path)], capture_output=True, text=True).stdout
+    vals = [int(l.split(":")[1]) for l in out.splitlines() if "pixel" in l]
+    return vals[0], vals[1]
+
+
+def make_photo(handle, spec, out):
+    """Square JPEG of a supplier photo: optional square crop, white padding, PHOTO_SIZE px."""
+    name, crop = (spec, None) if isinstance(spec, str) else (spec[0], spec[1:])
+    src = sorted(glob.glob(str(HERE / "raw" / handle / f"{name}.*")))[0]
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp) / "w.png"
+        sips("-s", "format", "png", src, "--out", work)
+        w, h = size_of(work)
+        if crop:
+            x, y, size = crop
+            side = int(min(size * w, size * h, w - x * w, h - y * h))
+            # sips ignores the whole crop when an offset is 0, hence max(1, …)
+            sips("-c", side, side, "--cropOffset", max(1, int(y * h)), max(1, int(x * w)), work)
+            w = h = side
+        if w != h:
+            sips("-p", max(w, h), max(w, h), "--padColor", "FFFFFF", work)
+        sips("-Z", PHOTO_SIZE, work)
+        sips("-s", "format", "jpeg", "-s", "formatOptions", "85", work, "--out", out)
+
+
+def product_images(h):
+    """Picked supplier photos first, then the description visuals not already among them."""
+    folder = PUBLIC / "media/images"
+    urls = []
+    for n, spec in enumerate(PHOTOS[h], 1):
+        out = folder / f"{h}-photo-{n}.jpg"
+        if not out.exists():
+            make_photo(h, spec, out)
+        urls.append(f"{MEDIA}/{out.name}")
+    picked_whole = {s for s in PHOTOS[h] if isinstance(s, str)}
+    for n in (1, 2):
+        from_gallery = h not in GOOGLE_VISUALS and f"g{VISUALS[h][n - 1]}" in picked_whole
+        if not from_gallery:
+            urls.append(f"{MEDIA}/{h}-visuel-{n}.jpg")
+    return urls
+
+
 def new_rows(p, head, template, summary, reviews, sheet, tags):
     h = p["handle"]
     sale = price(sheet[h]["Prix de vente conseillé (€)"])
-    images = [f"{MEDIA}/{h}-visuel-1.jpg", f"{MEDIA}/{h}-visuel-2.jpg"]
-    if (PUBLIC / "media/images" / f"{h}-visuel-0.jpg").exists():
-        images.append(f"{MEDIA}/{h}-visuel-0.jpg")
+    images = product_images(h)
     body = next(r for r in DESCRIPTIONS if r[2] == h)[4]
     main = dict(template)
     main.update({
