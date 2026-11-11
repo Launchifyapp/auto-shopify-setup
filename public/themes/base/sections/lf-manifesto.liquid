@@ -1,0 +1,27 @@
+<section class="lf-section lf-manifesto lf-scheme-{{ section.settings.scheme }}">
+  <div class="lf-container">
+    {%- if section.settings.eyebrow != blank -%}<p class="lf-eyebrow">{{ section.settings.eyebrow }}</p>{%- endif -%}
+    <h2 class="lf-h2">{{ section.settings.heading }}</h2>
+    {%- if section.settings.text != blank -%}<p class="lf-lead">{{ section.settings.text }}</p>{%- endif -%}
+    {%- if section.settings.button_label != blank -%}
+      <div class="lf-actions"><a class="lf-btn {% if section.settings.scheme == 'dark' or section.settings.scheme == 'accent' %}lf-btn--light{% endif %}" href="{{ section.settings.button_link | default: routes.all_products_collection_url }}">{{ section.settings.button_label }}</a></div>
+    {%- endif -%}
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "LF Manifesto",
+  "settings": [
+    { "type": "select", "id": "scheme", "label": "Color scheme", "default": "dark", "options": [
+      { "value": "light", "label": "Light" }, { "value": "soft", "label": "Soft" }, { "value": "dark", "label": "Dark" }, { "value": "accent", "label": "Accent" }
+    ] },
+    { "type": "text", "id": "eyebrow", "label": "Eyebrow" },
+    { "type": "inline_richtext", "id": "heading", "label": "Heading", "default": "La beauté est une célébration, pas une norme" },
+    { "type": "inline_richtext", "id": "text", "label": "Text" },
+    { "type": "text", "id": "button_label", "label": "Button label" },
+    { "type": "url", "id": "button_link", "label": "Button link" }
+  ],
+  "presets": [{ "name": "LF Manifesto" }]
+}
+{% endschema %}

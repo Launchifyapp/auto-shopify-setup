@@ -1,0 +1,61 @@
+<section class="lf-section lf-scheme-{{ section.settings.scheme }}">
+  <div class="lf-container">
+    <div class="lf-head">
+      <div>
+        {%- if section.settings.eyebrow != blank -%}<p class="lf-eyebrow">{{ section.settings.eyebrow }}</p>{%- endif -%}
+        <h2 class="lf-h2">{{ section.settings.heading }}</h2>
+      </div>
+      {%- if section.settings.link_label != blank -%}<a class="lf-link" href="{{ routes.all_products_collection_url }}">{{ section.settings.link_label }}</a>{%- endif -%}
+    </div>
+    <div class="lf-bundles" style="--lf-cols: {{ section.blocks.size | at_most: 3 }}">
+      {%- for block in section.blocks -%}
+        <a class="lf-bundle" href="{{ block.settings.link | default: routes.all_products_collection_url }}" {{ block.shopify_attributes }}>
+          <div class="lf-bundle__media">
+            {% render 'lf-img', image: block.settings.image, url: block.settings.image_url, alt: block.settings.title, width: 900 %}
+            {%- if block.settings.save != blank -%}<div class="lf-badges"><span></span><span class="lf-badge lf-badge--sale">{{ block.settings.save }}</span></div>{%- endif -%}
+          </div>
+          <div class="lf-bundle__body">
+            <h3 class="lf-h3">{{ block.settings.title }}</h3>
+            <p>{{ block.settings.text }}</p>
+            <div class="lf-price"><span>{{ block.settings.price }}</span>{%- if block.settings.value != blank -%}<s>{{ block.settings.value }}</s>{%- endif -%}</div>
+            {%- if block.settings.value_label != blank -%}<span class="lf-bundle__value">{{ block.settings.value_label }}</span>{%- endif -%}
+            <span class="lf-btn lf-btn--block">{{ section.settings.button_label }}</span>
+          </div>
+        </a>
+      {%- endfor -%}
+    </div>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "LF Bundles",
+  "settings": [
+    { "type": "select", "id": "scheme", "label": "Color scheme", "default": "light", "options": [
+      { "value": "light", "label": "Light" }, { "value": "soft", "label": "Soft" }, { "value": "dark", "label": "Dark" }, { "value": "accent", "label": "Accent" }
+    ] },
+    { "type": "text", "id": "eyebrow", "label": "Eyebrow" },
+    { "type": "inline_richtext", "id": "heading", "label": "Heading", "default": "Packs & économies" },
+    { "type": "text", "id": "link_label", "label": "Link label" },
+    { "type": "text", "id": "button_label", "label": "Button label", "default": "Je prends le pack" }
+  ],
+  "blocks": [
+    {
+      "type": "bundle",
+      "name": "Bundle",
+      "settings": [
+        { "type": "text", "id": "title", "label": "Title", "default": "Routine complète" },
+        { "type": "textarea", "id": "text", "label": "Text" },
+        { "type": "text", "id": "price", "label": "Price", "default": "59,00 €" },
+        { "type": "text", "id": "value", "label": "Value price" },
+        { "type": "text", "id": "value_label", "label": "Value label" },
+        { "type": "text", "id": "save", "label": "Save badge" },
+        { "type": "url", "id": "link", "label": "Link" },
+        { "type": "image_picker", "id": "image", "label": "Image" },
+        { "type": "text", "id": "image_url", "label": "Image URL (fallback)" }
+      ]
+    }
+  ],
+  "presets": [{ "name": "LF Bundles", "blocks": [{ "type": "bundle" }, { "type": "bundle" }, { "type": "bundle" }] }]
+}
+{% endschema %}

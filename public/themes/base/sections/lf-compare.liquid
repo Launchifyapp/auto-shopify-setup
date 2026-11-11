@@ -1,0 +1,49 @@
+<section class="lf-section lf-scheme-{{ section.settings.scheme }}">
+  <div class="lf-container">
+    <div class="lf-head lf-head--center">
+      {%- if section.settings.eyebrow != blank -%}<p class="lf-eyebrow lf-eyebrow--pill">{{ section.settings.eyebrow }}</p>{%- endif -%}
+      <h2 class="lf-h2">{{ section.settings.heading }}</h2>
+    </div>
+    <div class="lf-compare">
+      <div class="lf-compare__row lf-compare__row--head">
+        <span></span>
+        <span class="lf-compare__us">{{ section.settings.us_label | default: shop.name }}</span>
+        <span>{{ section.settings.them_label }}</span>
+      </div>
+      {%- for block in section.blocks -%}
+        <div class="lf-compare__row" {{ block.shopify_attributes }}>
+          <span>{{ block.settings.label }}</span>
+          <span class="lf-compare__us">{% if block.settings.us %}<b class="lf-yes">✓</b>{% else %}<b class="lf-no">✕</b>{% endif %}</span>
+          <span>{% if block.settings.them %}<b class="lf-yes lf-yes--muted">✓</b>{% else %}<b class="lf-no">✕</b>{% endif %}</span>
+        </div>
+      {%- endfor -%}
+    </div>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "LF Comparison",
+  "settings": [
+    { "type": "select", "id": "scheme", "label": "Color scheme", "default": "light", "options": [
+      { "value": "light", "label": "Light" }, { "value": "soft", "label": "Soft" }, { "value": "dark", "label": "Dark" }, { "value": "accent", "label": "Accent" }
+    ] },
+    { "type": "text", "id": "eyebrow", "label": "Eyebrow" },
+    { "type": "inline_richtext", "id": "heading", "label": "Heading", "default": "Pourquoi choisir nos produits ?" },
+    { "type": "text", "id": "us_label", "label": "Our column label" },
+    { "type": "text", "id": "them_label", "label": "Other column label", "default": "Les autres" }
+  ],
+  "blocks": [
+    {
+      "type": "row",
+      "name": "Row",
+      "settings": [
+        { "type": "text", "id": "label", "label": "Label", "default": "Résultats visibles" },
+        { "type": "checkbox", "id": "us", "label": "Us", "default": true },
+        { "type": "checkbox", "id": "them", "label": "Them", "default": false }
+      ]
+    }
+  ],
+  "presets": [{ "name": "LF Comparison", "blocks": [{ "type": "row" }, { "type": "row" }, { "type": "row" }] }]
+}
+{% endschema %}

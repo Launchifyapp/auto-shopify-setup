@@ -1,0 +1,82 @@
+{%- comment -%}
+  "handle": the featured product's base handle (see lf-products). The section links to the store's
+  product whose handle starts with it, and is not shown when the store doesn't sell it.
+{%- endcomment -%}
+{%- liquid
+  assign featured = blank
+  assign show = true
+  if section.settings.handle != blank
+    assign prefix = section.settings.handle | append: '-'
+    assign prefix_size = prefix | size
+    for candidate in collections.all.products
+      assign head = candidate.handle | slice: 0, prefix_size
+      if candidate.handle == section.settings.handle or head == prefix
+        assign featured = candidate
+        break
+      endif
+    endfor
+    if featured == blank
+      assign show = false
+    endif
+  endif
+  assign button_url = section.settings.button_link | default: routes.all_products_collection_url
+  if featured != blank
+    assign button_url = featured.url
+  endif
+-%}
+{%- if show -%}
+<section class="lf-section lf-scheme-{{ section.settings.scheme }}">
+  <div class="lf-container">
+    <div class="lf-split{% if section.settings.reverse %} lf-split--reverse{% endif %}">
+      <div class="lf-split__media">
+        {% render 'lf-img', image: section.settings.image, url: section.settings.image_url, alt: section.settings.image_alt, width: 1400 %}
+      </div>
+      <div>
+        {%- if section.settings.eyebrow != blank -%}<p class="lf-eyebrow lf-eyebrow--pill">{{ section.settings.eyebrow }}</p>{%- endif -%}
+        <h2 class="lf-h2">{{ section.settings.heading }}</h2>
+        {%- if section.settings.text != blank -%}<p class="lf-lead">{{ section.settings.text }}</p>{%- endif -%}
+        {%- assign bullets = section.blocks | where: 'type', 'bullet' -%}
+        {%- if bullets.size > 0 -%}
+          <ul class="lf-bullets">{% for block in bullets %}<li {{ block.shopify_attributes }}>{{ block.settings.text }}</li>{% endfor %}</ul>
+        {%- endif -%}
+        {%- assign stats = section.blocks | where: 'type', 'stat' -%}
+        {%- if stats.size > 0 -%}
+          <div class="lf-stats">{% for block in stats %}<div class="lf-stat" {{ block.shopify_attributes }}><strong>{{ block.settings.value }}</strong><span>{{ block.settings.label }}</span></div>{% endfor %}</div>
+        {%- endif -%}
+        {%- if section.settings.button_label != blank -%}
+          <div class="lf-actions"><a class="lf-btn" href="{{ button_url }}">{{ section.settings.button_label }}</a></div>
+        {%- endif -%}
+      </div>
+    </div>
+  </div>
+</section>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "LF Spotlight",
+  "settings": [
+    { "type": "select", "id": "scheme", "label": "Color scheme", "default": "light", "options": [
+      { "value": "light", "label": "Light" }, { "value": "soft", "label": "Soft" }, { "value": "dark", "label": "Dark" }, { "value": "accent", "label": "Accent" }
+    ] },
+    { "type": "checkbox", "id": "reverse", "label": "Image on the right", "default": false },
+    { "type": "text", "id": "eyebrow", "label": "Eyebrow" },
+    { "type": "inline_richtext", "id": "heading", "label": "Heading", "default": "Une formule qui change tout" },
+    { "type": "inline_richtext", "id": "text", "label": "Text" },
+    { "type": "text", "id": "button_label", "label": "Button label" },
+    { "type": "url", "id": "button_link", "label": "Button link" },
+    { "type": "text", "id": "handle", "label": "Product handle prefix (hides the section when absent)" },
+    { "type": "image_picker", "id": "image", "label": "Image" },
+    { "type": "text", "id": "image_url", "label": "Image URL (fallback)" },
+    { "type": "text", "id": "image_alt", "label": "Image alt text" }
+  ],
+  "blocks": [
+    { "type": "bullet", "name": "Bullet", "settings": [{ "type": "inline_richtext", "id": "text", "label": "Text", "default": "Résultat visible en 7 jours" }] },
+    { "type": "stat", "name": "Stat", "settings": [
+      { "type": "text", "id": "value", "label": "Value", "default": "97%" },
+      { "type": "text", "id": "label", "label": "Label", "default": "constatent une peau plus lisse" }
+    ] }
+  ],
+  "presets": [{ "name": "LF Spotlight", "blocks": [{ "type": "bullet" }, { "type": "bullet" }, { "type": "stat" }, { "type": "stat" }] }]
+}
+{% endschema %}

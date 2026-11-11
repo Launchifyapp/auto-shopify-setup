@@ -1,0 +1,57 @@
+<section id="lf-reviews" class="lf-section lf-scheme-{{ section.settings.scheme }}">
+  <div class="lf-container">
+    <div class="lf-head lf-head--center">
+      {%- if section.settings.eyebrow != blank -%}<p class="lf-eyebrow lf-eyebrow--pill">{{ section.settings.eyebrow }}</p>{%- endif -%}
+      <h2 class="lf-h2" style="max-width: 22ch">{{ section.settings.heading }}</h2>
+      {%- if section.settings.score != blank -%}
+        <div class="lf-scoreline"><strong>{{ section.settings.score }}</strong>{% render 'lf-stars', rating: 5 %}<span>{{ section.settings.score_text }}</span></div>
+      {%- endif -%}
+    </div>
+    <div class="lf-scroller">
+      {%- for block in section.blocks -%}
+        <article class="lf-review" {{ block.shopify_attributes }}>
+          {% render 'lf-stars', rating: block.settings.stars %}
+          <h3 class="lf-review__title">{{ block.settings.title }}</h3>
+          <p class="lf-review__text">{{ block.settings.text }}</p>
+          <div class="lf-review__author">
+            {%- if block.settings.avatar_url != blank or block.settings.avatar != blank -%}
+              {% render 'lf-img', image: block.settings.avatar, url: block.settings.avatar_url, alt: block.settings.author, width: 120 %}
+            {%- endif -%}
+            <div>{{ block.settings.author }}<br><span class="lf-verified">{{ block.settings.verified }}</span></div>
+          </div>
+        </article>
+      {%- endfor -%}
+    </div>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "LF Reviews",
+  "settings": [
+    { "type": "select", "id": "scheme", "label": "Color scheme", "default": "soft", "options": [
+      { "value": "light", "label": "Light" }, { "value": "soft", "label": "Soft" }, { "value": "dark", "label": "Dark" }, { "value": "accent", "label": "Accent" }
+    ] },
+    { "type": "text", "id": "eyebrow", "label": "Eyebrow", "default": "+50 000 avis" },
+    { "type": "inline_richtext", "id": "heading", "label": "Heading", "default": "Elles ne jurent que par nous" },
+    { "type": "text", "id": "score", "label": "Score", "default": "4.8/5" },
+    { "type": "text", "id": "score_text", "label": "Score text", "default": "sur 50 000 avis vérifiés" }
+  ],
+  "blocks": [
+    {
+      "type": "review",
+      "name": "Review",
+      "settings": [
+        { "type": "range", "id": "stars", "label": "Stars", "min": 1, "max": 5, "step": 1, "default": 5 },
+        { "type": "text", "id": "title", "label": "Title", "default": "Je ne m'en passe plus" },
+        { "type": "textarea", "id": "text", "label": "Text", "default": "Résultat visible dès la première semaine." },
+        { "type": "text", "id": "author", "label": "Author", "default": "Camille R." },
+        { "type": "text", "id": "verified", "label": "Verified label", "default": "Achat vérifié" },
+        { "type": "image_picker", "id": "avatar", "label": "Avatar" },
+        { "type": "text", "id": "avatar_url", "label": "Avatar URL (fallback)" }
+      ]
+    }
+  ],
+  "presets": [{ "name": "LF Reviews", "blocks": [{ "type": "review" }, { "type": "review" }, { "type": "review" }] }]
+}
+{% endschema %}

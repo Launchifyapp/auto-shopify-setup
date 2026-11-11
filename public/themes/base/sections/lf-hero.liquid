@@ -1,0 +1,60 @@
+<section class="lf-section lf-hero lf-scheme-{{ section.settings.scheme }}">
+  <div class="lf-hero__grid">
+    <div class="lf-hero__content">
+      {%- if section.settings.rating_text != blank -%}
+        <div class="lf-rating">{% render 'lf-stars', rating: 5 %}<span>{{ section.settings.rating_text }}</span></div>
+      {%- endif -%}
+      <h1 class="lf-h1" style="margin-top: 18px">{{ section.settings.heading }}</h1>
+      {%- if section.settings.text != blank -%}
+        <p class="lf-lead">{{ section.settings.text }}</p>
+      {%- endif -%}
+      {%- assign perks = section.settings.perks | split: '|' -%}
+      {%- if section.settings.perks != blank -%}
+        <ul class="lf-perks">{% for perk in perks %}<li>{{ perk | strip }}</li>{% endfor %}</ul>
+      {%- endif -%}
+      <div class="lf-actions">
+        <a class="lf-btn" href="{{ section.settings.button_link | default: routes.all_products_collection_url }}">{{ section.settings.button_label }}</a>
+        {%- if section.settings.button2_label != blank -%}
+          <a class="lf-btn lf-btn--ghost" href="{{ section.settings.button2_link | default: routes.all_products_collection_url }}">{{ section.settings.button2_label }}</a>
+        {%- endif -%}
+      </div>
+      {%- if section.settings.card_title != blank -%}
+        <div class="lf-trustcard">
+          <span class="lf-trustcard__icon">{{ section.settings.card_icon }}</span>
+          <div><strong>{{ section.settings.card_title }}</strong><p>{{ section.settings.card_text }}</p></div>
+        </div>
+      {%- endif -%}
+    </div>
+    <div class="lf-hero__media">
+      {% render 'lf-img', image: section.settings.image, url: section.settings.image_url, alt: section.settings.image_alt, loading: 'eager', width: 1800 %}
+      {%- if section.settings.badge != blank -%}<span class="lf-hero__badge">{{ section.settings.badge }}</span>{%- endif -%}
+    </div>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "LF Hero",
+  "settings": [
+    { "type": "select", "id": "scheme", "label": "Color scheme", "default": "soft", "options": [
+      { "value": "light", "label": "Light" }, { "value": "soft", "label": "Soft" }, { "value": "dark", "label": "Dark" }, { "value": "accent", "label": "Accent" }
+    ] },
+    { "type": "text", "id": "rating_text", "label": "Rating text", "default": "Adoré par 300 000+ clientes" },
+    { "type": "inline_richtext", "id": "heading", "label": "Heading", "default": "Le teint parfait <em>en 10 secondes</em>" },
+    { "type": "inline_richtext", "id": "text", "label": "Text" },
+    { "type": "text", "id": "perks", "label": "Perks (separate with |)" },
+    { "type": "text", "id": "button_label", "label": "Button label", "default": "Je découvre" },
+    { "type": "url", "id": "button_link", "label": "Button link" },
+    { "type": "text", "id": "button2_label", "label": "Secondary button label" },
+    { "type": "url", "id": "button2_link", "label": "Secondary button link" },
+    { "type": "text", "id": "card_icon", "label": "Trust card icon", "default": "★" },
+    { "type": "text", "id": "card_title", "label": "Trust card title" },
+    { "type": "text", "id": "card_text", "label": "Trust card text" },
+    { "type": "image_picker", "id": "image", "label": "Image" },
+    { "type": "text", "id": "image_url", "label": "Image URL (fallback)" },
+    { "type": "text", "id": "image_alt", "label": "Image alt text" },
+    { "type": "text", "id": "badge", "label": "Image badge" }
+  ],
+  "presets": [{ "name": "LF Hero" }]
+}
+{% endschema %}

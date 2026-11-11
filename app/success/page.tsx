@@ -9,6 +9,8 @@ function SuccessContent() {
   const lang: Language = langParam === "en" ? "en" : "fr";
   const shop = searchParams?.get("shop") ?? "";
   const storeUrl = shop ? `https://${shop.replace(".myshopify.com", "")}.myshopify.com` : "";
+  // Last funnel step: install the niche theme (Theme Access password), on get.launchify.tech.
+  const themeUrl = `https://get.launchify.tech/${lang}/theme${shop ? `?shop=${encodeURIComponent(shop)}` : ""}`;
 
   return (
     <main style={{
@@ -72,8 +74,9 @@ function SuccessContent() {
         </p>
 
         <a
-          href={storeUrl || "#"}
+          href={themeUrl}
           target="_blank"
+          rel="noopener noreferrer"
           style={{
             display: "inline-block",
             backgroundColor: "#00AAFF",
@@ -91,6 +94,19 @@ function SuccessContent() {
           }}
           onMouseEnter={e => (e.target as HTMLAnchorElement).style.backgroundColor = "#0099ee"}
           onMouseLeave={e => (e.target as HTMLAnchorElement).style.backgroundColor = "#00AAFF"}
+        >
+          {lang === "fr" ? "Installer mon thème" : "Install my theme"}
+        </a>
+        <p style={{ fontSize: "0.85rem", color: "#5a6a80", margin: "1rem 0 0 0" }}>
+          {lang === "fr"
+            ? "Dernière étape : le design de votre niche, installé en 2 minutes."
+            : "Last step: your niche design, installed in 2 minutes."}
+        </p>
+        <a
+          href={storeUrl || "#"}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ display: "inline-block", marginTop: "1.25rem", color: "#00AAFF", fontWeight: 700, fontSize: "0.9rem", textDecoration: "none" }}
         >
           {lang === "fr" ? "Voir ma boutique" : "View my store"}
         </a>

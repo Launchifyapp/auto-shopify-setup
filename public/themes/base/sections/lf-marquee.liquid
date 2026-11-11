@@ -1,0 +1,24 @@
+{%- assign items = section.settings.items | split: '|' -%}
+<div class="lf-marquee lf-section lf-scheme-{{ section.settings.scheme }}" style="padding: 16px 0; --lf-speed: {{ section.settings.speed }}s">
+  <div class="lf-marquee__track" aria-hidden="true">
+    {%- for round in (1..2) -%}
+      {%- for rep in (1..3) -%}
+        {%- for item in items -%}<span class="lf-marquee__item">{{ item | strip }}</span>{%- endfor -%}
+      {%- endfor -%}
+    {%- endfor -%}
+  </div>
+</div>
+
+{% schema %}
+{
+  "name": "LF Marquee",
+  "settings": [
+    { "type": "text", "id": "items", "label": "Items (separate with |)", "default": "Livraison offerte|Satisfaite ou remboursée|Vegan & cruelty-free" },
+    { "type": "select", "id": "scheme", "label": "Color scheme", "default": "dark", "options": [
+      { "value": "light", "label": "Light" }, { "value": "soft", "label": "Soft" }, { "value": "dark", "label": "Dark" }, { "value": "accent", "label": "Accent" }
+    ] },
+    { "type": "range", "id": "speed", "label": "Duration (seconds)", "min": 10, "max": 80, "step": 5, "default": 35 }
+  ],
+  "presets": [{ "name": "LF Marquee" }]
+}
+{% endschema %}

@@ -1,0 +1,147 @@
+{%- comment -%}
+  "Ce que les acheteurs en disent": synthesis of PUBLIC reviews (Amazon.fr / AliExpress) for this
+  product or an equivalent model, read from the product metafield launchify.buyer_summary (json):
+  {"lang": "fr", "sources": [{"site", "rating", "count", "basis"}], "likes": [...], "note": "..."}
+  Then up to ~30 public review excerpts from launchify.buyer_reviews (json):
+  {"site", "basis", "items": [{"r": stars, "t": title, "x": text, "d": date, "tr": machine-translated}]}
+  Below it, an app-block area for a real review app (Judge.me, etc.) showing this store's own reviews.
+{%- endcomment -%}
+{%- liquid
+  assign p = closest.product | default: product
+  assign d = p.metafields.launchify.buyer_summary.value
+  assign fr = false
+  if d.lang == 'fr'
+    assign fr = true
+  elsif d == blank and request.locale.iso_code contains 'fr'
+    assign fr = true
+  endif
+  if fr
+    assign sep = '&nbsp;'
+  else
+    assign sep = ','
+  endif
+  assign app_blocks = section.blocks | where: 'type', '@app'
+  assign rv = p.metafields.launchify.buyer_reviews.value
+-%}
+{%- if d != blank or rv.items.size > 0 or app_blocks.size > 0 -%}
+<section id="lf-reviews" class="lf-section lf-scheme-{{ section.settings.scheme }} lf-bs">
+  <div class="lf-container">
+    {%- if d != blank -%}
+      <div class="lf-head lf-head--center">
+        <p class="lf-eyebrow lf-eyebrow--pill">{% if fr %}Avis publics{% else %}Public reviews{% endif %}</p>
+        <h2 class="lf-h2">{% if fr %}{{ section.settings.heading }}{% else %}{{ section.settings.heading_en }}{% endif %}</h2>
+      </div>
+      <div class="lf-bs__grid">
+        {%- liquid
+          assign sites = d.sources | map: 'site' | uniq | join: ' + '
+          assign pct = d.rating | times: 20
+          assign k = d.count | divided_by: 1000 | floor
+          assign rest = d.count | modulo: 1000 | append: '' | prepend: '00' | slice: -3, 3
+          if fr
+            assign score = d.rating | append: '' | replace: '.', ','
+          else
+            assign score = d.rating
+          endif
+        -%}
+        <div class="lf-bs__sources">
+          <div class="lf-bs__src">
+            <div class="lf-bs__score">{{ score }}<span>/5</span></div>
+            <span class="lf-bs__stars" style="--lf-pct: {{ pct }}%" role="img" aria-label="{{ score }} / 5"></span>
+            <p class="lf-bs__srcname">
+              <strong>{% if d.count >= 1000 %}{{ k }}{{ sep }}{{ rest }}{% else %}{{ d.count }}{% endif %}
+              {% if fr %}avis{% else %}reviews{% endif %}</strong>
+            </p>
+            <p class="lf-bs__basis">{{ sites }}</p>
+          </div>
+        </div>
+        <div class="lf-bs__body">
+          <h3 class="lf-bs__h3">{% if fr %}Ce qu'ils apprécient le plus{% else %}What they like most{% endif %}</h3>
+          <ul class="lf-bs__likes">
+            {%- for like in d.likes -%}<li>{{ like }}</li>{%- endfor -%}
+          </ul>
+          {%- if d.note != blank -%}
+            <div class="lf-bs__note">
+              <strong>{% if fr %}Bon à savoir{% else %}Good to know{% endif %}</strong>
+              <p>{{ d.note }}</p>
+            </div>
+          {%- endif -%}
+        </div>
+      </div>
+      {%- assign sites = d.sources | map: 'site' | uniq | join: ' et ' -%}
+      <p class="lf-bs__legal">
+        {%- if fr -%}
+          {% if d.sources.size > 1 %}Note combinée (moyenne pondérée par le nombre d'avis) et synthèse{% else %}Note et synthèse{% endif %} établies par notre équipe à partir des avis publiés sur {{ sites }} pour ce modèle ou un modèle équivalent. Ces avis ne portent pas sur les commandes passées dans notre boutique.
+        {%- else -%}
+          {% if d.sources.size > 1 %}Combined rating (weighted by number of reviews) and summary{% else %}Rating and summary{% endif %} compiled by our team from reviews published on {{ sites | replace: ' et ', ' and ' }} for this or an equivalent model. These reviews are not about orders placed in our store.
+        {%- endif -%}
+      </p>
+    {%- endif -%}
+
+    {%- if rv.items.size > 0 -%}
+      {%- liquid
+        assign shown = section.settings.reviews_shown
+        assign more = rv.items.size | minus: shown
+        assign rsite = rv.site
+      -%}
+      <div class="lf-rv" id="lf-rv-{{ section.id }}">
+        <div class="lf-rv__head">
+          <h3 class="lf-bs__h3">{% if fr %}{{ rv.items.size }} avis publié{% if rv.items.size > 1 %}s{% endif %} sur {{ rsite }}{% else %}{{ rv.items.size }} review{% if rv.items.size > 1 %}s{% endif %} published on {{ rsite }}{% endif %}</h3>
+          <p class="lf-rv__disclaimer">
+            {%- if fr -%}
+              Avis rédigés par des acheteurs {% if rv.basis == 'même modèle' %}de ce modèle{% else %}d'un modèle équivalent{% endif %} sur {{ rsite }}, reproduits sans nom et raccourcis si besoin («&nbsp;…&nbsp;»), dans l'ordre d'affichage du site, sans tri selon la note, hors avis évoquant la santé. Ils ne sont pas vérifiés par notre boutique.
+            {%- else -%}
+              Reviews written by buyers of {% if rv.basis == 'même modèle' %}this model{% else %}an equivalent model{% endif %} on {{ rsite }}, reproduced without names and shortened where needed ("…"), in the site's display order, not sorted by rating, leaving out reviews that discuss health. They are not verified by our store.
+            {%- endif -%}
+          </p>
+        </div>
+        <ul class="lf-rv__list">
+          {%- for it in rv.items -%}
+            <li class="lf-rv__item{% if forloop.index > shown %} lf-rv__item--more{% endif %}">
+              <span class="lf-rv__stars" role="img" aria-label="{{ it.r }} / 5">{% for i in (1..5) %}{% if i <= it.r %}★{% else %}<span>★</span>{% endif %}{% endfor %}</span>
+              {%- if it.t != blank -%}<p class="lf-rv__title">{{ it.t }}</p>{%- endif -%}
+              <p class="lf-rv__text">{{ it.x }}</p>
+              <p class="lf-rv__meta">{{ rsite }}{% if it.d != blank %} · {{ it.d }}{% endif %}{% if it.tr %} · {% if fr %}traduit automatiquement{% else %}machine-translated{% endif %}{% endif %}</p>
+            </li>
+          {%- endfor -%}
+        </ul>
+        {%- if more > 0 -%}
+          <div class="lf-rv__actions">
+            <button type="button" class="lf-btn lf-btn--ghost lf-rv__btn" onclick="this.closest('.lf-rv').classList.add('is-open');this.parentNode.remove()">
+              {% if fr %}Voir {{ more }} avis de plus{% else %}Show {{ more }} more reviews{% endif %}
+            </button>
+          </div>
+        {%- endif -%}
+      </div>
+    {%- endif -%}
+
+    {%- if app_blocks.size > 0 -%}
+      <div class="lf-bs__customers">
+        <h2 class="lf-h2">{% if fr %}{{ section.settings.customers_heading }}{% else %}{{ section.settings.customers_heading_en }}{% endif %}</h2>
+        {%- for block in section.blocks -%}
+          {%- if block.type == '@app' -%}{% render block %}{%- endif -%}
+        {%- endfor -%}
+      </div>
+    {%- endif -%}
+  </div>
+</section>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "LF Buyer reviews",
+  "enabled_on": { "templates": ["product"] },
+  "settings": [
+    { "type": "select", "id": "scheme", "label": "Color scheme", "default": "soft", "options": [
+      { "value": "light", "label": "Light" }, { "value": "soft", "label": "Soft" }, { "value": "dark", "label": "Dark" }
+    ] },
+    { "type": "text", "id": "heading", "label": "Heading (FR)", "default": "Ce que les acheteurs en disent" },
+    { "type": "text", "id": "heading_en", "label": "Heading (EN)", "default": "What buyers say" },
+    { "type": "text", "id": "customers_heading", "label": "Store reviews heading (FR)", "default": "Les avis de nos clients" },
+    { "type": "text", "id": "customers_heading_en", "label": "Store reviews heading (EN)", "default": "Our customers' reviews" },
+    { "type": "range", "id": "reviews_shown", "label": "Public reviews shown before \"show more\"", "min": 2, "max": 12, "step": 1, "default": 6 },
+    { "type": "paragraph", "content": "The summary reads the product metafield launchify.buyer_summary, filled at import. Add your review app's block (e.g. Judge.me) below to show your own customers' reviews." }
+  ],
+  "blocks": [{ "type": "@app" }],
+  "presets": [{ "name": "LF Buyer reviews" }]
+}
+{% endschema %}

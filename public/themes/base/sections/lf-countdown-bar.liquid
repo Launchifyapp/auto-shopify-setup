@@ -1,0 +1,43 @@
+<div class="lf-bar" data-lf-countdown>
+  <div class="lf-bar__text">{{ section.settings.text }}</div>
+  {%- if section.settings.show_timer -%}
+    <div class="lf-bar__timer" aria-label="Temps restant">
+      <span class="lf-bar__unit"><b data-h>00</b><small>{{ section.settings.label_h }}</small></span>
+      <span class="lf-bar__unit"><b data-m>00</b><small>{{ section.settings.label_m }}</small></span>
+      <span class="lf-bar__unit"><b data-s>00</b><small>{{ section.settings.label_s }}</small></span>
+    </div>
+  {%- endif -%}
+</div>
+{%- if section.settings.show_timer -%}
+  <script>
+    (function () {
+      var root = document.currentScript.previousElementSibling;
+      var h = root.querySelector('[data-h]'), m = root.querySelector('[data-m]'), s = root.querySelector('[data-s]');
+      function pad(n) { return String(n).padStart(2, '0'); }
+      function tick() {
+        var now = new Date(), end = new Date(now);
+        end.setHours(24, 0, 0, 0);
+        var d = Math.max(0, Math.floor((end - now) / 1000));
+        h.textContent = pad(Math.floor(d / 3600));
+        m.textContent = pad(Math.floor((d % 3600) / 60));
+        s.textContent = pad(d % 60);
+      }
+      tick();
+      setInterval(tick, 1000);
+    })();
+  </script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "LF Countdown bar",
+  "settings": [
+    { "type": "inline_richtext", "id": "text", "label": "Text", "default": "<strong>Offre VIP</strong> · -40% + cadeau offert" },
+    { "type": "checkbox", "id": "show_timer", "label": "Show countdown (resets daily)", "default": true },
+    { "type": "text", "id": "label_h", "label": "Hours label", "default": "H" },
+    { "type": "text", "id": "label_m", "label": "Minutes label", "default": "MIN" },
+    { "type": "text", "id": "label_s", "label": "Seconds label", "default": "SEC" }
+  ],
+  "presets": [{ "name": "LF Countdown bar" }]
+}
+{% endschema %}
